@@ -1,0 +1,38 @@
+# Framework catalog — packages classified as frameworks (vs generic SDKs) in the inventory.
+# Names match the extractors' lowercased ecosystem + package name. Reflects the PM's
+# Frameworks table (laravel/framework, react, next, express, vue, @nestjs/core, celery).
+composer:
+  - laravel/framework
+  - symfony/symfony
+  - symfony/framework-bundle
+  - cakephp/cakephp
+  - yiisoft/yii2
+  - codeigniter4/framework
+  - laminas/laminas-mvc
+  # Magento / Adobe Commerce install packages — so a Magento STORE repo's version is treated as
+  # a framework and joined to endoflife.date/magento (see eol.PRODUCT_MAP). A wrapper that only
+  # CALLS Magento never requires these, so this stays inert on integration-client repos.
+  - magento/product-community-edition
+  - magento/product-enterprise-edition
+  - magento/magento2-base
+npm:
+  - react
+  - next
+  - vue
+  - nuxt
+  - "@angular/core"
+  - "@nestjs/core"
+  - express
+  - koa
+  - fastify
+  - svelte
+  - "@remix-run/react"
+  - gatsby
+python:
+  - django
+  - flask
+  - fastapi
+  - celery
+  - tornado
+  - pyramid
+  - sanic

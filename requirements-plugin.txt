@@ -1,0 +1,6 @@
+# Runtime dependencies for the Drift Detector plugin (the inventory-scan path).
+# The bootstrap runner (bin/drift-scan) installs these into a plugin-local venv on
+# first run, and separately fetches the ast-grep static binary (the scan engine).
+# PyYAML is the scanner's ONLY third-party Python import — dropping semgrep took
+# the install from ~386 MB to ~90 MB.
+PyYAML>=6.0

@@ -1,0 +1,34 @@
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+.env
+.env.*
+*.local
+
+# SDD scratch
+.superpowers/
+
+# scan state written next to scanned folders
+.drift-detector/
+
+# local-only internal data (never publish)
+docs/results/
+
+# MCP server venv
+.venv-mcp/
+
+# agent worktrees / local scratch (never publish)
+.claude/
+
+# local demo dashboard (drift-scan run --state .drift-demo)
+.drift-demo/
+
+# local full-fleet scan state
+.drift-fleet/
+
+.drift-fleet-bot/
+
+.pytest_cache/
+adhoc/

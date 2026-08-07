@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0"><channel>
+  <title>Shopify Changelog</title>
+  <item>
+    <title>New Bulk Operations endpoint</title>
+    <link>https://shopify.dev/changelog/bulk-ops</link>
+    <description><![CDATA[<p>Adds a <b>bulkOperations</b> endpoint.</p>]]></description>
+    <pubDate>Wed, 01 Jul 2026 10:00:00 +0000</pubDate>
+    <guid>https://shopify.dev/changelog/bulk-ops</guid>
+  </item>
+  <item>
+    <title>REST Admin deprecation notice</title>
+    <link>https://shopify.dev/changelog/rest-deprecation</link>
+    <description>REST Admin API winding down in favour of GraphQL.</description>
+    <pubDate>Mon, 22 Jun 2026 09:00:00 +0000</pubDate>
+    <guid>https://shopify.dev/changelog/rest-deprecation</guid>
+  </item>
+</channel></rss>

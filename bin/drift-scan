@@ -1,0 +1,162 @@
+#!/usr/bin/env bash
+# Self-bootstrapping runner for Drift Detector.
+#
+# Provisions a local virtualenv (once) with the runtime deps, fetches the
+# ast-grep scan engine (a static binary), then runs `agent.cli inventory-scan`. Designed to
+# work from ANY working directory a teammate invokes it in: the `agent` package
+# is made importable via PYTHONPATH (not cwd), catalog files resolve
+# package-relative, and relative --root/--out paths still resolve against the
+# caller's cwd because we do NOT chdir.
+#
+# Usage:
+#   drift-scan doctor              # check prerequisites, print exact fixes
+#   drift-scan [inventory-scan flags]   # e.g. --root --state --out-json --now
+set -euo pipefail
+
+# Repo root, derived from this script's location (bin/ -> root). Run from any cwd.
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+
+VENV="$ROOT/.venv"
+MARKER="$VENV/.drift-deps-ok"
+REQ="$ROOT/requirements-plugin.txt"
+PYVER="3.12"   # tomllib needs >=3.11
+
+_UV_HINT='  • uv (recommended — also provides Python, no system packages needed):
+      curl -LsSf https://astral.sh/uv/install.sh | sh
+      # then restart your shell (or: source ~/.bashrc / ~/.zshrc)
+
+  • or Python 3.11+ with venv support, e.g. on Debian/Ubuntu:
+      sudo apt install python3.12-venv'
+
+# ---------- doctor: environment health check (does NOT provision) ----------
+if [ "${1:-}" = "doctor" ]; then
+  set +e
+  echo "drift-detector · doctor"
+  echo "  root        : $ROOT"
+  ready=0
+  if command -v uv >/dev/null 2>&1; then
+    echo "  uv          : $(uv --version 2>/dev/null) — ok (provisions Python)"
+    ready=1
+  else
+    echo "  uv          : not found"
+  fi
+  PY="${DRIFT_PYTHON:-python3}"
+  if command -v "$PY" >/dev/null 2>&1; then
+    pv="$("$PY" -c 'import sys;print("%d.%d"%sys.version_info[:2])' 2>/dev/null)"
+    if "$PY" -c 'import sys;raise SystemExit(0 if sys.version_info[:2]>=(3,11) else 1)' 2>/dev/null; then
+      if "$PY" -c 'import ensurepip, venv' 2>/dev/null; then
+        echo "  python3     : $pv (+venv) — ok"
+        [ "$ready" = "0" ] && ready=1
+      else
+        echo "  python3     : $pv — missing venv/ensurepip module"
+      fi
+    else
+      echo "  python3     : $pv — too old (need >=3.11)"
+    fi
+  else
+    echo "  python3     : not found"
+  fi
+  if [ -f "$MARKER" ]; then
+    # report the engine the scanner will ACTUALLY resolve, not just what pip installed
+    eng="$(env PYTHONPATH="$ROOT${PYTHONPATH:+:$PYTHONPATH}" "$VENV/bin/python" -c \
+          'from agent.lib.scan_util import resolve_engine; print(resolve_engine())' 2>/dev/null)"
+    if [ -n "$eng" ]; then
+      case "$(basename "$eng")" in
+        ast-grep|sg) echo "  engine      : ast-grep ($("$eng" --version 2>/dev/null)) — ok (preferred: static binary)" ;;
+        *)           echo "  engine      : $(basename "$eng") — unexpected (ast-grep is the supported engine)" ;;
+      esac
+    else
+      echo "  engine      : none resolvable — scans will fail"
+    fi
+  else
+    echo "  engine      : not yet — provisioned on first scan"
+  fi
+  echo
+  if [ "$ready" = "1" ]; then
+    echo "Ready ✓   run:  /drift-detector <folder>"
+    # optional scan-readiness pre-flight for a folder (private-source packages needing access)
+    if [ -n "${2:-}" ] && [ -f "$MARKER" ]; then
+      echo
+      env PYTHONPATH="$ROOT${PYTHONPATH:+:$PYTHONPATH}" "$VENV/bin/python" -m agent.cli preflight --root "$2" || true
+      echo
+      env PYTHONPATH="$ROOT${PYTHONPATH:+:$PYTHONPATH}" "$VENV/bin/python" -m agent.cli recommend --root "$2" || true
+    fi
+    exit 0
+  fi
+  printf 'Not ready ✗   install ONE of these, then retry:\n\n%s\n' "$_UV_HINT" >&2
+  exit 3
+fi
+
+# Subcommand: default inventory-scan; others: audit / run / schedule / unschedule / doctor.
+SUB="inventory-scan"
+case "${1:-}" in
+  audit|run|deliver|notify|sbom|sarif|brief|precedents|config-preflight|schedule|unschedule|mute|preflight|recommend|absorb|verify|catalog-refresh|catalog-check|plan|probe|freshness|probabilistic|adhoc-report|render) SUB="$1"; shift ;;
+esac
+
+# ---------- provision the venv once (idempotent via the marker file) ----------
+# Prefer uv: it creates a venv without the system python3-venv/ensurepip package
+# and can fetch a suitable Python itself. Fall back to system python3.
+if [ ! -f "$MARKER" ]; then
+  echo "drift-detector: first-run setup — creating venv (one-time)…" >&2
+  if command -v uv >/dev/null 2>&1; then
+    uv venv --python "$PYVER" "$VENV" 1>&2
+    VIRTUAL_ENV="$VENV" uv pip install -q -r "$REQ" 1>&2
+  elif command -v "${DRIFT_PYTHON:-python3}" >/dev/null 2>&1 \
+       && "${DRIFT_PYTHON:-python3}" -c 'import ensurepip, venv' 2>/dev/null; then
+    "${DRIFT_PYTHON:-python3}" -m venv "$VENV"
+    "$VENV/bin/python" -m pip install -q --upgrade pip 1>&2
+    "$VENV/bin/python" -m pip install -q -r "$REQ" 1>&2
+  else
+    printf 'drift-detector: cannot provision the scanner — no usable uv/python found.\n\n%s\n\nRun  /drift-detector doctor  for a full check.\n' "$_UV_HINT" >&2
+    exit 3
+  fi
+  touch "$MARKER"
+fi
+
+# ---------- fetch the ast-grep engine (preferred: static binary, ~90x faster) ----------
+# Placed in the venv's bin/ because agent.lib.scan_util.resolve_engine looks there.
+# ast-grep IS the scan engine: without it, scans cannot run. The failure is
+# reported loudly rather than silently producing an empty inventory.
+if [ ! -x "$VENV/bin/ast-grep" ]; then
+  _os="$(uname -s)"; _arch="$(uname -m)"
+  case "$_os:$_arch" in
+    Linux:x86_64)   _asset="app-x86_64-unknown-linux-gnu.zip" ;;
+    Linux:aarch64)  _asset="app-aarch64-unknown-linux-gnu.zip" ;;
+    Darwin:arm64)   _asset="app-aarch64-apple-darwin.zip" ;;
+    Darwin:x86_64)  _asset="app-x86_64-apple-darwin.zip" ;;
+    *)              _asset="" ;;
+  esac
+  if [ -n "$_asset" ] && command -v curl >/dev/null 2>&1 && command -v unzip >/dev/null 2>&1; then
+    # PINNED, not "latest": an unpinned engine means two machines can fetch DIFFERENT
+    # ast-grep builds, silently changing scan output — which breaks the tool's central
+    # "deterministic, byte-identical" guarantee (the rule node-kinds in AST_STRING_KINDS
+    # were verified against this exact version). Bump AST_GREP_VERSION deliberately, after
+    # re-verifying the ruleset. Falls back to latest only if the pin can't be resolved.
+    AST_GREP_VERSION="${DRIFT_AST_GREP_VERSION:-0.44.1}"
+    echo "drift-detector: fetching the ast-grep engine ${AST_GREP_VERSION} (one-time)…" >&2
+    _rel="https://api.github.com/repos/ast-grep/ast-grep/releases/tags/${AST_GREP_VERSION}"
+    _url=$(curl -fsSL "$_rel" 2>/dev/null \
+           | grep -o "\"browser_download_url\": \"[^\"]*${_asset}\"" | cut -d'"' -f4)
+    if [ -z "$_url" ]; then
+      echo "drift-detector: pinned ast-grep ${AST_GREP_VERSION} not found — falling back to latest." >&2
+      _url=$(curl -fsSL https://api.github.com/repos/ast-grep/ast-grep/releases/latest 2>/dev/null \
+             | grep -o "\"browser_download_url\": \"[^\"]*${_asset}\"" | cut -d'"' -f4)
+    fi
+    if [ -n "$_url" ]; then
+      _tmp=$(mktemp -d)
+      if curl -fsSL -o "$_tmp/sg.zip" "$_url" && unzip -qo "$_tmp/sg.zip" -d "$_tmp" 2>/dev/null \
+         && [ -f "$_tmp/ast-grep" ]; then
+        mv "$_tmp/ast-grep" "$VENV/bin/ast-grep" && chmod +x "$VENV/bin/ast-grep"
+      else
+        echo "drift-detector: ast-grep download failed — scans will not run until it is installed." >&2
+      fi
+      rm -rf "$_tmp"
+    fi
+  fi
+fi
+
+# Run from the caller's cwd (so relative paths resolve), with the agent package on the
+# import path. The venv's python finds ast-grep next to it
+# (agent.lib.scan_util.resolve_engine checks dirname(sys.executable)).
+exec env PYTHONPATH="$ROOT${PYTHONPATH:+:$PYTHONPATH}" \
+  "$VENV/bin/python" -m agent.cli "$SUB" "$@"

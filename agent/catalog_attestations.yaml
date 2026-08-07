@@ -1,0 +1,85 @@
+# Catalog attestations — "somebody checked this vendor's deprecation page on DATE".
+#
+# WHY THIS EXISTS, and why it is not a count of entries.
+#
+# A vendor with 272 detected call-sites and no catalog data used to render exactly like a
+# vendor that was genuinely clean. That is how eight already-past Amazon SP-API
+# retirements sat unreported: the tool had an elaborate conscience for what it could not
+# SEE (shape verdicts, residue, per-language signal coverage) and none at all for what it
+# had never been TAUGHT.
+#
+# The obvious fix — "this vendor has N catalog entries, so it is audited" — is gameable
+# and wrong. You cannot know completeness from the inside, and one junk entry would flip a
+# vendor from unaudited to audited. eBay proves it: twelve entries, and the vendor's own
+# page still lists operations the catalog does not have.
+#
+# The only honest scalar is the one below: a human or agent opened the vendor's canonical
+# deprecation page on a stated date and reconciled it against the catalog. An entry count
+# is a claim about our file; this is a claim about the world.
+#
+# RULES
+#   • `checked` is the date the SOURCE PAGE WAS ACTUALLY FETCHED — not the date an entry
+#     was written, and never a remembered date.
+#   • `source` must be the vendor's canonical deprecation/sunset page, the one that would
+#     reveal a retirement we are missing.
+#   • Attestations go STALE (see shapes/catalog verdicts). Re-checking means re-fetching
+#     the page and moving the date, not editing this line.
+#   • A vendor absent from this file is UNAUDITED even if it has catalog entries.
+
+- vendor: Amazon SP-API
+  checked: "2026-07-20"
+  source: https://developer-docs.amazon/sp-api/docs/sp-api-deprecations
+  note: >-
+    SP-API Deprecation Schedule, the vendor's canonical table. Reconciled in full: 8 of
+    the 13 listed retirements were staged; the remainder (Authorization v1, Data Kiosk
+    dataset) do not appear in any scanned repo. Two entries are family-scoped because
+    Amazon names an operation subset without enumerating it.
+
+- vendor: eBay
+  checked: "2026-07-29"
+  source: https://www.edp.ebay.com/rss/api-deprecation
+  note: >-
+    Reconciled against eBay's structured deprecation RSS (canonical
+    developer.ebay.com/rss/api-deprecation returns 403 to non-browser clients; the
+    www.edp.ebay.com mirror serves the identical feed and is what was fetched).
+    2026-07-29 re-fetch: all 13 current feed items reviewed — the monthly catalog-check
+    stage flagged GetAdFormatLeads (decommission 2026-09-21) as NEW, absorbed via the
+    gate the same session; diff now reports 0 new / 0 changed, 9 dated items covered.
+    Earlier 2026-07-20 pass added 7 method-scoped retirements and independently
+    confirmed GetCategoryFeatures. STILL OPEN: Merchandising, Return Management and
+    Business Policies Management (+ Trading notification item) are whole-API/TBD
+    deprecations with no host or operation scope we could verify — NOT in the catalog.
+
+- vendor: Shopify
+  checked: "2026-07-21"
+  source: https://shopify.dev/docs/api/usage/versioning
+  note: >-
+    Shopify retirements are COMPUTED, not curated: the versioning page publishes a
+    rule (a version is accessible for 12 months + 15 days from its calendar release),
+    verified this session against all 7 rows of the published support table. So every
+    detected version is dated by agent/lib/version_lifecycle without a per-version
+    catalog entry, and the coverage cannot go stale as new quarters ship. Note Shopify
+    "falls forward" — a retired version is served by the oldest accessible version, not
+    a 4xx, so an out-of-date version is silent behavioural drift.
+
+- vendor: Walmart
+  checked: "2026-07-21"
+  source: https://developer.walmart.com/us-marketplace/docs/walmart-marketplace-api-deprecation-guide
+  note: >-
+    Reconciled against Walmart's deprecation guide. 6 endpoints with both a path and a
+    date were catalogued (path-scoped). NOT catalogued, because they lack a path or a
+    parseable date: Price management (no endpoint path; sunset "2026"), and the Get /
+    Confirm / Print / Cancel carrier-rate-quote operations (endpoints not specified in
+    the guide). Recorded here rather than invented.
+
+- vendor: Microsoft Graph
+  checked: "2026-07-28"
+  source: https://learn.microsoft.com/en-us/graph/versioning-and-support
+  note: >-
+    Fetched Microsoft Graph's canonical deprecation-policy page this session. It states
+    verbatim: "Currently, no versions of Microsoft Graph are deprecated or unsupported."
+    v1.0 (graph.microsoft.com/v1.0 — what marketplacehub calls for Socialite login + Azure
+    service) is the current GA version, nothing retiring. Individual GA APIs carry 24
+    months' notice via the changelog (developer.microsoft.com/graph/changelog); none of
+    the retiring surfaces (Azure AD Graph on graph.windows.net, EWS, the Security legacy
+    Alerts API) are on graph.microsoft.com, so marketplacehub's usage is unaffected.

@@ -1,0 +1,251 @@
+# Drift Detector — scheduled fleet scan on GitHub Actions (ephemeral compute), persisting to
+# a PRIVATE GitLab repo. No self-hosted runner, no container registry: GitHub runs the job,
+# GitLab holds the fleet, the learned overlay, the report history (and, later, the issues).
+#
+# The scanner code IS this repo — the job checks it out and runs it directly. The only
+# GitLab credential is a PAT stored as the `GITLAB_TOKEN` GitHub secret; it clones the fleet,
+# clones the drift-ops persistence repo, and pushes state back. Deterministic, zero AI.
+#
+# Setup (Repo → Settings → Secrets and variables → Actions):
+#   • Secret   GITLAB_TOKEN   = a GitLab PAT with Reporter on every scanned repo (`api` scope)
+#                               and write access to the drift-ops repo.
+#   • Variable GITLAB_HOST    = your GitLab host, e.g. gitlab.example.com
+#   • Variable DRIFT_OPS_PATH = the persistence repo's path, e.g. group/drift-ops
+#     Host + path are repo VARIABLES, deliberately NOT committed here: this workflow file is
+#     public (it's a Claude plugin), and an internal hostname baked into a public repo is an
+#     infrastructure disclosure. An unset variable fails the run in the first step, loudly.
+#   • Fleet + delivery settings live in the drift-ops repo at config/drift.yml.
+
+name: drift-scan
+
+on:
+  schedule:
+    - cron: "0 7 * * 0"        # Sundays 07:00 UTC
+  workflow_dispatch: {}         # manual "Run workflow"
+
+permissions:
+  contents: read                # we push to GitLab, not to this GitHub repo
+
+concurrency:
+  group: drift-scan             # never let two runs race on the state push
+  cancel-in-progress: false
+
+env:
+  GITLAB_HOST: ${{ vars.GITLAB_HOST }}         # repo variable — never hardcode an internal host here
+  DRIFT_OPS_PATH: ${{ vars.DRIFT_OPS_PATH }}   # repo variable — the GitLab persistence repo, e.g. group/drift-ops
+  AST_GREP_VERSION: "0.44.1"
+  AST_GREP_SHA256: "d2716ddc04f67af933ebaaab39404a184d4fae84e43402fe9b3232b1cdc83728"
+
+jobs:
+  scan:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Config — required repo variables are set
+        # Fail in one second (before checkout) if the deployment wasn't configured, instead of
+        # a cryptic malformed-URL failure deep in the reachability/clone steps. An empty var
+        # here means someone forgot Settings → Variables, not a code bug.
+        run: |
+          : "${GITLAB_HOST:?set repo variable GITLAB_HOST (Settings → Secrets and variables → Actions → Variables), e.g. gitlab.example.com}"
+          : "${DRIFT_OPS_PATH:?set repo variable DRIFT_OPS_PATH, e.g. group/drift-ops}"
+          echo "config ✓  host=${GITLAB_HOST} · ops=${DRIFT_OPS_PATH}"
+
+      - name: Checkout the scanner (this repo)
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262   # v4
+
+      - name: Reachability — can GitHub reach the private GitLab?
+        run: |
+          if curl -fsS --max-time 20 -H "PRIVATE-TOKEN: ${GITLAB_TOKEN}" \
+               "https://${GITLAB_HOST}/api/v4/version" >/dev/null; then
+            echo "GitLab reachable and token accepted ✓"
+          else
+            echo "::error::Cannot reach https://${GITLAB_HOST} from GitHub runners (internal-only?), or the token was rejected."
+            exit 1
+          fi
+        env:
+          GITLAB_TOKEN: ${{ secrets.GITLAB_TOKEN }}
+
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065   # v5
+        with:
+          python-version: "3.12"
+
+      - name: Install PyYAML + the pinned, sha256-verified engine
+        run: |
+          pip install --quiet --no-cache-dir pyyaml
+          curl -fsSL --retry 3 --retry-delay 3 --retry-connrefused -o /tmp/sg.zip \
+            "https://github.com/ast-grep/ast-grep/releases/download/${AST_GREP_VERSION}/app-x86_64-unknown-linux-gnu.zip"
+          unzip -qo /tmp/sg.zip -d /tmp
+          echo "${AST_GREP_SHA256}  /tmp/ast-grep" | sha256sum -c -
+          sudo install -m 0755 /tmp/ast-grep /usr/local/bin/ast-grep
+
+      - name: Clone drift-ops (fleet config + learned overlay + state history)
+        run: |
+          git clone --depth 1 \
+            "https://oauth2:${GITLAB_TOKEN}@${GITLAB_HOST}/${DRIFT_OPS_PATH}.git" drift-ops
+        env:
+          GITLAB_TOKEN: ${{ secrets.GITLAB_TOKEN }}
+
+      - name: Preflight — config + tokens valid before the scan runs
+        # A 5-second gate now that drift.yml is on disk: are the token env vars the config
+        # names actually set, is a configured webhook present, does the delivery token reach
+        # GitLab? Fails here instead of 10 minutes into a scan that can't deliver.
+        env:
+          GITLAB_TOKEN: ${{ secrets.GITLAB_TOKEN }}
+          GCHAT_WEBHOOK: ${{ secrets.GCHAT_WEBHOOK }}
+        run: python3 -m agent.cli config-preflight --config drift-ops/config/drift.yml
+
+      # Scope probe and catalog-freshness are SEPARATE workflows (drift-probe.yml,
+      # drift-catalog-check.yml) — kept out of the main scan so each stage runs on its own and
+      # a slow/failing side-check never clogs the core scan → audit → deliver → publish path.
+
+      - name: Scan the fleet + verify
+        env:
+          GITLAB_TOKEN: ${{ secrets.GITLAB_TOKEN }}
+          DRIFT_CATALOG_DIR: ${{ github.workspace }}/drift-ops/catalog
+        run: |
+          # fleet + delivery settings all come from drift-ops/config/drift.yml (private repo)
+          python3 -m agent.cli run --config drift-ops/config/drift.yml \
+            --state drift-ops/state --now "$(date +%F)" --pull
+          # SBOM (CycloneDX + SPDX) + SARIF — SBOM+SCA+VEX outputs for the DevSecOps audience,
+          # generated before verify so verify certifies them as projections of the inventory
+          python3 -m agent.cli sbom  --state drift-ops/state --format all
+          python3 -m agent.cli sarif --state drift-ops/state
+          # exit 4 (nothing scanned / source unreachable) fails the job; exit 3 (findings) does not
+          python3 -m agent.cli verify --state drift-ops/state
+
+      - name: Deliver — issues (DevOps) + draft MRs / issues (Developer)
+        # Mode (dry-run | live | off), dev_as_issues, host and devops project ALL come from
+        # drift.yml's `delivery:` block — set them there (a reviewed commit in the private
+        # drift-ops repo), not in GitHub variables. Runs after a green verify.
+        env:
+          GITLAB_TOKEN: ${{ secrets.GITLAB_TOKEN }}
+        run: |
+          # The report link in every issue points at the PUBLIC cockpit (GitHub Pages) — the
+          # shareable main surface — not the private GitLab drift-ops readme. Derived from the
+          # repo slug: https://<owner>.github.io/<repo>/ . (publish-pages must be enabled — it is.)
+          PAGES_URL="https://${GITHUB_REPOSITORY%%/*}.github.io/${GITHUB_REPOSITORY##*/}/"
+          python3 -m agent.cli deliver --config drift-ops/config/drift.yml \
+            --state drift-ops/state \
+            --run-url "${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}" \
+            --report-url "$PAGES_URL"
+
+      - name: Publish the report to the drift-ops landing page (README)
+        # So visiting the drift-ops repo on GitLab shows the latest scan (GitLab renders the
+        # markdown + the exposure graph) — the GitLab-native central view for the two teams.
+        if: always()
+        run: |
+          REPORT=drift-ops/state/drift.md
+          [ -f "$REPORT" ] || exit 0
+          RUN_URL="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
+          {
+            echo "# Drift Detector — latest scan"
+            echo
+            echo "_Scanned $(date +%F) · [scan run]($RUN_URL) · [raw data](state/drift.json) · [dashboard](state/dashboard.html)_"
+            echo
+            python3 -c "import re;t=open('${REPORT}').read();print(re.sub(r'^---\n.*?\n---\n','',t,count=1,flags=re.S))"
+          } > drift-ops/README.md
+
+      - name: Persist state + overlay back to drift-ops
+        env:
+          GITLAB_TOKEN: ${{ secrets.GITLAB_TOKEN }}
+        run: |
+          cd drift-ops
+          BRANCH=$(git rev-parse --abbrev-ref HEAD)      # drift-ops' own default branch
+          git config user.name "Drift Detector"
+          git config user.email "drift@${GITLAB_HOST}"
+          git add state catalog README.md                # README = the latest report
+          if git diff --cached --quiet; then
+            echo "no changes to persist"; exit 0
+          fi
+          SUMMARY=$(python3 -c "import json;c=json.load(open('state/drift.json'))['counts'];bo=c.get('byOwner',{});print('%d fix / %d review — devops %d, developer %d' % (c.get('fixes',0), sum(o.get('review',0) for o in bo.values()), bo.get('devops',{}).get('fixes',0), bo.get('developer',{}).get('fixes',0)))" 2>/dev/null || echo scan)
+          # [skip ci] in case a GitLab runner is ever added — the state push must not re-trigger
+          git commit -m "scan $(date +%F): ${SUMMARY} [skip ci]"
+          git push origin "HEAD:${BRANCH}"               # origin carries the token from the clone URL
+
+      - name: Run summary (the shareable "this scan" page)
+        # Renders the report on the Actions run page (markdown + the exposure graph), with a
+        # link to the versioned GitLab report. This run URL is the central thing to cite —
+        # it's what stemmed the issues/MRs the two streams see.
+        if: always()
+        run: |
+          REPORT=drift-ops/state/drift.md
+          if [ ! -f "$REPORT" ]; then
+            echo "_No report produced — the scan did not complete._" >> "$GITHUB_STEP_SUMMARY"; exit 0
+          fi
+          BRANCH=$(git -C drift-ops rev-parse --abbrev-ref HEAD 2>/dev/null || echo main)
+          URL="https://${GITLAB_HOST}/${DRIFT_OPS_PATH}/-/blob/${BRANCH}/state/drift.md"
+          {
+            echo "> 📄 **Full report (GitLab, versioned):** [${DRIFT_OPS_PATH}/state/drift.md](${URL})"
+            echo "> 🔴 DevOps findings → issues · 🔵 Developer findings → MRs/issues (see the Deliver step)"
+            echo
+            # drop the YAML front matter for cleaner rendering; keep the tables + mermaid graph
+            python3 -c "import re;t=open('${REPORT}').read();print(re.sub(r'^---\n.*?\n---\n','',t,count=1,flags=re.S))"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Notify a Google Chat space (if configured)
+        # Opt-in: add a repo secret GCHAT_WEBHOOK to push a one-line summary + report link.
+        # No secret → the CLI no-ops. A chat outage never fails the pipeline.
+        if: always()
+        env:
+          DRIFT_CHAT_WEBHOOK: ${{ secrets.GCHAT_WEBHOOK }}
+        run: |
+          # same public cockpit link as the issues (not the private GitLab readme)
+          PAGES_URL="https://${GITHUB_REPOSITORY%%/*}.github.io/${GITHUB_REPOSITORY##*/}/"
+          python3 -m agent.cli notify --state drift-ops/state \
+            --report-url "$PAGES_URL" \
+            --run-url "${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
+
+      - name: Upload the report as a run artifact
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02   # v4
+        with:
+          name: drift-report
+          path: |
+            drift-ops/state/drift.md
+            drift-ops/state/drift.json
+            drift-ops/state/dashboard.html
+            drift-ops/state/chart.html
+            drift-ops/state/sbom.json
+            drift-ops/state/sbom.spdx.json
+            drift-ops/state/drift.sarif.json
+          if-no-files-found: ignore
+
+  # ---- GitHub Pages showcase (DEMO-ONLY) -------------------------------------------------
+  # Publishes the Cockpit the scan just persisted to drift-ops as a shareable page +
+  # downloadable SBOM/SARIF. GATED on the PUBLISH_PAGES repo variable: it runs ONLY when that
+  # is "true". A public Pages site exposes the vuln posture (repo names, CVEs, versions) to
+  # the world — fine for demo data, NOT for real client repos. Before any real scan: set
+  # PUBLISH_PAGES=false (or unset it), and migrate to PRIVATE GitLab Pages on drift-ops.
+  publish-pages:
+    needs: scan
+    if: vars.PUBLISH_PAGES == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pages: write            # deploys to GitHub Pages, not to this repo's contents
+      id-token: write         # OIDC for the Pages deployment
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
+    env:
+      GITLAB_HOST: ${{ vars.GITLAB_HOST }}
+      DRIFT_OPS_PATH: ${{ vars.DRIFT_OPS_PATH }}
+    steps:
+      - name: Assemble the site from the persisted Cockpit
+        env:
+          GITLAB_TOKEN: ${{ secrets.GITLAB_TOKEN }}
+        run: |
+          : "${GITLAB_HOST:?set repo variable GITLAB_HOST}" ; : "${DRIFT_OPS_PATH:?set repo variable DRIFT_OPS_PATH}"
+          git clone --depth 1 "https://oauth2:${GITLAB_TOKEN}@${GITLAB_HOST}/${DRIFT_OPS_PATH}.git" ops
+          [ -f ops/state/dashboard.html ] || { echo "::error::no dashboard in drift-ops — did the scan run?"; exit 1; }
+          mkdir -p _site
+          cp ops/state/dashboard.html _site/index.html          # the Cockpit is the landing page
+          for f in drift.json drift.md sbom.json sbom.spdx.json drift.sarif.json; do
+            [ -f "ops/state/$f" ] && cp "ops/state/$f" _site/ || true    # standard formats, downloadable
+          done
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@56afc609e74202658d3ffba0e8f6dda462b719fa   # v3
+        with:
+          path: _site
+      - name: Deploy to GitHub Pages
+        id: deploy
+        uses: actions/deploy-pages@d6db90164ac5ed86f2b6aed7e0febac5b3c0c03e            # v4

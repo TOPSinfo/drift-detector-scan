@@ -1,0 +1,17 @@
+# SDK profiles — vendor + version knowledge read from a DEPENDENCY'S OWN source, for wrappers
+# that assemble their URLs from constants/config (no scannable URL literal, so host-matching
+# and idioms are both blind — the `sdk-only-no-callsite` shape). Each version carries the
+# `file:line` it was read from (real evidence) and a `source` note. The audit joins these
+# against the vendor lifecycle / sunset catalog EXACTLY like a scanned endpoint, so a retired
+# version becomes a finding at the const's line. A profile is a READ FACT (a literal in the
+# wrapper's code), never an invented date — same discipline as the rest of the catalog. The
+# synthetic endpoints carry `attribution: sdk-profile` so a reader can tell them from a
+# call-site match. New entries: open the wrapper, read the pinned version(s), cite the line.
+#
+# RULES:
+#   • `repo`: the dependency's project path (host-independent suffix, e.g. example-org/shopify-api).
+#   • `vendor`: must match a name the audit can date (agent/vendors.yaml + a lifecycle/sunset rule).
+#   • each `versions[]` entry needs a `version` string AND an `evidence` file:line you opened.
+#   • `source`: where the versions were read (this session), never a remembered value.
+
+[]

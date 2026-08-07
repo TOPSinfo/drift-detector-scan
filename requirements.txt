@@ -1,0 +1,4 @@
+# Development / test dependencies. Runtime deps for the plugin itself live in
+# requirements-plugin.txt (what bin/drift-scan installs on a user's machine).
+pytest>=7.4
+PyYAML>=6.0

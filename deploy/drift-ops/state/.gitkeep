@@ -1,0 +1,3 @@
+# Committed by CI each run: the report artifacts (drift.json, drift.md, dashboard.html,
+# chart.html, inventory.json, audit.json) and the finding-state/mute files. Empty until the
+# first scheduled scan. The cloned sources and scan cache are git-ignored (see .gitignore).
