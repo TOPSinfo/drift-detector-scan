@@ -1,0 +1,519 @@
+<div id="app" v-cloak>
+  <div class="sticky">
+    <div class="brand">
+      <span class="mark" aria-hidden="true"></span>
+      <h1>Drift Detector</h1><span class="sub">DevSecOps Cockpit</span>
+      <span class="meta">{{ counts.reposScanned }} repos · {{ generated }}</span>
+      <span class="spacer"></span>
+      <span class="caps" title="Supply-chain coverage in one pass">
+        <span class="cap hot">SBOM</span><span class="cap hot">SCA</span>
+        <span class="cap hot">VEX</span><span class="cap hot">SARIF</span>
+        <span class="cap">CVE · EOL · sunsets</span></span>
+      <select id="repo-filter" class="repopick" aria-label="Scope the report to one repo"
+              :data-scoped="scope || null" v-model="scope">
+        <option value="">All repos</option>
+        <option v-for="r in repoOptions" :key="r.key" :value="r.key">{{ r.label }}</option>
+      </select>
+      <button class="themebtn" id="theme" @click="cycleTheme">{{ themeLabel }}</button>
+    </div>
+    <p class="headline"><span class="dot">●</span>
+      <span class="big">{{ counts.fixes }} fixes needed</span> ·
+      {{ counts.reposAffected }} of {{ counts.reposScanned }} repos affected
+      <span class="ownstat" title="Who owns the remediation — cross-cutting across all three planes">{{ ownStats.devops }} DevOps
+        · {{ ownStats.developer }} Developer</span></p>
+    <!-- TOP-LEVEL PLANES: Supply Chain / Vendor Drift / AI Frontier. Three cockpits in
+         ascending uniqueness, descending certainty — each owns its own tiles, hero and
+         content. Switching plane (switchPlane) resets the tile filter and content view. -->
+    <div class="planes" role="tablist" aria-label="Cockpit planes">
+      <button class="plane" v-for="pd in planeDefs" :key="pd.key" role="tab"
+              :data-plane="pd.key" :data-on="plane === pd.key ? '1' : '0'"
+              :aria-pressed="plane === pd.key" @click="switchPlane(pd.key)">
+        <span class="pl-top">
+          <span class="pl-name">{{ pd.label }}</span>
+          <span class="pl-tag" :data-plane="pd.key">{{ pd.tag }}</span>
+          <span class="pl-n">{{ pd.n }}</span>
+        </span>
+        <span class="pl-blurb">{{ pd.blurb }}</span>
+      </button>
+    </div>
+    <!-- PRIMARY TABS = the ACTIVE plane's metric tiles: counts bind to the SAME tileGroups/counts
+         payload the old tile-grid read, just scoped to the current plane and rendered as a strip. -->
+    <div class="tabstrip" role="tablist">
+      <div class="tgroup" v-for="g in tileGroups" :key="g.title">
+        <span class="tglbl">{{ g.title }}</span>
+        <div class="trow">
+          <button v-for="t in g.tiles" :key="t.key" class="mtab" role="tab"
+                  :data-sev="t.sev || null" :data-zero="t.n === 0 ? '1' : null"
+                  :data-on="tab === t.key ? '1' : '0'" :aria-pressed="tab === t.key"
+                  @click="toggleTab(t.key)">
+            <span class="n">{{ t.n }}</span>
+            <span class="t">{{ t.label }}</span>
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- HERO REGION (where the old cards lived). Task 2 fills #hero-body with the flagship,
+       always-on Retirement Timeline — one row per OPERATION, grouped by vendor, positioned on
+       a shared date axis with a dashed TODAY line. The non-timeline hero states (APIs/Unknown
+       bars, the generic per-dimension empty-state, dynamic herohead swapping by active tab)
+       are Task 3's job, layered on top of this. -->
+  <div class="hero">
+    <div class="herohead">
+      <h2>{{ heroTitle }}</h2>
+      <span class="why" v-if="heroWhy">{{ heroWhy }}</span>
+      <span class="sp"></span>
+      <span class="legend" v-if="heroMode === 'timeline' && timeline.dated.length">
+        <span><i class="i-crit"></i>past-due</span><span><i class="i-soon"></i>≤ 6 mo</span>
+        <span><i class="i-up"></i>upcoming</span>
+      </span>
+    </div>
+    <!-- HERO BODY: CONTEXTUAL to the active primary tab (Task 3) — exactly one of three
+         states, decided once by the `heroMode` computed so this is a plain v-if chain with
+         no re-derived branching. -->
+    <div id="hero-body">
+      <template v-if="heroMode === 'timeline'">
+        <template v-if="timeline.dated.length || timeline.undated.length">
+          <div class="axis" v-if="timeline.years.length">
+            <span class="yr" v-for="yr in timeline.years" :key="yr.year"
+                  :style="{left: yr.pct + '%'}">{{ yr.year }}</span>
+          </div>
+          <div class="todaywrap" v-if="timeline.todayPct !== null">
+            <div class="today" :style="{left: timeline.todayPct + '%'}">
+              <span class="cap">TODAY · {{ generated }}</span>
+            </div>
+          </div>
+          <div class="tl">
+            <!-- dated ops: one .trk row PER OPERATION (not per vendor) on the shared axis,
+                 grouped under a .vhead per vendor — timeline.byVendor. -->
+            <div class="vgroup" v-for="vg in timeline.byVendor" :key="vg.vendor">
+              <div class="vhead">{{ vg.vendor }} · {{ vg.items.length }} operation(s)</div>
+              <div class="trk" v-for="(pt, pi) in vg.items" :key="pi"
+                   @mouseenter="showTip(pt, $event)" @mousemove="moveTip($event)"
+                   @mouseleave="hideTip">
+                <div class="lab" :title="pt.vendor + ' ' + pt.unit">{{ pt.unit }}</div>   <!-- vendor is in the .vhead group header above -->
+
+                <div class="line">
+                  <span class="pt" :class="pt.kind" :style="{left: pt.pct + '%'}">
+                    <span class="d">{{ pt.date }}</span>
+                  </span>
+                </div>
+              </div>
+            </div>
+            <!-- undated ops: no announced cut-off, so no axis position to guess at — listed
+                 in their own labeled lane instead. timeline.undated — NEVER dropped (verify's
+                 check_timeline_lanes fails the build if this lane's binding disappears). -->
+            <div class="vgroup" v-if="timeline.undated.length">
+              <div class="vhead">Undated — no announced cut-off ({{ timeline.undated.length }})</div>
+              <div class="trk" v-for="(u, ui) in timeline.undated" :key="'u' + ui">
+                <div class="lab"><span class="vend">{{ u.vendor }}</span> {{ u.unit || '—' }}</div>
+                <div class="line"><span class="undated-note">{{ u.repo }} — date unknown</span></div>
+              </div>
+            </div>
+          </div>
+        </template>
+        <p class="empty" v-else>No vendor API sunsets to plot<template
+          v-if="scope"> for {{ repoLabelOf(scope) }}</template>.</p>
+      </template>
+      <template v-else-if="heroMode === 'vendors'">
+        <div class="mini" v-if="vendorBars.length">
+          <div class="bar" v-for="(b, bi) in vendorBars" :key="bi">
+            <div class="bn">{{ b.name }}</div>
+            <div class="bl">{{ b.sub }}</div>
+            <div class="track"><div class="fill" :style="{width: b.pct + '%', background: b.color}"></div></div>
+          </div>
+        </div>
+        <p class="empty" v-else>No {{ tab === 'unknown' ? 'unclassified' : 'classified' }}
+          endpoints found<template v-if="scope"> for {{ repoLabelOf(scope) }}</template>.</p>
+      </template>
+      <!-- Supply Chain plane intro: the familiar SCA/CVE story, pointing at the SBOM/SARIF tabs. -->
+      <template v-else-if="heroMode === 'supply'">
+        <div class="planehero">
+          <p>Everything a standard supply-chain scan flags — <b>{{ counts.critical }} critical</b>
+             advisor{{ counts.critical === 1 ? 'y' : 'ies' }} and <b>{{ counts.eol }} end-of-life</b>
+             component{{ counts.eol === 1 ? '' : 's' }} — with machine-readable <b>SBOM</b> and
+             <b>SARIF</b> exports for your pipeline in the tabs below. The findings your DevOps
+             tooling already speaks.</p>
+        </div>
+      </template>
+      <!-- AI Frontier plane intro: confident framing of the shaped tier (badge, not banner). -->
+      <template v-else-if="heroMode === 'ai'">
+        <div class="planehero">
+          <p v-if="hasShaped"><b>{{ shapedCount }} call-site{{ shapedCount === 1 ? '' : 's' }}</b> across
+             <b>{{ shapedRepos }} repo{{ shapedRepos === 1 ? '' : 's' }}</b> the deterministic scan
+             couldn't see on its own — an AI shaped them and the tool re-checked every one against
+             the code. Real locations, dated from the same reviewed catalog; not saved to your
+             catalog yet. Full list below — <b>“Absorb” to keep them.</b></p>
+          <p v-else>The frontier for repos the deterministic scan can't read on its own. When an AI
+             shapes one and the tool re-checks it, the recovered call-sites land here — gate-validated,
+             dated from the reviewed catalog. <b>No shaping pass has run on this scan yet.</b></p>
+        </div>
+      </template>
+      <!-- honest empty-state (CLAUDE.md principle 1: "cannot see" != "clean") — a zero here
+           is only meaningful because the scan could READ these repos; an unaudited or
+           unscannable source would say so in Coverage below, not show a clean zero. -->
+      <template v-else>
+        <div class="empty">Nothing in this dimension for the current scan.
+          <b>Zero here is only meaningful because the scan could read these repos</b> — an
+          unaudited or unscannable source would say so, not show a clean zero.</div>
+      </template>
+    </div>
+  </div>
+
+  <!-- Retirement Timeline hover tooltip: reactive `tip` state (showTip/moveTip/hideTip),
+       rendered via {{ }}/:class/:style bindings only — no raw-HTML sink of any kind — so a
+       scan-controlled vendor/operation/repo string cannot break out into markup. -->
+  <div class="tip" :style="{opacity: tip.visible ? 1 : 0, left: tip.x + 'px', top: tip.y + 'px'}">
+    <b>{{ tip.vendor }} {{ tip.unit }}</b>
+    <span class="k">retires</span> {{ tip.date }} ({{ tip.when }})<br>
+    <span class="k">repo</span> {{ tip.repo }}
+    <br><span class="pill" :class="tip.pillClass">{{ tip.statusLabel }}</span>
+  </div>
+
+  <!-- SUB-TABS, scoped to the active plane. Supply Chain adds SBOM + SARIF (they live ONLY
+       here, so they never clutter the other planes). Vendor Drift shows just its content view.
+       AI Frontier has no sub-tabs — the shaped list IS its content — so the bar is hidden. -->
+  <div class="subbar" id="subbar" role="tablist" v-if="plane !== 'ai'">
+    <button class="subtab" role="tab" :data-on="sub === 'summary' ? '1' : '0'"
+            @click="sub = 'summary'">{{ plane === 'drift' ? 'Retiring integrations' : 'Findings' }}</button>
+    <template v-if="plane === 'supply'">
+      <button class="subtab" role="tab" :data-on="sub === 'sbom' ? '1' : '0'"
+              @click="sub = 'sbom'">SBOM</button>
+      <button class="subtab" role="tab" :data-on="sub === 'sarif' ? '1' : '0'"
+              @click="sub = 'sarif'">SARIF</button>
+    </template>
+  </div>
+  <!-- plain-language key: what CERTIFIED vs SHAPED mean, for a non-specialist. Shown on the
+       Vendor Drift + AI planes (where the distinction is live); Supply Chain has neither tier. -->
+  <div class="tierlegend" v-if="plane !== 'supply' && hasShaped">
+    <div class="tk">
+      <span class="orig" data-origin="certified">CERTIFIED</span>
+      <span><b>The tool found and proved these itself.</b> A known rule matched the code, and the
+        retirement date has a cited source. This plane, its tiles and the timeline show <b>only</b>
+        these — the numbers you can trust without a second look. <b>({{ counts.fixes }})</b></span>
+    </div>
+    <div class="tk">
+      <span class="orig" data-origin="shaped">SHAPED</span>
+      <span><b>An AI spotted these; the tool re-checked every location.</b> Real call-sites, in code
+        the tool couldn't read on its own — but the rule isn't saved to your catalog yet, so they
+        stay in the <a href="#" @click.prevent="switchPlane('ai')"><b>AI Frontier</b> plane</a>
+        until you keep them. <b>({{ shapedCount }})</b></span>
+    </div>
+  </div>
+
+  <div id="main">
+    <section v-show="plane !== 'ai' && sub === 'summary'" class="panel active">
+      <div class="subbar">
+        <button class="tab" :class="{active: sumView === 'prev'}"
+                @click="sumView = 'prev'">Preview</button>
+        <button class="tab" :class="{active: sumView === 'json'}"
+                @click="sumView = 'json'">JSON · drift.json</button>
+      </div>
+      <div class="panels">
+      <div class="panel active" v-show="sumView === 'prev'">
+      <div class="toolbar">
+        <input class="search" id="search" type="search" v-model="q"
+               placeholder="Filter by repo, package or vendor…">
+      </div>
+      <table id="panel">
+        <tbody>
+          <tr v-if="mode === 'catalog' && rows.length">
+            <td colspan="5" class="intro">Vendors this code calls whose retirement list nobody
+              has checked. Zero findings for these is UNAUDITED, not clean.</td>
+          </tr>
+          <tr v-if="mode === 'private' && rows.length">
+            <td colspan="5" class="intro">Sub-dependencies the scan couldn't crawl — private or
+              unreachable.</td>
+          </tr>
+          <template v-for="(row, idx) in rows" :key="mode + '-' + idx">
+            <tr class="row" @click="onRowClick(idx)">
+              <template v-if="mode === 'actions'">
+                <td>{{ row.repoLabel || row.repo }}</td>
+                <td>{{ actionLabel(row) }}</td>
+                <td>{{ targetText(row) }}</td>
+                <td>{{ row.finding_count }}</td>
+                <td :class="'sev-' + row.worst">{{ row.worst }}</td>
+              </template>
+              <template v-else-if="mode === 'endpoints'">
+                <td>{{ row.repo }}</td>
+                <td>{{ row.domain }}</td>
+                <td>{{ row.vendor }}</td>
+                <td>{{ row.version || '?' }}</td>
+                <td>{{ row.file_count }}</td>
+              </template>
+              <template v-else-if="mode === 'private'">
+                <td>{{ row.repo }}</td>
+                <td>
+                  <a v-if="row.kind === 'repo' && safeUrl(row.source)" :href="safeUrl(row.source)"
+                     rel="noopener">{{ row.source }}</a>
+                  <template v-else>{{ row.source }}</template>
+                </td>
+                <td>{{ row.kind }}</td>
+                <td>{{ row.via || '' }}</td>
+                <td></td>
+              </template>
+              <template v-else-if="mode === 'catalog'">
+                <td>{{ row.vendor }}</td>
+                <td>{{ catalogWhy(row) }}</td>
+                <td>{{ row.callSites }} call-site(s)</td>
+                <td>{{ row.catalogEntries }} entr(y/ies)</td>
+                <td :class="'sev-' + row.verdict">{{ row.verdict }}</td>
+              </template>
+            </tr>
+            <tr v-if="expanded[idx] && mode === 'actions'">
+              <td colspan="5" class="detail">
+                <div v-if="row.command"><span class="cmd">{{ row.command }}</span>
+                  <button class="copy" @click.stop="copyText(row.command)">copy</button></div>
+                <div v-else-if="row.recommendation">{{ row.recommendation }}</div>
+                <div>Clears {{ row.finding_count }} advisor{{ row.finding_count === 1 ? 'y' : 'ies' }}<template
+                  v-if="row.critical_count"> ({{ row.critical_count }} critical)</template></div>
+                <div class="usedat" v-if="row.files && row.files.length">
+                  <b>Used at:</b>
+                  <div class="callsite" v-for="(f, fi) in row.files" :key="fi">
+                    <a v-if="f.href && safeUrl(f.href)" :href="safeUrl(f.href)" target="_blank"
+                       rel="noopener">{{ f.loc }}</a>
+                    <template v-else>{{ f.loc }}</template>
+                    <button class="copy-loc" @click.stop="copyText(f.loc)"
+                            :data-loc="f.loc">copy</button>
+                  </div>
+                </div>
+                <ul v-if="row.cves && row.cves.length">
+                  <li v-for="(c, ci) in row.cves" :key="ci">{{ c.id }} — {{ c.title }}</li>
+                </ul>
+                <div v-if="row.sources && row.sources.length">
+                  <template v-for="(u, si) in row.sources" :key="si">
+                    <a v-if="safeUrl(u)" :href="safeUrl(u)" target="_blank"
+                       rel="noopener">source ↗</a>
+                    <template v-else>{{ u }}</template>
+                    <template v-if="si < row.sources.length - 1"> · </template>
+                  </template>
+                </div>
+              </td>
+            </tr>
+            <tr v-if="expanded[idx] && mode === 'endpoints'">
+              <td colspan="5" class="detail">
+                <template v-if="row.files && row.files.length">
+                  <div v-for="(f, fi) in row.files" :key="fi">{{ f }}</div>
+                </template>
+                <template v-else>—</template>
+              </td>
+            </tr>
+          </template>
+        </tbody>
+      </table>
+      <p id="empty" class="empty" v-show="rows.length === 0">Nothing found.</p>
+      </div>
+      <div class="panel active" v-show="sumView === 'json'">
+        <p class="jsonhint">View / copy — the canonical <code>drift.json</code> every surface
+          projects from (read-only; the verified source of truth).</p>
+        <div class="jsonwrap">
+          <button class="copybtn" @click="copyJson('drift', driftJsonText)">{{ copyLabel('drift') }}</button>
+          <pre id="json-drift">{{ driftJsonText }}</pre>
+        </div>
+      </div>
+      </div>
+    </section>
+    <section v-show="plane === 'ai'" class="panel active">
+      <!-- honest empty-state when NO shaping pass ran: this plane is always present, but a
+           genuine "no shapes" is said plainly, never rendered as a clean zero. -->
+      <div v-if="!hasShaped" class="planehero">
+        <p><b>No shaping pass has run on this scan.</b> The AI Frontier fills in when an AI shapes
+           a repo the deterministic scan couldn't read — attributing real call-sites the tool then
+           re-checks. Run <code>/drift-absorb</code> on the UNKNOWN repos to shape them, then
+           re-scan and they'll appear here, gate-validated.</p>
+      </div>
+      <template v-else>
+        <div class="tierlead">
+          <b>Found by AI, re-checked by the tool.</b> These are real call-sites in code the tool
+          couldn't read on its own — an AI pointed them out, and the tool then confirmed each one is
+          really there. The retirement dates come from the same reviewed catalog as everything else.
+          They're not saved yet, so they live here rather than in your certified numbers —
+          <b>“Absorb” to keep them permanently.</b>
+        </div>
+        <table id="panel">
+          <tbody>
+            <tr v-if="!shaped.length">
+              <td colspan="4" class="intro">The shaping pass ran and attributed no new call-sites this
+                scan. (An empty result here is real — the pass looked; it did not find a new shape.)</td>
+            </tr>
+            <tr class="row" v-for="(sh, si) in shaped" :key="'sh' + si">
+              <td>{{ sh.repo }}</td>
+              <td>{{ sh.ref }} <span class="op" v-if="sh.op">{{ sh.op }}</span></td>
+              <td>{{ sh.date || '— attributed, not dated' }}</td>
+              <td class="loc">{{ sh.loc }}</td>
+            </tr>
+          </tbody>
+        </table>
+      </template>
+    </section>
+    <section v-show="plane === 'supply' && sub === 'sbom'" class="panel active">
+      <div class="subbar">
+        <button class="tab" :class="{active: sbomView === 'prev'}"
+                @click="sbomView = 'prev'">Preview</button>
+        <button class="tab" :class="{active: sbomView === 'cdx'}"
+                @click="sbomView = 'cdx'">CycloneDX</button>
+        <button class="tab" :class="{active: sbomView === 'spdx'}"
+                @click="sbomView = 'spdx'">SPDX</button>
+      </div>
+      <div class="panels">
+        <div class="panel active" v-show="sbomView === 'prev'">
+          <h3 id="sbom-h">{{ sbomHeaderText }}</h3>
+          <table id="sbom-table">
+            <thead><tr><th>Type</th><th>Component</th><th>Version</th><th>Used in</th><th>Vulns</th></tr></thead>
+            <tbody>
+              <tr v-for="(c, ci) in sbomRows" :key="ci">
+                <td>{{ c.type }}</td>
+                <td class="mono">{{ c.purl }}</td>
+                <td>{{ c.version }}</td>
+                <td>{{ c.repoCount }} repo{{ c.repoCount === 1 ? '' : 's' }}</td>
+                <td>
+                  <span v-if="c.vulnCount" class="pill" :class="c.pillClass">{{ c.vulnCount }} {{ c.vulnSeverity }}</span>
+                  <template v-else>—</template>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+        <div class="panel active" v-show="sbomView === 'cdx'">
+          <p class="jsonhint">CycloneDX 1.5 (<code>sbom.json</code>) → Dependency-Track,
+            GitHub · <a class="viewbtn" href="https://apps.rancher.io/sbom-viewer"
+            target="_blank" rel="noopener">Open in Rancher SBOM viewer ↗</a></p>
+          <div class="jsonwrap">
+            <button class="copybtn" @click="copyJson('cdx', sbomJsonText)">{{ copyLabel('cdx') }}</button>
+            <pre id="json-cdx">{{ sbomJsonText }}</pre>
+          </div>
+        </div>
+        <div class="panel active" v-show="sbomView === 'spdx'">
+          <p class="jsonhint">SPDX 2.3 (<code>sbom.spdx.json</code>)
+            · <a class="viewbtn" href="https://apps.rancher.io/sbom-viewer"
+            target="_blank" rel="noopener">Open in Rancher SBOM viewer ↗</a></p>
+          <div class="jsonwrap">
+            <button class="copybtn" @click="copyJson('spdx', spdxJsonText)">{{ copyLabel('spdx') }}</button>
+            <pre id="json-spdx">{{ spdxJsonText }}</pre>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section v-show="plane === 'supply' && sub === 'sarif'" class="panel active">
+      <div class="subbar">
+        <button class="tab" :class="{active: sarifView === 'prev'}"
+                @click="sarifView = 'prev'">Preview</button>
+        <button class="tab" :class="{active: sarifView === 'json'}"
+                @click="sarifView = 'json'">JSON · sarif.json</button>
+      </div>
+      <div class="panels">
+        <div class="panel active" v-show="sarifView === 'prev'">
+          <h3 id="sarif-h">{{ sarifHeaderText }}</h3>
+          <div id="sarif-groups">
+            <details class="grp" v-for="g in sarifGroups" :key="g.ruleId">
+              <summary>{{ g.ruleId }}<span class="count">{{ g.count }}</span></summary>
+              <table class="big">
+                <thead><tr><th>Location</th><th>Message</th><th>Level</th></tr></thead>
+                <tbody>
+                  <tr v-for="(r, ri) in g.rows" :key="ri">
+                    <td class="mono">{{ r.where }}</td>
+                    <td>{{ r.message }}</td>
+                    <td><span class="pill" :class="r.pillClass">{{ r.level }}</span></td>
+                  </tr>
+                </tbody>
+              </table>
+            </details>
+          </div>
+        </div>
+        <div class="panel active" v-show="sarifView === 'json'">
+          <p class="jsonhint">SARIF 2.1.0 (<code>drift.sarif.json</code>) — file:line
+            results → GitHub code scanning, VS Code · <a class="viewbtn"
+            href="https://microsoft.github.io/sarif-web-component/" target="_blank"
+            rel="noopener">Open in SARIF web viewer ↗</a></p>
+          <div class="jsonwrap">
+            <button class="copybtn" @click="copyJson('sarif', sarifJsonText)">{{ copyLabel('sarif') }}</button>
+            <pre id="json-sarif">{{ sarifJsonText }}</pre>
+          </div>
+        </div>
+      </div>
+    </section>
+  </div>
+
+  <footer class="pagefoot">
+    <section id="coverage" class="coverage">
+      <template v-if="coverageHasContent">
+        <h2>Coverage</h2>
+        <template v-if="rootsUnscannable.length">
+          <div class="note"><b>⚠ Couldn't scan {{ rootsUnscannable.length }} source(s) you asked for</b>
+            — this is NOT a clean result for them (check the path exists and the token has access):</div>
+          <ul>
+            <li v-for="(u, i) in rootsUnscannable" :key="i">{{ u.root }} — {{ u.reason }}</li>
+          </ul>
+        </template>
+        <div class="note" v-for="(n, i) in coverageNotesSpecific" :key="'n' + i">{{ n }}</div>
+        <template v-if="unknownShapes.length">
+          <div class="note"><b>{{ unknownShapes.length }} repo(s) the scan could not fully read.</b>
+            A repo is only KNOWN when every language present has egress rules AND nothing was
+            left unattributed:</div>
+          <ul>
+            <li v-for="(s, i) in unknownShapes" :key="i">{{ s.repo }} — <b>{{ s.verdict }}</b>
+              ({{ (s.reasons || []).join(", ") }}); languages: {{ Object.keys(s.languages || {}).join(", ") }}</li>
+          </ul>
+        </template>
+        <template v-if="gradedRepos.length">
+          <div class="note">Coverage — repos where calls may be unattributed:</div>
+          <ul>
+            <li v-for="(g, i) in gradedRepos" :key="i">{{ g.repoLabel || g.repo }}: <b>{{ g.grade }}</b>
+              ({{ g.unattributedPaths }} path-literals, {{ g.unresolvedSinks }} sinks)</li>
+          </ul>
+        </template>
+        <template v-if="sdkMediated.length">
+          <div class="note">{{ sdkMediated.length }} repo(s) use SDK client(s) — calls routed through an
+            SDK have no URL literal and aren't listed as endpoints, so the endpoint count may
+            undercount:</div>
+          <ul>
+            <li v-for="(m, i) in sdkMediated" :key="i">{{ m.repo }} ({{ m.sdkCount }} SDKs,
+              {{ m.endpointCount }} endpoints)</li>
+          </ul>
+        </template>
+        <template v-if="coveredDeps.length">
+          <div class="note">{{ coveredDeps.length }} private dependency(ies) are <b>scanned directly</b>
+            as their own fleet repo — a dependency edge, not a blind spot:</div>
+          <ul>
+            <li v-for="(d, i) in coveredDeps" :key="i">{{ d.repo }} → {{ d.source }}</li>
+          </ul>
+        </template>
+      </template>
+    </section>
+    <section id="drift" class="coverage">
+      <details class="grp" v-if="driftHasContent">
+        <summary>Changed since last scan</summary>
+        <div style="padding:10px 14px">
+          <div class="note" v-if="inventoryDrift.reposAdded && inventoryDrift.reposAdded.length">
+            Repos added: {{ inventoryDrift.reposAdded.join(", ") }}</div>
+          <div class="note" v-if="inventoryDrift.reposRemoved && inventoryDrift.reposRemoved.length">
+            Repos removed: {{ inventoryDrift.reposRemoved.join(", ") }}</div>
+          <div class="note" v-for="(c, i) in driftChangeRows" :key="i">
+            <b>{{ c.repo }}</b>: {{ c.bits.join(" · ") }}</div>
+        </div>
+      </details>
+    </section>
+    <section class="tierkey">
+      <b>How to read this report.</b> The three planes are three tiers of certainty.
+      <span class="orig" data-origin="certified">CERTIFIED</span> — the <b>Supply Chain</b> and
+      <b>Vendor Drift</b> planes — comes from the reviewed catalog: a detection rule plus a retirement
+      date with a cited source.
+      <span class="orig" data-origin="shaped">SHAPED</span> — the <b>AI Frontier</b> plane — was
+      detected this run by a shape written for a repo the scan couldn't read on its own and validated
+      against it; the call-sites are real, the shape isn't in your catalog yet.
+      <b>Tiles and totals count CERTIFIED only.</b>
+      <div class="verifyline"><code>drift.json</code> is the certified record, and
+        <code>drift-scan verify</code> checks every number on this page against it.</div>
+    </section>
+    <section id="methodology" class="coverage">
+      <details class="grp" v-if="methodologyNotes.length">
+        <summary>Scan methodology &amp; sources<span class="count">{{ methodologyNotes.length }}</span></summary>
+        <div style="padding:10px 14px">
+          <div class="note" v-for="(n, i) in methodologyNotes" :key="i">{{ n }}</div>
+        </div>
+      </details>
+    </section>
+  </footer>
+</div>

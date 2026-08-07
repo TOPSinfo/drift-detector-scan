@@ -1,0 +1,76 @@
+# Drift Detector — catalog FRESHNESS check, as its own stage. Separate from the main scan so a
+# slow or unreachable vendor source never clogs the core scan → audit → deliver path. This
+# re-fetches the catalogued vendors' LIVE deprecation sources (eBay RSS, Shopify versioning
+# rule, …) and reports what CHANGED vs our catalog — a newly-announced retirement we lack, a
+# date the vendor MOVED, or a computed rule that drifted. It does NOT scan repos (no engine).
+#
+# The scan answers "which of the retirements we KNOW about do you call?"; this answers "did the
+# vendors announce anything NEW?". Both recur; keeping them separate is what stops one stalling
+# the other. Vendors behind a login (marketplaces) can't be auto-fetched — they age to STALE
+# (catalog_coverage.STALE_DAYS) and are re-checked by a human; this stage covers the public ones.
+
+name: drift-catalog-check
+
+on:
+  schedule:
+    - cron: "0 6 1 * *"          # monthly, 1st at 06:00 UTC (offset from the weekly scan)
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+concurrency:
+  group: drift-catalog-check
+  cancel-in-progress: true
+
+env:
+  GITLAB_HOST: ${{ vars.GITLAB_HOST }}
+  DRIFT_OPS_PATH: ${{ vars.DRIFT_OPS_PATH }}
+
+jobs:
+  catalog-check:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Config — required repo variables are set
+        run: |
+          : "${GITLAB_HOST:?set repo variable GITLAB_HOST (Settings → Variables), e.g. gitlab.example.com}"
+          : "${DRIFT_OPS_PATH:?set repo variable DRIFT_OPS_PATH, e.g. group/drift-ops}"
+          echo "config ✓  host=${GITLAB_HOST} · ops=${DRIFT_OPS_PATH}"
+
+      - name: Checkout the scanner (this repo)
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262   # v4
+
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065   # v5
+        with:
+          python-version: "3.12"
+
+      - name: Install PyYAML
+        # No ast-grep engine — catalog-check fetches vendor sources and diffs them against the
+        # catalog; it never scans a repo, so this stays minimal.
+        run: pip install --quiet --no-cache-dir pyyaml
+
+      - name: Clone drift-ops (for the learned catalog overlay)
+        env:
+          GITLAB_TOKEN: ${{ secrets.GITLAB_TOKEN }}
+        run: |
+          git clone --depth 1 \
+            "https://oauth2:${GITLAB_TOKEN}@${GITLAB_HOST}/${DRIFT_OPS_PATH}.git" drift-ops
+
+      - name: Catalog-check — re-fetch vendor sources, report what changed
+        # DRIFT_CATALOG_DIR points at the drift-ops overlay so absorbed vendors/sunsets are
+        # checked too, not just the package baseline.
+        env:
+          DRIFT_CATALOG_DIR: ${{ github.workspace }}/drift-ops/catalog
+        run: |
+          set +e
+          python3 -m agent.cli catalog-check --now "$(date +%F)" | tee /tmp/cc.out
+          code=${PIPESTATUS[0]}
+          set -e
+          { echo "## Drift catalog freshness · $(date +%F)"; echo;
+            echo '```'; cat /tmp/cc.out; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
+          case "$code" in
+            0) echo "catalog current ✓ — no vendor announced a new/moved retirement" ;;
+            3) echo "::warning::a vendor announced a NEW or MOVED retirement — stage it and run absorb to catalog it" ;;
+            4) echo "::error::a vendor source was unreachable — freshness could not be fully verified"; exit 4 ;;
+            *) echo "::error::catalog-check exited unexpectedly ($code)"; exit "$code" ;;
+          esac

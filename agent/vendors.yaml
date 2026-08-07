@@ -1,0 +1,85 @@
+# Vendor catalog — used to CLASSIFY discovered URL hosts (the scan finds all http(s) URLs; this
+# labels the ones we recognize; the rest surface as "Unknown external").
+# domains: a dotted value is matched as a registrable-domain SUFFIX (ebay.com -> api.sandbox.ebay.com);
+#          a value with no dot is a distinctive host FRAGMENT (sellingpartnerapi -> regional Amazon hosts).
+# Keep API-specific hosts (api.github.com, graph.facebook.com) where the bare domain is noisy.
+# versionRegex: one capture group = the API version, applied to the URL (default covers /vN and dates).
+
+# ── Marketplaces / e-commerce ──────────────────────────────────────────────
+- { vendor: Amazon SP-API,     techKey: api:amazon-sp-api,       domains: [sellingpartnerapi] }
+- { vendor: Amazon MWS,        techKey: api:amazon-mws,          domains: [mws.amazonservices.com] }
+- { vendor: Amazon Ads API,    techKey: api:amazon-ads,          domains: [advertising-api] }
+- { vendor: eBay,              techKey: api:ebay,                domains: [ebay.com] }
+- { vendor: Walmart,           techKey: api:walmart-marketplace, domains: [walmartapis.com] }
+- { vendor: Etsy,              techKey: api:etsy,                domains: [etsy.com] }
+# pathSignature: the Admin API path `/admin/api/{YYYY-MM}/` is host-independent — merchant
+# calls build the host at runtime (`https://{$shop}/admin/api/2024-01/…`), so host matching is
+# blind but this path is Shopify and nothing else. Group 1 = the calendar version, which
+# version_lifecycle dates (2024-01 → retired 2025-01-16). Source: shopify.dev/docs/api/admin.
+- { vendor: Shopify,           techKey: api:shopify,             domains: [myshopify.com, shopify.dev], pathSignature: '/admin/api/([0-9]{4}-[0-9]{2})/' }
+- { vendor: BigCommerce,       techKey: api:bigcommerce,         domains: [bigcommerce.com] }
+- { vendor: WooCommerce,       techKey: api:woocommerce,         domains: [woocommerce.com] }
+- { vendor: Mirakl,            techKey: api:mirakl,              domains: [mirakl.net] }
+- { vendor: Virtualstock,      techKey: api:virtualstock,        domains: [virtualstock.com] }  # Harvey Norman marketplace (Virtualstock 'The Edge')
+- { vendor: Rakuten,           techKey: api:rakuten,             domains: [rakuten.com, rms.rakuten.co.jp] }
+# AU/NZ marketplaces — DETECTION ONLY (host match; default version format). Evidence: seen as
+# live API hosts in marketplacehub/marketplacehub-api's marketplace controllers (sandbox/preprod/api
+# subdomains). These are UNAUDITED — no retirement list has been checked yet, so a scan will
+# name the integration but must NOT imply its versions are current. Retirements enter later,
+# each from a fetched source (never invent a date). Harvey Norman is used here too but its host
+# is fully config-driven (no URL literal), so it is not host-detectable — left honestly blind.
+- { vendor: MyDeal,            techKey: api:mydeal,              domains: [mydeal.com.au] }
+- { vendor: THE ICONIC,        techKey: api:theiconic,           domains: [theiconic.com.au] }
+- { vendor: TheMarket,         techKey: api:themarket,           domains: [themarket.co.nz] }
+- { vendor: Kogan,             techKey: api:kogan,               domains: [kgn.io] }
+- { vendor: Tradevine,         techKey: api:tradevine,           domains: [api.tradevine.com] }
+- { vendor: Trade Me,          techKey: api:trademe,             domains: [api.trademe.co.nz] }
+- { vendor: Catch,             techKey: api:catch,               domains: [catch.com.au] }
+- { vendor: Magento,           techKey: api:magento,             domains: [] }   # self-hosted; identified by the /rest/V1 path-constant idiom, not a host
+- { vendor: MySale,            techKey: api:mysale,              domains: [mysalemarketplace.com] }
+- { vendor: Marketplacer,      techKey: api:marketplacer,        domains: [marketplacer.com] }
+- { vendor: Mirakl,            techKey: api:mirakl,              domains: [mirakl.net] }
+- { vendor: Virtualstock,      techKey: api:virtualstock,        domains: [virtualstock.com] }  # Harvey Norman marketplace (Virtualstock 'The Edge')
+
+# ── Payments ───────────────────────────────────────────────────────────────
+- { vendor: Stripe,            techKey: api:stripe,              domains: [stripe.com] }
+- { vendor: PayPal,            techKey: api:paypal,              domains: [paypal.com] }
+- { vendor: Braintree,         techKey: api:braintree,           domains: [braintreegateway.com] }
+- { vendor: Square,            techKey: api:square,              domains: [squareup.com] }
+- { vendor: Adyen,             techKey: api:adyen,               domains: [adyen.com] }
+- { vendor: Razorpay,          techKey: api:razorpay,            domains: [razorpay.com] }
+- { vendor: Authorize.Net,     techKey: api:authorize-net,       domains: [authorize.net] }
+- { vendor: Klarna,            techKey: api:klarna,              domains: [klarna.com] }
+- { vendor: Checkout.com,      techKey: api:checkout-com,        domains: [checkout.com] }
+
+# ── Shipping / tax ─────────────────────────────────────────────────────────
+- { vendor: ShipStation,       techKey: api:shipstation,         domains: [shipstation.com] }
+- { vendor: EasyPost,          techKey: api:easypost,            domains: [easypost.com] }
+- { vendor: Shippo,            techKey: api:shippo,              domains: [goshippo.com] }
+- { vendor: Avalara,           techKey: api:avalara,             domains: [avalara.com] }
+- { vendor: TaxJar,            techKey: api:taxjar,              domains: [taxjar.com] }
+- { vendor: FedEx,             techKey: api:fedex,               domains: [fedex.com] }
+- { vendor: UPS,               techKey: api:ups,                 domains: [ups.com] }
+
+# ── Comms / marketing ──────────────────────────────────────────────────────
+- { vendor: Twilio,            techKey: api:twilio,              domains: [twilio.com] }
+- { vendor: SendGrid,          techKey: api:sendgrid,            domains: [sendgrid.com] }
+- { vendor: Mailgun,           techKey: api:mailgun,             domains: [mailgun.net, mailgun.com] }
+- { vendor: Mailchimp,         techKey: api:mailchimp,           domains: [mailchimp.com] }
+- { vendor: Klaviyo,           techKey: api:klaviyo,             domains: [klaviyo.com] }
+- { vendor: Vonage Nexmo,      techKey: api:vonage,              domains: [nexmo.com, vonage.com] }
+- { vendor: Slack,             techKey: api:slack,               domains: [slack.com] }
+
+# ── Cloud / platform / AI ──────────────────────────────────────────────────
+- { vendor: Amazon AWS,        techKey: api:aws,                 domains: [amazonaws.com] }
+- { vendor: Google APIs,       techKey: api:google,              domains: [googleapis.com] }
+- { vendor: Google Maps,       techKey: api:google-maps,         domains: [maps.googleapis.com] }
+- { vendor: Google OAuth2,     techKey: api:google-oauth2,       domains: [oauth2.googleapis.com] }
+- { vendor: Firebase FCM,      techKey: api:firebase-fcm,        domains: [fcm.googleapis.com] }
+- { vendor: Meta Graph API,    techKey: api:meta-graph,          domains: [graph.facebook.com] }
+- { vendor: Microsoft Graph,   techKey: api:microsoft-graph,     domains: [graph.microsoft.com] }
+- { vendor: OpenAI,            techKey: api:openai,              domains: [api.openai.com] }
+- { vendor: Anthropic,         techKey: api:anthropic,           domains: [api.anthropic.com] }
+- { vendor: GitHub,            techKey: api:github,              domains: [api.github.com] }
+- { vendor: LinkedIn,          techKey: api:linkedin,            domains: [api.linkedin.com] }
+- { vendor: Twitter X,         techKey: api:twitter,             domains: [api.twitter.com, api.x.com] }

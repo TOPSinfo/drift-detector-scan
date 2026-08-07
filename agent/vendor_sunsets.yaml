@@ -1,0 +1,342 @@
+# Vendor API-sunset catalog — CURATED. This is the one thing no CVE/EOL feed covers:
+# when a vendor RETIRES a version of their API (your integration breaks in production).
+#
+# RULES (match the tool's principles):
+#   • Every entry MUST cite a `source` URL. Never invent a date — if you can't source it, don't add it.
+#   • `vendor` must match the name in agent/vendors.yaml (e.g. "Amazon SP-API", "Shopify").
+#   • `version`: the API version string as it appears in your code/URLs (e.g. v0, v3, 2023-01),
+#     or "*" for a whole-API retirement (any usage of that vendor is flagged).
+#   • `domain`: OPTIONAL — scope the entry to a specific host (e.g. svcs.ebay.com). Use this when a
+#     vendor shares one version string across a DEAD legacy API and a LIVE one (eBay's "v1" is used
+#     by both the retired Finding API on svcs.ebay.com AND the live OAuth/REST on api.ebay.com).
+#     A domain-scoped entry flags ONLY that host, and the host match is itself the confirmation.
+#   • `retires`: YYYY-MM-DD. Omit if the API is already deprecated with no fixed date
+#     (it will be flagged as action-required without a date).
+#   • `replacement` and `note` are optional but make the finding actionable.
+#
+# The tool joins these against the ENDPOINT inventory (which has file:line call-sites), so a
+# finding reads: "SP-API v0 retires <date> — used at these 14 file:line across 6 repos".
+#
+# ── Template (copy, fill with a real sourced announcement, uncomment) ─────────────────
+# Quote dates and date-like versions ("YYYY-MM-DD") so YAML keeps them as strings.
+# - { vendor: Amazon SP-API, version: v0, retires: "2026-09-30", replacement: v2,
+#     source: https://developer-docs.amazon.com/sp-api/changelog, note: Orders v0 endpoints }
+# - { vendor: Shopify, version: "2023-01", retires: "2024-01-01", replacement: "2024-01",
+#     source: https://shopify.dev/docs/api/usage/versioning, note: quarterly version sunset }
+# ──────────────────────────────────────────────────────────────────────────────────────
+
+# Seed — historical/verifiable only. Extend with your vendors' actual announcements.
+- vendor: Amazon MWS
+  version: "*"
+  replacement: Amazon SP-API
+  source: https://developer-docs.amazon.com/sp-api/docs/migrating-from-amazon-mws
+  note: Amazon Marketplace Web Service (MWS) is deprecated; all usage should migrate to SP-API. Confirm the current cut-off date for your marketplace.
+
+# eBay legacy "traditional" APIs — deprecated 2024-01-04, DECOMMISSIONED 2025-02-05 (already dead).
+# Domain-scoped so the live OAuth/REST host (api.ebay.com) and modern Sell/Buy APIs are NOT flagged.
+# Source: eBay Developers Program API Deprecation Status + Q3 2024 newsletter.
+- vendor: eBay
+  domain: svcs.ebay.com
+  retires: "2025-02-05"
+  replacement: Browse API
+  # Text fragment deep-links to the Finding API row on eBay's deprecation-status table
+  # (scrolls/highlights in modern browsers; degrades to the plain page otherwise).
+  source: "https://developer.ebay.com/develop/get-started/api-deprecation-status#:~:text=Finding%20API"
+  note: eBay Finding API (svcs.ebay.com) decommissioned 2025-02-05; migrate to the RESTful Browse API.
+- vendor: eBay
+  domain: open.api.ebay.com
+  retires: "2025-02-05"
+  replacement: Browse API
+  source: "https://developer.ebay.com/develop/get-started/api-deprecation-status#:~:text=Shopping%20API"
+  note: eBay Shopping API (open.api.ebay.com) decommissioned 2025-02-05; migrate to the RESTful Browse API.
+
+# eBay Trading API — OPERATION-scoped. The Trading API as a whole is NOT retired
+# (eBay still ships releases), but individual calls are decommissioned on their own
+# schedules, all on the same host (api.ebay.com) with no URL version. Only an
+# `operation` scope can say "GetCategories is dead, GetItem is alive".
+# Both dates below were read directly off eBay's API Deprecation Status table
+# (Wayback snapshot 2026-05-13) — not inferred.
+- vendor: eBay
+  operation: GetCategoryFeatures
+  retires: "2026-06-04"
+  replacement: Metadata API
+  source: "https://developer.ebay.com/develop/get-started/api-deprecation-status#:~:text=GetCategoryFeatures"
+  note: Deprecated 2025-07-01; decommissioned 2026-06-04. Migrate to the Metadata API for category metadata.
+- vendor: eBay
+  operation: GetCategories
+  retires: "2026-04-15"
+  replacement: Taxonomy API
+  source: "https://developer.ebay.com/develop/get-started/api-deprecation-status#:~:text=GetCategories"
+  note: Decommissioned from the Trading API. Migrate to the Taxonomy API (category tree) + Metadata API.
+# These four aged off the deprecation-status table (it only lists current/recent
+# items), so each date was read from the Trading API release-notes index instead —
+# the release that actually shipped the decommission. Verified 2026-07-20.
+- vendor: eBay
+  operation: GetCategorySpecifics
+  retires: "2022-04-22"
+  replacement: Taxonomy API getItemAspectsForCategory
+  source: "https://developer.ebay.com/devzone/xml/docs/ReleaseNotesArchive.html#:~:text=GetCategorySpecifics%20Call%20Decommisioned"
+  note: Trading release 1255 — "GetCategorySpecifics Call Decommissioned". Use Taxonomy getItemAspectsForCategory.
+- vendor: eBay
+  operation: AddDispute
+  retires: "2023-01-27"
+  replacement: Post-Order API cancellation
+  source: "https://developer.ebay.com/devzone/xml/docs/ReleaseNotesArchive.html#:~:text=Six%20Dispute%20Calls%20Decommissioned"
+  note: Trading release 1295 — "Six Dispute Calls Decommissioned"; AddDispute removed from the WSDL.
+- vendor: eBay
+  operation: GetCharities
+  retires: "2023-09-18"
+  replacement: Charity API
+  source: "https://developer.ebay.com/devzone/xml/docs/ReleaseNotesArchive.html#:~:text=GetCharities%20Call%20Decommissioned"
+  note: Trading release 1327 — "GetCharities Call Decommissioned". Use the Charity API (commerce/charity/v1).
+- vendor: eBay
+  operation: GetSuggestedCategories
+  retires: "2024-07-01"
+  replacement: Taxonomy API getCategorySuggestions
+  source: "https://developer.ebay.com/devzone/xml/docs/ReleaseNotesArchive.html#:~:text=Decommissioned%20GetSuggestedCategories%20call"
+  note: Trading release 1367 — "Decommissioned GetSuggestedCategories call".
+
+# eBay Large Merchant Services — whole SOAP services, so DOMAIN-scoped. Date read
+# from eBay's Dec-2021 newsletter: "The Large Merchant Services APIs (Bulk Data
+# Exchange, File Transfer, and Merchant Data) will be decommissioned on April 30,
+# 2022." Confirmed by the Q1-2022 newsletter. Verified 2026-07-20.
+- vendor: eBay
+  domain: webservices.ebay.com
+  retires: "2022-04-30"
+  replacement: Sell Feed API
+  source: "https://developer.ebay.com/updates/newsletter/2021_12_news#:~:text=Bulk%20Data%20Exchange"
+  note: Large Merchant Services (Bulk Data Exchange) decommissioned 2022-04-30. The same Merchant Data XML feeds are served by the Sell Feed API as REST tasks.
+- vendor: eBay
+  domain: webservices.sandbox.ebay.com
+  retires: "2022-04-30"
+  replacement: Sell Feed API
+  source: "https://developer.ebay.com/updates/newsletter/2021_12_news#:~:text=Bulk%20Data%20Exchange"
+  note: Large Merchant Services (Bulk Data Exchange (sandbox)) decommissioned 2022-04-30. The same Merchant Data XML feeds are served by the Sell Feed API as REST tasks.
+- vendor: eBay
+  domain: storage.ebay.com
+  retires: "2022-04-30"
+  replacement: Sell Feed API
+  source: "https://developer.ebay.com/updates/newsletter/2021_12_news#:~:text=File%20Transfer"
+  note: Large Merchant Services (File Transfer) decommissioned 2022-04-30. The same Merchant Data XML feeds are served by the Sell Feed API as REST tasks.
+- vendor: eBay
+  domain: storage.sandbox.ebay.com
+  retires: "2022-04-30"
+  replacement: Sell Feed API
+  source: "https://developer.ebay.com/updates/newsletter/2021_12_news#:~:text=File%20Transfer"
+  note: Large Merchant Services (File Transfer (sandbox)) decommissioned 2022-04-30. The same Merchant Data XML feeds are served by the Sell Feed API as REST tasks.
+
+# ── Amazon SP-API ────────────────────────────────────────────────────────────────────
+# Fetched 2026-07-20 from https://developer-docs.amazon/sp-api/docs/sp-api-deprecations
+# (the vendor's own schedule). Dates converted from the page's US format; `retires` is
+# the REMOVAL/EOL date — when calls stop working — not the earlier deprecation notice.
+#
+# Scoped by `path` (API family), NOT by version: SP-API retires per (family, version),
+# and four different APIs share the string "v0" with four different fates —
+# /fba/inbound/v0 stopped working 2025-01-21 while /finances/v0 runs to 2027-08-27.
+# A version-scoped entry would date every v0 call-site identically and invent most of them.
+- vendor: Amazon SP-API
+  path: /reports/2020-09-04
+  retires: '2024-06-27'
+  source: https://developer-docs.amazon/sp-api/docs/sp-api-deprecations#:~:text=Reports
+  note: Reports v2020-09-04 removed 2024-06-27 (deprecated July 2021).
+- vendor: Amazon SP-API
+  path: /feeds/2020-09-04
+  retires: '2024-06-27'
+  source: https://developer-docs.amazon/sp-api/docs/sp-api-deprecations#:~:text=Feeds
+  note: Feeds v2020-09-04 removed 2024-06-27 (deprecated July 2021).
+- vendor: Amazon SP-API
+  path: /fba/smallAndLight/v1
+  retires: '2024-03-27'
+  source: https://developer-docs.amazon/sp-api/docs/sp-api-deprecations#:~:text=FBA%20Small%20and%20Light
+  note: FBA Small and Light programme ended — NA/EU removed 2023-09-26, JP 2024-03-27.
+- vendor: Amazon SP-API
+  path: /orders/v0
+  retires: '2027-03-27'
+  source: https://developer-docs.amazon/sp-api/docs/sp-api-deprecations#:~:text=Orders
+  note: Orders v0 deprecated 2026-01-28, removed 2027-03-27.
+- vendor: Amazon SP-API
+  path: /finances/v0
+  retires: '2027-08-27'
+  source: https://developer-docs.amazon/sp-api/docs/sp-api-deprecations#:~:text=Finances
+  note: Finances v0 deprecated 2025-07-21, removed 2027-08-27.
+- vendor: Amazon SP-API
+  path: /catalog/v0
+  retires: '2026-06-30'
+  source: https://developer-docs.amazon/sp-api/docs/sp-api-deprecations#:~:text=Catalog%20Items
+  note: Catalog Items v0 retired in two waves — listCatalogItems/getCatalogItem removed 2025-04-24, listCatalogCategories
+    removed 2026-06-30. Both dates have passed; the family is gone. Dated at the final removal.
+- vendor: Amazon SP-API
+  path: /fba/inbound/v0
+  retires: '2025-01-21'
+  source: https://developer-docs.amazon/sp-api/docs/sp-api-deprecations#:~:text=Fulfillment%20Inbound
+  note: 'Fulfillment Inbound v0 — Amazon removed MULTIPLE (unnamed) operations 2025-01-21, plus getInboundGuidance
+    2024-03-27. Family-scoped: verify which of your calls are affected. Migration target is Fulfillment
+    Inbound v2024-03-20.'
+- vendor: Amazon SP-API
+  path: /mfn/v0
+  retires: '2024-03-27'
+  source: https://developer-docs.amazon/sp-api/docs/sp-api-deprecations#:~:text=Merchant%20Fulfillment
+  note: 'Merchant Fulfillment v0 — Amazon removed THREE (unnamed) operations 2024-03-27. Family-scoped:
+    verify which of your calls are affected.'
+
+# ── eBay, from the vendor's MACHINE-READABLE deprecation feed ────────────────────────
+# Fetched 2026-07-20 from https://www.edp.ebay.com/rss/api-deprecation
+#
+# eBay publishes an RSS feed with STRUCTURED fields — <api>, <methods><method>,
+# <deprecationDate>, <decommissionDate>, <notes> — i.e. exactly the machine-readable
+# retirement source this catalog was assumed to lack. `retires` below is the
+# DECOMMISSION date (when calls stop working), not the earlier deprecation notice.
+#
+# The canonical URL is https://developer.ebay.com/rss/api-deprecation, which returns 403
+# to non-browser clients (a WAF fingerprint block, verified: instant 403, not a timeout).
+# The www.edp.ebay.com mirror serves the identical feed and is what was actually fetched,
+# so that is what is cited — citing a URL we could not reach would be the same dishonesty
+# as an unsourced date.
+#
+# This feed independently CONFIRMED the GetCategoryFeatures entry above (2026-06-04),
+# a date this catalog previously got wrong twice by hand.
+- vendor: eBay
+  operation: getProductCompatibilities
+  retires: '2026-08-15'
+  replacement: the getProductCompatibilities method of the Metadata API
+  source: https://www.edp.ebay.com/rss/api-deprecation#getProductCompatibilities
+  note: Product API. Deprecated 2025-07-08, decommissioned 2026-08-15.
+- vendor: eBay
+  operation: findProducts
+  retires: '2026-08-15'
+  source: https://www.edp.ebay.com/rss/api-deprecation#findProducts
+  note: Product API. Deprecated 2026-05-26, decommissioned 2026-08-15.
+- vendor: eBay
+  operation: getProductDetails
+  retires: '2026-08-15'
+  source: https://www.edp.ebay.com/rss/api-deprecation#getProductDetails
+  note: Product API. Deprecated 2026-05-26, decommissioned 2026-08-15.
+- vendor: eBay
+  operation: updatePaymentInfo
+  retires: '2026-06-02'
+  source: https://www.edp.ebay.com/rss/api-deprecation#updatePaymentInfo
+  note: Order v1 API. Deprecated 2026-05-18, decommissioned 2026-06-02.
+- vendor: eBay
+  operation: GetSellerDiscountProfiles
+  retires: '2027-01-19'
+  source: https://www.edp.ebay.com/rss/api-deprecation#GetSellerDiscountProfiles
+  note: Trading API. Deprecated 2026-06-10, decommissioned 2027-01-19.
+- vendor: eBay
+  operation: SetShippingDiscountProfiles
+  retires: '2027-01-19'
+  source: https://www.edp.ebay.com/rss/api-deprecation#SetShippingDiscountProfiles
+  note: Trading API. Deprecated 2026-06-10, decommissioned 2027-01-19.
+- vendor: eBay
+  operation: UploadSiteHostedPictures
+  retires: '2026-09-30'
+  source: https://www.edp.ebay.com/rss/api-deprecation#UploadSiteHostedPictures
+  note: Trading API. Deprecated 2025-11-06, decommissioned 2026-09-30.
+
+# ── Walmart Marketplace ──────────────────────────────────────────────────────────────
+# Fetched 2026-07-21 from the vendor's deprecation guide
+# (developer.walmart.com/us-marketplace/docs/walmart-marketplace-api-deprecation-guide).
+# `retires` is the SUNSET date, after which the guide says the API is permanently retired.
+# Scoped by `path` (Walmart front-loads the version: /v3/insights/refunds is the family).
+- vendor: Walmart
+  path: /v3/insights/items/trending
+  retires: '2025-03-31'
+  source: https://developer.walmart.com/us-marketplace/docs/walmart-marketplace-api-deprecation-guide#:~:text=Trending%20items
+  note: Trending items (GET). Sunset — already retired (status 2024-10-12).
+- vendor: Walmart
+  path: /v3/insights/prosellerbadge
+  retires: '2025-08-13'
+  source: https://developer.walmart.com/us-marketplace/docs/walmart-marketplace-api-deprecation-guide#:~:text=proseller%20badge
+  note: Insights proseller badge (GET). Sunset — already retired (status 2024-12-13).
+- vendor: Walmart
+  path: /v3/carrier-rate-quotes
+  retires: '2027-02-06'
+  source: https://developer.walmart.com/us-marketplace/docs/walmart-marketplace-api-deprecation-guide#:~:text=Create%20carrier%20rate%20quote
+  note: Create carrier rate quote (POST). Legacy since 2026-02-06.
+- vendor: Walmart
+  path: /v3/insights/refunds
+  retires: '2027-03-27'
+  source: https://developer.walmart.com/us-marketplace/docs/walmart-marketplace-api-deprecation-guide#:~:text=Refunds%20Performance%20Metrics
+  note: Refunds Performance Metrics (GET). Deprecated 2026-03-26.
+- vendor: Walmart
+  path: /v3/insights/refundsOrdersReport
+  retires: '2027-03-27'
+  source: https://developer.walmart.com/us-marketplace/docs/walmart-marketplace-api-deprecation-guide#:~:text=Refunds%20Performance%20Report
+  note: Refunds Performance Report (GET). Deprecated 2026-03-26.
+- vendor: Walmart
+  path: /v3/inventory/wfs
+  status: deprecated-no-date
+  source: https://developer.walmart.com/us-marketplace/docs/walmart-marketplace-api-deprecation-guide#:~:text=WFS%20inventory
+  note: WFS inventory (GET). Legacy since 2025-09-03; vendor states sunset "2026" with no specific day, so no date is invented.
+
+# ── AU/NZ marketplaces (MyDeal, THE ICONIC, TheMarket, Kogan) — RESEARCHED 2026-07-29, NO ENTRY.
+# Detected in marketplacehub/marketplacehub-api (catalogued for detection in vendors.yaml). Retirement
+# research found NO sourced, catalogable sunset date for any, so nothing is added — no source =
+# no entry (a borrowed or invented date is worse than none). Accessibility DIFFERS per vendor
+# (corrected after a direct check — do not re-lump them as "all behind login"):
+#   • Kogan — PUBLIC changelog (https://developers.kogan.com/changelog). CHECKED: it uses relative
+#     timestamps ("over 5 years ago"), announces additions (Orders API on v2), and its one
+#     deprecation (select-category-by-name → use IDs) is UNDATED and field-level — not a
+#     version/host/path the endpoint model can join on. Nothing catalogable, but publicly verified.
+#     (Caveat: the changelog is a JS-rendered SPA; a human render may surface entries a fetch cannot.)
+#   • THE ICONIC — CONFIRMED login-gated: the docs page (https://sellercenter-api.theiconic.com.au/docs/)
+#     says "Sign in to access the full documentation." The Lazada Seller Center decommissions
+#     (https://lazada-sellercenter.readme.io/docs/announcement, "out of support 2018-05-31") are
+#     LAZADA SEA ventures, NOT THE ICONIC (Australia, a different GFG instance) — misattribution refused.
+#   • MyDeal — CONFIRMED docs-by-request: sellerhelp.mydeal.com.au states "submit a request to enquire
+#     about receiving the latest API documentation." Not public.
+#   • TheMarket (NZ) — no public API docs found (integrates via middleware: Omnivore/Cresco/ChannelAdvisor);
+#     not proven a hard login wall, just no public source.
+# All four stay DETECTED but UNAUDITED (honest: we name the integration, we do not claim its versions
+# are current). THE ICONIC/MyDeal/TheMarket need SELLER-PORTAL material (a dated deprecation notice +
+# its origin = a valid source); Kogan is public and simply has nothing dated to catalog.
+
+# ── eBay — absorbed 2026-07-29 from the deprecation RSS (the freshness loop's first live catch).
+# The monthly catalog-check stage (run 2026-07-29) diffed the live feed against this catalog and
+# flagged ONE new retirement the vendor lists that we lacked. The feed was re-fetched the same
+# session and the item re-read before staging (never a remembered date); entered via
+# `drift-scan absorb` (staging + gate), not a direct edit. Vendor wording: "GetAdFormatLeads has
+# been deprecated and will be decommissioned on September 21, 2026. Current users should migrate
+# to the REST Leads API."
+- vendor: eBay
+  operation: GetAdFormatLeads
+  retires: '2026-09-21'
+  replacement: the REST Leads API
+  source: https://www.edp.ebay.com/rss/api-deprecation#GetAdFormatLeads
+  note: Trading API. Deprecated 2026-07-02, decommissioned 2026-09-21. First live
+    catch of the monthly catalog-check stage (flagged by the 2026-07-29 run); feed
+    re-fetched and the item re-read at absorb time, same session.
+
+# ── Platform shutdowns (whole-marketplace retirements) — an integration to a dead platform is
+# 100% broken, not "deprecated someday". First parties are GONE, so these are trade-press
+# sourced (flagged below); a shutdown is the one case where the vendor page can't be the cite.
+- vendor: Catch
+  version: "*"
+  retires: "2025-04-30"
+  source: https://ia.acs.org.au/article/2025/catch-com-au-to-close-down.html
+  note: >-
+    Catch (catch.com.au, Wesfarmers) ceased operating 2025-04-30 — entire marketplace shut
+    down; ran on Mirakl. Trade-press sourced (ACS/SmartCompany) — first-party site is gone.
+- vendor: MySale
+  version: "*"
+  retires: "2026-01-27"
+  source: https://powerretail.com.au/breaking-ozsale-announces-closure/
+  note: >-
+    MySale/OZSale closed all sites + operations 2026-01-27 (NZSale earlier, 2025-11-23). The
+    API domain is DNS-dead. Trade-press sourced (PowerRetail/Medcart) — first party is gone.
+- vendor: MyDeal
+  version: "*"
+  retires: "2025-09-30"
+  source: https://insideretail.com.au/sectors/woolworths-to-close-mydeal-online-marketplace-in-digital-business-refocus-202506
+  note: >-
+    MyDeal (mydeal.com.au, Woolworths Group) marketplace closed 2025-09-30 (announced
+    2025-06-27; consolidated into BIG W Market — mydeal.com.au now redirects to BigW). Trade
+    press sourced (Inside Retail / Mi3); seller API help domain is DNS-dead.
+# BigCommerce V2 Catalog REST API — DEPRECATED with no removal date announced (migrate to V3).
+- vendor: BigCommerce
+  version: v2
+  status: deprecated-no-date
+  replacement: v3
+  source: https://developer.bigcommerce.com/docs/store-operations/catalog/migration
+  note: >-
+    "All V2 Catalog REST APIs are deprecated" (official migration guide); BigCommerce recommends
+    V3, no fixed sunset date announced. Flags /api/v2 usage — migrate to the V3 catalog API.

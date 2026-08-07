@@ -1,0 +1,6 @@
+# Committed each run: the reports + the learned overlay. NOT the cloned source repos or the
+# derived scan cache — those are big, regenerable, and not our data.
+state/sources/
+state/repos_v*/
+state/prof/
+state/*.log

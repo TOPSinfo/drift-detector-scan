@@ -1,0 +1,3 @@
+{"name": "request", "dist-tags": {"latest": "2.88.2"},
+ "versions": {"2.88.2": {"name": "request", "version": "2.88.2",
+   "deprecated": "request has been deprecated, see https://github.com/request/request/issues/3142"}}}

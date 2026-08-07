@@ -1,0 +1,42 @@
+{
+  "name": "tops-tools",
+  "owner": {
+    "name": "Tops Infosolutions Pvt Ltd",
+    "email": "driftdetector7@gmail.com"
+  },
+  "plugins": [
+    {
+      "name": "drift-detector",
+      "displayName": "Drift Detector",
+      "source": "./",
+      "description": "Detect third-party integration drift across a folder of repos \u2014 code-level API/SDK/runtime usage (via ast-grep), operation-level vendor sunsets, CVE/EOL, and an interactive dashboard, with an honest verdict that says where it is blind. Deterministic + zero-token at the core; an opt-in AI cross-check surfaces leads the rules missed, kept strictly separate from the certified findings.",
+      "version": "0.14.1-beta",
+      "author": {
+        "name": "Tops Infosolutions Pvt Ltd",
+        "email": "driftdetector7@gmail.com"
+      },
+      "homepage": "https://github.com/TOPSinfo/drift-detector-scan",
+      "repository": "https://github.com/TOPSinfo/drift-detector-scan",
+      "license": "MIT",
+      "keywords": [
+        "drift",
+        "integration",
+        "api",
+        "ast-grep",
+        "dependencies",
+        "deprecation",
+        "sunset",
+        "coverage",
+        "inventory"
+      ],
+      "category": "productivity",
+      "tags": [
+        "deprecation",
+        "vendor-api",
+        "cve",
+        "eol",
+        "sunset"
+      ]
+    }
+  ]
+}

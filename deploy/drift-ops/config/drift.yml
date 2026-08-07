@@ -1,0 +1,38 @@
+# Drift Detector — operational config (the ONE settings file). Edit for YOUR fleet.
+# Lives in the PRIVATE drift-ops repo, so client repo names never touch the public plugin.
+version: 1
+
+# Repos/groups to scan — https URLs, all under one host (a group URL scans every repo under it).
+fleet:
+  - https://git.example.com/team/service-a
+  - https://git.example.com/team/service-b
+
+delivery:
+  mode: dry-run              # dry-run (print the plan, write nothing) | create (file issues) | off
+                             # the template ships dry-run — a copy can't file issues until you opt in
+  # Each flagged repo gets up to TWO comprehensive issues, filed IN THE REPO'S OWN tracker:
+  #   • a DevOps issue    (package CVEs + runtime EOL)  — labelled drift:devops
+  #   • a Developer issue (vendor sunsets + framework EOL) — labelled drift:developer
+  # Assignee + label mean a GitLab group board (or "issues assigned to <account>") aggregates
+  # every DevOps issue across the fleet — no central project needed for findings.
+  devops:
+    assignee: ops-bot        # the DevOps account every DevOps issue is assigned to.
+                             # REQUIRED whenever mode files issues (create/live).
+    project: team/ops        # where the MAINTAINER streams below (shape/freshness) are filed
+  developer:
+    fallbackAssignee: tech-lead   # a Developer issue auto-assigns to the repo's owner; this is
+                                  # used only when the owner can't be resolved from GitLab
+  shape_stream: false        # true → file a maintainer "absorption needed" issue per UNKNOWN
+                             # repo (a shape the scanner can't fully read). Opt in once the
+                             # fleet is stable; closes itself when the repo goes KNOWN.
+
+# auth + notify hold env-var NAMES, never secrets (this file is git-tracked and reviewed).
+# Omit `auth` entirely to run on a single GITLAB_TOKEN, as below by default:
+#
+# auth:
+#   clone:   GITLAB_TOKEN     # read the fleet + drift-ops
+#   persist: GITLAB_TOKEN     # push state/overlay back to drift-ops
+#   deliver: GITLAB_TOKEN     # file issues / open MRs   (split to a Developer token for `mrs`)
+#
+# notify:
+#   gchat: GCHAT_WEBHOOK      # env var holding the Google Chat webhook; omit for no push

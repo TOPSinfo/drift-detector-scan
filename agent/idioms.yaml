@@ -1,0 +1,68 @@
+# Idiom instances — how code in the wild ASSEMBLES an API call.
+#
+# Detection has two layers with opposite goals. Attribution must be precise, so it
+# is idiom-by-idiom; the coverage conscience must be general, so it keys on evidence
+# (a path literal is left behind whatever wraps it). This file is the growing half:
+# each entry teaches the scanner one more shape.
+#
+# FAMILIES ARE A CLOSED SET, implemented once in agent/lib/idioms.py. Instances are
+# data, so an agent can propose one and a human can review it as a YAML diff. A new
+# FAMILY is a code change and a pull request — the docs say so plainly rather than
+# pretending absorption is unbounded.
+#
+#   url-assembly     a base host/URL expression concatenated with a path
+#                    -> `base` is an ast-grep pattern for the base expression
+#   url-append       a base assigned, then a path APPENDED with `.=` two statements
+#                    later — url-assembly's single-expression `base . $B` cannot see it
+#                    -> `target` names the variable literally (a metavariable would
+#                       match every string append in the codebase)
+#   operation-marker names the API operation at the call-site, for vendors that
+#                    deprecate per-operation (eBay Trading: one host, ~19 calls)
+#                    -> `marker` (regex over string literals) or `pattern`
+#
+# Every instance MUST carry `evidence`: a real file:line it was derived from. An
+# idiom nobody can point at in real code is a guess.
+
+- id: php-gethost-method
+  family: url-assembly
+  language: php
+  base: "$A->getHost()"
+  evidence: "example-org/amazonspapi src/Api/OrdersApi20260101.php:46"
+  note: Generated SP-API clients — $url = $this->config->getHost() . $resource_path.
+
+- id: php-serviceurl-property
+  family: url-assembly
+  language: php
+  base: "$A->serviceUrl"
+  evidence: "example-org/ebayapi src/Ebay/FetchReturnOrders.php:72"
+  note: eBay Post-Order client — $service_url = $this->serviceUrl . '/post-order/v2/'.
+
+- id: xml-request-root
+  family: operation-marker
+  marker: "<[A-Z][A-Za-z0-9]{2,}Request\\b"
+  evidence: "example-org/ebayapi src/Ebay/EbayCategoryFieldsFeature.php:72"
+  note: SOAP/XML APIs name the operation in the request root element.
+
+- id: ebay-session-call-name
+  family: operation-marker
+  language: php
+  pattern: "getEbaySession($NAME, $$$)"
+  evidence: "example-org/ebayapi src/Ebay/EbayCategoryFieldsFeature.php:24"
+  note: The call name passed to the session helper becomes X-EBAY-API-CALL-NAME.
+
+- id: php-serviceurl-append
+  family: url-append
+  language: php
+  target: serviceURL
+  evidence: "example-org/ebayapi src/Ebay/EbayOrderReturn.php:35"
+  note: >-
+    eBay Post-Order clients assign the base then append the path two statements later
+    ($serviceURL = $this->API_ENDPOINT; ... $serviceURL .= $params['url'];), which the
+    single-expression url-assembly family cannot express.
+
+- id: php-api-endpoint-property
+  family: url-assembly
+  language: php
+  base: "$A->API_ENDPOINT"
+  evidence: "example-org/ebayapi src/Ebay/src/Ebay_post_order_api.php:64"
+  note: eBay Post-Order procedural client — $url = $this->API_ENDPOINT . "post-order/v2/...".
