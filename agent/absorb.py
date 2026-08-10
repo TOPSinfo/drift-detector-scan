@@ -27,6 +27,7 @@ Only on a clean pass are the specs promoted and an attestation written.
 """
 from __future__ import annotations
 
+import datetime
 import os
 import re
 import shutil
@@ -36,6 +37,34 @@ import yaml
 from agent.lib import idioms, shapes
 
 _DATE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
+_MONTHS = ("january", "february", "march", "april", "may", "june", "july", "august",
+           "september", "october", "november", "december")
+
+
+def date_in_text(date_iso: str, text: str) -> bool:
+    """The 'verbatim date' check: is the ISO date present in `text` in any common human form?
+    A retirement date must appear ON the page it cites — not merely be asserted by the model.
+    Converts "the model says the page says <date>" into "the page demonstrably contains <date>."
+    Covers ISO, M/D/Y, D/M/Y, 'Month D, Y', 'D Month Y', 3-letter abbreviations, and ordinals."""
+    if not date_iso or not text:
+        return False
+    try:
+        d = datetime.date.fromisoformat(str(date_iso))
+    except (ValueError, TypeError):
+        return False
+    t = text.lower()
+    mon = _MONTHS[d.month - 1]
+    abbr = mon[:3]
+    sfx = "th" if 11 <= d.day % 100 <= 13 else {1: "st", 2: "nd", 3: "rd"}.get(d.day % 10, "th")
+    forms = {
+        date_iso, date_iso.replace("-", "/"),
+        f"{d.month}/{d.day}/{d.year}", f"{d.day}/{d.month}/{d.year}", f"{d.month:02d}/{d.day:02d}/{d.year}",
+        f"{mon} {d.day}, {d.year}", f"{mon} {d.day} {d.year}", f"{mon} {d.day:02d}, {d.year}",
+        f"{abbr} {d.day}, {d.year}", f"{abbr} {d.day} {d.year}",
+        f"{mon} {d.day}{sfx}, {d.year}", f"{d.day}{sfx} {mon} {d.year}",
+        f"{d.day} {mon} {d.year}", f"{d.day} {abbr} {d.year}", f"{d.day:02d} {mon} {d.year}",
+    }
+    return any(f in t for f in forms)
 
 
 class AbsorbRejected(Exception):
