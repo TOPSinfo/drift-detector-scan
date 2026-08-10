@@ -48,14 +48,14 @@ For **each host** in the work-list (do them concurrently where you can — one f
 2. **WebSearch** for its OFFICIAL API deprecation policy / changelog / release notes / API-version lifecycle. Try 2–4 query variations.
 3. **WebFetch** the most authoritative pages — prefer the vendor's *own* developer docs over blogs. Read them **semantically**, not by keyword.
 4. Decide the verdict:
-   - **`retiring`** — a specific API version/endpoint has an announced retirement/sunset **with a date**. Capture the exact date and the `source_url` you fetched, plus the sentence that states it.
+   - **`retiring`** — a specific API version/endpoint has an announced retirement/sunset **with a date**. Capture the ISO `date`, the `source_url` you fetched, **and the `excerpt`** — the exact sentence *from the fetched page* that states the date. The gate checks the date actually appears in that excerpt (the verbatim-date check), so this must be text you copied from the page, not a paraphrase.
    - **`current`** — active API, no announced retirement (you checked a real source).
    - **`not-an-api`** — the host is a marketing / storefront / link / docs host, not a callable API.
    - **`unverified`** — you could not fetch an authoritative source. Do **not** guess.
 
 Write the results to `$D/verdicts.json` as a JSON array of objects:
-`{ "host", "vendor", "status", "date", "source_url", "evidence", "confidence" }`
-(`date`/`source_url` may be null only when the status isn't `retiring`.)
+`{ "host", "vendor", "status", "date", "source_url", "excerpt", "evidence", "confidence" }`
+(`date`/`source_url`/`excerpt` are required for `retiring`; the gate rejects a `retiring` whose `date` is not present verbatim in its `excerpt`.)
 
 ## 3 · Gate + record (the AI-Frontier tier)
 

@@ -6,6 +6,26 @@ import yaml
 from agent import absorb
 
 
+def test_verbatim_date_check_accepts_common_human_forms():
+    """The verbatim-date gate: a retirement date must appear ON the cited page, in whatever human
+    form the vendor wrote it — so the model can't slip in a date it merely inferred."""
+    d = "2026-02-03"
+    for text in ("...ceases to work on 2026-02-03.",
+                 "Sunset date: February 3, 2026 — migrate before then.",
+                 "retires on Feb 3, 2026",
+                 "the endpoint will be removed 3 February 2026",
+                 "effective 02/03/2026 (US format)",
+                 "on February 3rd, 2026 the legacy embed stops working"):
+        assert absorb.date_in_text(d, text), text
+
+
+def test_verbatim_date_check_rejects_absent_or_wrong_date():
+    assert not absorb.date_in_text("2026-02-03", "the API is being deprecated soon")   # no date at all
+    assert not absorb.date_in_text("2026-02-03", "retires February 4, 2026")            # a DIFFERENT date
+    assert not absorb.date_in_text("2026-02-03", "")                                    # no excerpt
+    assert not absorb.date_in_text("not-a-date", "February 3, 2026")                    # unparseable claim
+
+
 # --- check 1: a date nobody sourced is not admissible ---------------------------
 
 def test_sunset_without_a_source_url_is_rejected():

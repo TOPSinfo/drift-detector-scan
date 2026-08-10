@@ -311,13 +311,19 @@ def _cmd_research(args) -> int:
     with open(args.apply, encoding="utf-8") as fh:
         payload = json.load(fh)
     verdicts = payload.get("verdicts", payload) if isinstance(payload, dict) else payload
+    from agent import absorb
     problems = []
     for v in verdicts:
         if v.get("status") == "retiring":
             if not v.get("source_url"):
                 problems.append(f"{v.get('host')}: 'retiring' with no source_url")
-            if not v.get("date"):
+            elif not v.get("date"):
                 problems.append(f"{v.get('host')}: 'retiring' with no date")
+            elif not v.get("excerpt"):
+                problems.append(f"{v.get('host')}: 'retiring' with no excerpt — need the page text that states the date")
+            elif not absorb.date_in_text(v.get("date"), v.get("excerpt")):
+                problems.append(f"{v.get('host')}: date {v.get('date')} does NOT appear in the fetched "
+                                f"excerpt (verbatim-date check) — the model may have inferred it")
     if problems:
         print("research: GATE REJECTED — a retirement needs a fetched source + a real date:", file=sys.stderr)
         for p in problems:
