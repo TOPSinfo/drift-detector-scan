@@ -18,6 +18,23 @@ def _url(path, line):
     return {"kind": "url", "path": path, "line": line}
 
 
+def test_endpoints_carry_hostclass(tmp_path):
+    """Every endpoint gets a hostClass: catalogued vendor -> 'api'; a found third-party service is
+    SHOWN (social/api-lead/unclassified), a bundled asset/lib is excluded. This is what turns the
+    'wall of unknowns' into 'here are all your integrations'."""
+    _write(tmp_path, "a.php", 'x\n"https://sellingpartnerapi-na.amazon.com/orders/v0/orders";\n')
+    _write(tmp_path, "b.html", '<a href="https://wa.me/15551234">chat</a>\n')
+    _write(tmp_path, "c.php", '$r = $client->get("https://api.greatschools.org/v2/schools");\n')
+    _write(tmp_path, "d.php", '$z = file_get_contents("https://www.zillow.com/homes/list");\n')
+    ms = [_url("a.php", 2), _url("b.html", 1), _url("c.php", 1), _url("d.php", 1)]
+    out = scan_endpoints(ms, str(tmp_path), _VENDORS)
+    by = {e["domain"]: e["hostClass"] for e in out["endpoints"]}
+    assert by["sellingpartnerapi-na.amazon.com"] == "api"     # catalogued vendor
+    assert by["wa.me"] == "social"                            # share link — a shown integration
+    assert by["api.greatschools.org"] == "api-lead"           # api-shaped, in a client call
+    assert by["www.zillow.com"] == "unclassified"             # unknown service — SHOWN, not excluded
+
+
 def test_output_is_deterministic_regardless_of_match_order(tmp_path):
     """SHIPPED-LATENT BUG: the engine's match order is not stable run-to-run, and endpoints
     were emitted in insertion order — a container double-run produced two drift.json files

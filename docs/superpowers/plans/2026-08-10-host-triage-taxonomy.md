@@ -4,7 +4,7 @@
 
 **Goal:** Turn the "wall of unknowns" into a triaged, ranked host classification — deterministically — so real API leads rise above noise (icons, CDNs, analytics, vendored UI kits) on *every* project, without abandoning the honesty principle.
 
-**Architecture:** Add a single `hostClass` field to every endpoint record. It's computed by a new deterministic classifier (`host_class.py`) from two catalog/rules sources, zero AI: (1) a reviewed `host_reputation.yaml` (which folds in today's *silently-dropped* `_IGNORE` set plus a pinned public tracker/CDN list), and (2) URL-shape + call-context heuristics. The cockpit then groups unclassified endpoints by `hostClass` — real API leads on top, noise collapsed — and `verify` gains an invariant that every endpoint is classed and the buckets agree with the payload. The whole deterministic pipeline stays byte-identical and zero-token.
+**Architecture:** Add a single `hostClass` field to every endpoint record. It's computed by a new deterministic classifier (`host_class.py`) from two catalog/rules sources, zero AI: (1) a reviewed `host_reputation.yaml` (which folds in today's *silently-dropped* `_IGNORE` set — **hand-curated only; no imported blocklist**, see the licensing decision below), and (2) URL-shape + call-context heuristics. The cockpit then groups unclassified endpoints by `hostClass` — real API leads on top, noise collapsed — and `verify` gains an invariant that every endpoint is classed and the buckets agree with the payload. The whole deterministic pipeline stays byte-identical and zero-token.
 
 **Tech Stack:** Python 3.11+ (stdlib + PyYAML only — runtime). ast-grep engine unchanged. Vue 3 cockpit (existing, in-DOM template). `jsonschema` test-only.
 
@@ -24,9 +24,47 @@ _Every task's requirements implicitly include these (from CLAUDE.md):_
 
 ---
 
+## Decision: no imported blocklist (settled 2026-08-10)
+
+An earlier draft of this plan seeded `analytics`/`asset-cdn` from a pinned DuckDuckGo Tracker
+Radar snapshot, annotated "CC-BY-SA — verify license at build". **That was wrong on the facts and
+the idea is rejected on the merits.** Do not reintroduce it.
+
+**Licensing.** Tracker Radar is **CC BY-NC-SA 4.0**, not CC-BY-SA (verified from the repo's own
+LICENSE: `Copyright 2020 Duck Duck Go, Inc. / Licensed under the CC BY-NC-SA 4.0 license`,
+https://github.com/duckduckgo/tracker-radar). The **NonCommercial** term bars our use — Drift
+Detector is a commercial Tops Infosolutions tool published on PyPI and run on client
+engagements, and DDG's README explicitly directs commercial users to negotiate a separate
+licence. **ShareAlike** is an independent conflict: it would force that file to be CC BY-NC-SA
+inside an MIT repo.
+
+**Why no *other* blocklist either** — including permissively licensed ones (e.g. Block List
+Project's `tracking.txt`, MIT, ~15k domains):
+
+1. **It answers the wrong question, and errs where it costs most.** A blocklist ranks "should I
+   block this?"; we need "is this a third-party API integration worth auditing for sunsets?"
+   Those diverge exactly on the valuable hosts — `segment.com`, `mixpanel.com`, `intercom.io`,
+   `amplitude.com` appear on tracking lists yet all expose versioned APIs with real
+   deprecations. Bucketing them `analytics` collapses them into the noise `<details>`, so the
+   feature meant to strengthen principle 1 would *hide real findings*. Such hosts are
+   **`vendors.yaml` candidates**, not reputation noise.
+2. **A bulk import violates principle 4.** 15k unreviewed rows with no per-entry provenance is
+   the opposite of "the catalog is data, reviewed." The buckets only ever need hosts that
+   actually appear in scanned repos.
+
+**Therefore:** `host_reputation.yaml` is **hand-curated**, seeded solely from the existing
+`_IGNORE` set (`classify_url.py:19-41` — already reviewed, already commented, already ours under
+MIT). It grows one entry at a time as real repos surface hosts, each carrying a `source:` comment
+pointing at **the vendor's own documentation** ("Hotjar's docs say `static.hotjar.com` is their
+CDN"). A factual citation to a vendor doc is not a dataset copy, and it matches the provenance
+idiom `vendors.yaml` already uses. No `meta.trackerSource`, no pinned snapshot, no third-party
+list, and **no new LICENSE/NOTICE obligation on this repo.**
+
+---
+
 ## File Structure
 
-- **Create** `agent/host_reputation.yaml` — reviewed reputation catalog. Buckets → sourced host lists. Seeded from the current `_IGNORE` + a pinned public tracker/CDN list.
+- **Create** `agent/host_reputation.yaml` — reviewed reputation catalog. Buckets → sourced host lists. Seeded from the current `_IGNORE` **only** (see "Decision: no imported blocklist").
 - **Create** `agent/lib/host_class.py` — the classifier. Pure functions; no I/O beyond loading the YAML once.
 - **Modify** `agent/lib/classify_url.py` — stop the silent `_IGNORE` drop; expose the ignore set to `host_class` as the `boilerplate`/`asset-cdn` seed instead of a delete.
 - **Modify** `agent/lib/endpoints.py` — attach `hostClass` to each endpoint record (`endpoints.py:101`), passing a call-context signal.
@@ -86,47 +124,71 @@ def test_unknown_with_no_signal_is_unclassified_not_hidden():
 Run: `.venv/bin/python -m pytest tests/test_host_class.py -q`
 Expected: FAIL — `ModuleNotFoundError: agent.lib.host_class`.
 
-- [ ] **Step 3: Write `agent/host_reputation.yaml`** — reviewed data, each list sourced.
+- [ ] **Step 3: Write `agent/host_reputation.yaml`** — reviewed data, hand-curated, each entry sourced.
+
+**Seeding is a sorting job, not a copy.** `_IGNORE` (`classify_url.py:19-41`) is one flat set of
+~60 hosts that spans nearly every bucket; sort all of it, and drop nothing on the floor. Rough
+mapping: specs/namespaces (`w3.org`, `xmlsoap.org`, `schema.org`, `purl.org`, `iso.org`) and
+dev-docs/registries (`php.net`, `packagist.org`, `laravel.com`, `readthedocs.io`, `github.com`)
+→ `boilerplate`; fonts/CDNs/placeholders (`fonts.*`, `jsdelivr.net`, `unpkg.com`,
+`bootstrapcdn.com`, `gravatar.com`, `picsum.photos`, `ebaystatic.com`) → `asset-cdn`; tag
+managers (`googletagmanager.com`, `google-analytics.com`) → `analytics`; the socials/video
+(`facebook.com`, `twitter.com`, `linkedin.com`, `instagram.com`, `youtube.com`) →
+`social-widget`; front-end kits (`jquery.com`, `jqueryui.com`, `ckeditor.com`, `popper.js.org`,
+`feathericons.com`) → `vendored-lib`.
+
+Non-hosts stay a **hard drop**, not a bucket — `localhost`, `127.0.0.1`, `example.com/.org/.net`,
+`test.com`, and the raw-IP/artifact guards in `is_ignored()` (`classify_url.py:59-65`) are
+extraction noise, not endpoints. Task 3 keeps that minimal set.
 
 ```yaml
 # Deterministic host reputation — used ONLY to triage UNCATALOGUED hosts into visible buckets so
 # the cockpit can rank real API leads above noise. NEVER affects `classified`/`vendor`/dates.
-# Each list carries provenance; entries enter via review (same discipline as vendors.yaml).
-# Seeded from: (1) the former classify_url._IGNORE set (was silently dropped — now visible);
-#              (2) a PINNED snapshot of public tracker/CDN lists (source + date below). No live fetch.
-meta:
-  trackerSource: "DuckDuckGo Tracker Radar (pinned snapshot 2026-08-10) — CC-BY-SA"   # verify license at build
+# HAND-CURATED. No imported blocklist, ever — see "Decision: no imported blocklist" in the plan
+# (DDG Tracker Radar is CC BY-NC-SA; and a block-list answers the wrong question, burying real
+# APIs like segment.com/mixpanel.com as "analytics"). Such hosts belong in vendors.yaml instead.
+# Seeded from the former classify_url._IGNORE set (was silently dropped — now visible + counted).
+# Each entry carries provenance as a comment: the VENDOR'S OWN doc page identifying the host.
+# Entries enter via review (same discipline as vendors.yaml). No live fetch at scan time.
 analytics:        # trackers / tag managers / session recorders
-  - connect.facebook.net
-  - static.hotjar.com
-  - google-analytics.com
-  - googletagmanager.com
+  - googletagmanager.com     # from _IGNORE; Google Tag Manager container host
+  - google-analytics.com     # from _IGNORE
+  - connect.facebook.net     # Meta Pixel loader — developers.facebook.com/docs/meta-pixel
+  - static.hotjar.com        # Hotjar tracking script CDN — help.hotjar.com (install snippet)
 asset-cdn:        # fonts, images, stock photos, JS/CSS CDNs
-  - fonts.googleapis.com
-  - fonts.gstatic.com
-  - images.unsplash.com
-  - pexels.com
-  - cdnjs.cloudflare.com
-  - jsdelivr.net
-  - unpkg.com
+  - fonts.googleapis.com     # from _IGNORE
+  - fonts.gstatic.com        # from _IGNORE
+  - cdnjs.cloudflare.com     # from _IGNORE
+  - jsdelivr.net             # from _IGNORE
+  - unpkg.com                # from _IGNORE
+  - images.unsplash.com      # image delivery host — unsplash.com/documentation (not the API)
 social-widget:    # share links / embeds / follow buttons (host-level; grammar also matched in code)
-  - wa.me
-  - pinterest.com
-  - tiktok.com
-  - x.com
-  - twitter.com
-  - facebook.com
-  - instagram.com
-  - linkedin.com
+  - facebook.com             # from _IGNORE
+  - twitter.com              # from _IGNORE
+  - linkedin.com             # from _IGNORE
+  - instagram.com            # from _IGNORE
+  - x.com                    # twitter.com successor host
+  - wa.me                    # WhatsApp click-to-chat — faq.whatsapp.com/425247423114725
+  - pinterest.com            # save/pin button
+  - tiktok.com               # profile/embed links
 vendored-lib:     # a UI kit / library talking about itself in its own docs/comments
-  - keenthemes.com
-  - momentjs.com
-boilerplate:      # schema/doc hosts that are never integrations
-  - w3.org
-  - schema.org
-  - www.sitemaps.org
-  - localhost
+  - jquery.com                # from _IGNORE
+  - ckeditor.com              # from _IGNORE
+  - keenthemes.com            # Metronic template vendor (the mls-mapper incident, Task 7)
+  - momentjs.com              # appears in moment.min.js banner comments
+boilerplate:      # schema/doc/registry hosts that are never integrations
+  - w3.org                   # from _IGNORE
+  - schema.org               # from _IGNORE
+  - purl.org                 # from _IGNORE
+  - php.net                  # from _IGNORE
+  - packagist.org            # from _IGNORE
+  - sitemaps.org             # sitemap protocol namespace
 ```
+
+**Note the test-vs-catalog contract:** Step 1 asserts `hc.classify("pinterest.com", …)` →
+`social-widget` via the *reputation* table, while `test_social_share_grammar` also exercises the
+host-independent `_SHARE_PATHS` grammar. Keep both paths — the grammar is what catches share URLs
+on hosts that are *not* in the table.
 
 - [ ] **Step 4: Write `agent/lib/host_class.py`**
 
@@ -404,6 +466,7 @@ def test_incident_becomes_triaged_not_a_wall(tmp_path):
 - **Honesty principle:** Task 3 explicitly converts the silent drop into a visible bucket — strengthens "cannot-see ≠ clean" rather than weakening it. ✓
 - **Moat intact:** `hostClass` never touches `classified`/`vendor`/dates (Global Constraints + Task 2 rule). The certified tier is unchanged; only the *residue* is triaged. ✓
 - **Determinism:** reputation is disk-loaded, pinned; no fetch; classifier is pure. `verify` still byte-checks. ✓
+- **Licensing:** the reputation catalog is hand-curated from our own `_IGNORE` set — no third-party list is imported, so the MIT repo takes on no new attribution/ShareAlike/NonCommercial obligation. See "Decision: no imported blocklist." ✓
 - **Type consistency:** `hostClass` is one closed string set used identically in `endpoints.py` (write), `dashboard_render.py` (project + count), `verify.py` (check), and the cockpit (group). No name drift.
 - **Accessor-coverage trap:** Task 5 flagged to use `grp`/`ep`, never `a|e|p|cv|row`.
 - **Not in scope (deferred, correctly):** M2 scan-scope guardrail, M3 coverage-receipt, and the AI Recon/Shaper agents — each its own plan after M1.

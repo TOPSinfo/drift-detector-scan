@@ -11,9 +11,24 @@ import os
 import re
 from pathlib import Path
 
-from agent.lib import classify_url, scope_edges
+from agent.lib import classify_url, host_class, scope_edges
 
 UNKNOWN = "Unknown"
+
+# Call-context sniff: is this URL literal inside an HTTP-client call (a real egress) vs. an
+# href/src/CSS url() (a link or an asset)? Used only to promote an api-shaped host to an api-lead.
+_CALL_CTX = re.compile(
+    r"(curl_|Http::|GuzzleHttp|file_get_contents|fopen\s*\(|fetch\s*\(|axios|XMLHttpRequest|"
+    r"requests\.|urlopen|HttpClient|RestTemplate|WebClient|->\s*(get|post|put|delete|patch|"
+    r"request|send)\b|client\s*->)", re.I)
+
+
+def _looks_like_call(line: str) -> bool:
+    return bool(_CALL_CTX.search(line or ""))
+
+
+def _ext_of(rel: str) -> str:
+    return os.path.splitext(rel or "")[1].lower()
 
 _STRING_LIT = re.compile(r"""['"]([^'"]*)['"]""")
 
@@ -76,7 +91,7 @@ def scan_endpoints(matches: list, repo_root: str, vendors: list, *, max_files: i
     seen_known: set = set()
 
     def add(vendor, techKey, host, version, example, rel, lineno, operation=None,
-            inferred=False):
+            inferred=False, line=""):
         loc = f"{rel}:{lineno}"
         # One call-site, one record — but only for the SAME (version, operation). The key
         # deliberately ignores host so a full-URL match and the host-only vendor rule firing
@@ -107,6 +122,11 @@ def scan_endpoints(matches: list, repo_root: str, vendors: list, *, max_files: i
                    "attribution": "inferred" if inferred else "observed",
                    "example": (example or host).rstrip("\"';,)"), "file_count": 0, "files": [],
                    "classified": bool(techKey)}
+            # hostClass triages the residue: a catalogued vendor is an `api`; anything else is
+            # typed (api-lead / social / analytics / asset-cdn / library / reference / unclassified)
+            # so the cockpit can show found integrations and exclude bundled assets. Never a date.
+            rec["hostClass"] = "api" if rec["classified"] else host_class.classify(
+                host, url=rec["example"], in_call=_looks_like_call(line), file_ext=_ext_of(rel))
             groups[key] = rec
         rec["file_count"] += 1
         if loc not in rec["files"]:        # collect all unique locs; sort + cap at the end
@@ -132,7 +152,7 @@ def scan_endpoints(matches: list, repo_root: str, vendors: list, *, max_files: i
                 if v is None and classify_url.is_ignored(host):
                     continue
                 add(v.vendor if v else UNKNOWN, v.techKey if v else "", host,
-                    classify_url.version_of(url, v), url, rel, lineno)
+                    classify_url.version_of(url, v), url, rel, lineno, line=line)
             # Interpolated/variable host ("https://{$shop}/admin/api/2024-01/…"): the host is
             # a runtime value so extract_urls truncates and host classification is blind, but a
             # distinctive PATH signature still names the vendor + version. seen_known dedups by
