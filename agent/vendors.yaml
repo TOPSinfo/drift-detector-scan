@@ -87,3 +87,12 @@
 # ── Media / maps (added 2026-08-10 from an AI web-research pass, each with a fetched sunset source) ──
 - { vendor: Dailymotion,       techKey: api:dailymotion,         domains: [dailymotion.com] }
 - { vendor: Esri ArcGIS,       techKey: api:arcgis,              domains: [arcgis.com] }
+
+# ── Current third-party APIs (added 2026-08-10, each attested from a fetched source) ──
+- { vendor: Keepa, techKey: api:keepa, domains: [api.keepa.com] }
+- { vendor: PrintNode, techKey: api:printnode, domains: [api.printnode.com] }
+- { vendor: BlueCart API, techKey: api:bluecart, domains: [api.bluecartapi.com] }
+- { vendor: Seller Snap, techKey: api:sellersnap, domains: [api.sellersnap.io] }
+- { vendor: TikTok Business API, techKey: api:tiktok-business, domains: [business-api.tiktok.com] }
+- { vendor: OpenStreetMap, techKey: api:openstreetmap, domains: [osm.org] }
+- { vendor: Vimeo Player, techKey: api:vimeo, domains: [player.vimeo.com] }
