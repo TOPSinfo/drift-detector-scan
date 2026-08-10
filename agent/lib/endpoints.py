@@ -30,6 +30,26 @@ def _looks_like_call(line: str) -> bool:
 def _ext_of(rel: str) -> str:
     return os.path.splitext(rel or "")[1].lower()
 
+
+def _registrable(host: str) -> str:
+    parts = (host or "").split(".")
+    return ".".join(parts[-2:]) if len(parts) >= 2 else (host or "")
+
+
+def _tag_own_infra(endpoints: list) -> None:
+    """A registrable domain that appears as >=2 distinct UNCLASSIFIED hosts is the repo's OWN
+    infrastructure (you run many services on your own domain; you reach a third party at a single
+    host). Retag in place so your own backends stop counting as vendor integrations. api-leads and
+    already-typed hosts are untouched, so a real API on a multi-host vendor is never hidden."""
+    by_reg: dict = {}
+    for e in endpoints:
+        if e.get("hostClass") == "unclassified":
+            by_reg.setdefault(_registrable(e.get("domain") or ""), set()).add(e.get("domain"))
+    own = {reg for reg, hosts in by_reg.items() if len(hosts) >= 2}
+    for e in endpoints:
+        if e.get("hostClass") == "unclassified" and _registrable(e.get("domain") or "") in own:
+            e["hostClass"] = "own-infra"
+
 _STRING_LIT = re.compile(r"""['"]([^'"]*)['"]""")
 
 
@@ -297,6 +317,7 @@ def scan_endpoints(matches: list, repo_root: str, vendors: list, *, max_files: i
     endpoints = sorted(groups.values(), key=lambda r: (
         r.get("vendor") or "", r.get("domain") or "", str(r.get("version") or ""),
         r.get("apiPath") or "", str(r.get("operation") or ""), r.get("example") or ""))
+    _tag_own_infra(endpoints)
     for lst in (residue_paths, residue_sinks, residue_ops, residue_pc):
         lst.sort(key=lambda x: _loc_key(x["loc"]))
     return {"endpoints": endpoints,

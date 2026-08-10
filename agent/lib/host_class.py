@@ -18,12 +18,20 @@ import yaml
 # The closed vocabulary — one shared set across endpoints.py (write), dashboard_render.py
 # (project+count), verify.py (check) and the cockpit (group). No name drift.
 VOCAB = {"api", "api-lead", "social-widget", "asset-cdn", "analytics",
-         "vendored-lib", "boilerplate", "unclassified"}
+         "vendored-lib", "boilerplate", "own-infra", "unclassified"}
 
-# Classes that are NOT third-party service integrations — bundled assets/libs and schema/doc hosts.
-# Everything else (api / api-lead / social-widget / analytics / unclassified) is a found integration
-# the cockpit surfaces; these three are still shown + counted, just outside the integration total.
-_NON_INTEGRATION = {"asset-cdn", "vendored-lib", "boilerplate"}
+# Classes that are NOT third-party service integrations — bundled assets/libs, schema/doc hosts, and
+# the repo's OWN infrastructure. Everything else (api / api-lead / social-widget / analytics /
+# unclassified) is a found integration the cockpit surfaces; these are shown + counted, just outside
+# the integration total.
+_NON_INTEGRATION = {"asset-cdn", "vendored-lib", "boilerplate", "own-infra"}
+
+# Account-specific cloud endpoints — always the deployer's OWN infra, never a third party you
+# integrate WITH (the random subdomain is assigned to your cloud account). Serverless/PaaS hosts too.
+_OWN_CLOUD = re.compile(
+    r"(execute-api\.[a-z0-9-]+\.amazonaws\.com|amazoncognito\.com|appsync-api\.[a-z0-9-]+\.amazonaws\.com"
+    r"|cloudfunctions\.net|\.run\.app|workers\.dev|azurewebsites\.net|herokuapp\.com|vercel\.app"
+    r"|netlify\.app|pages\.dev)$", re.I)
 
 _REPUTATION_FILE = os.path.join(os.path.dirname(os.path.dirname(__file__)), "host_reputation.yaml")
 _CACHE = None
@@ -79,6 +87,8 @@ def classify(host: str, *, url: str | None = None, in_call: bool = False,
         return rep
     u = url or ""
     host = host or ""
+    if _OWN_CLOUD.search(host):
+        return "own-infra"                 # your own cloud backend (Cognito, API GW, serverless…)
     if _SHARE_PATHS.search(u):
         return "social-widget"
     if (file_ext or "").lower() in _ASSET_FILE_EXTS or _ASSET_EXT.search(u):

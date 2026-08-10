@@ -571,7 +571,7 @@
         });
         // real API leads first, so a live integration never hides under the social/asset noise
         var rank = {"api":0,"api-lead":1,"unclassified":2,"social-widget":3,"analytics":4,
-                    "asset-cdn":5,"vendored-lib":6,"boilerplate":7};
+                    "asset-cdn":5,"vendored-lib":6,"boilerplate":7,"own-infra":8};
         return rows.slice().sort(function(x,y){
           var rx = rank[x.hostClass], ry = rank[y.hostClass];
           return (rx==null?9:rx) - (ry==null?9:ry);
@@ -610,11 +610,11 @@
       // A found integration (a third-party service the code calls) vs. an excluded non-integration
       // (a bundled asset/library or a schema host). Mirrors host_class.is_integration on the server;
       // the verify hostClass invariant keeps the two in agreement.
-      isIntegration: function(hc){ return !!hc && !{"asset-cdn":1,"vendored-lib":1,"boilerplate":1}[hc]; },
+      isIntegration: function(hc){ return !!hc && !{"asset-cdn":1,"vendored-lib":1,"boilerplate":1,"own-infra":1}[hc]; },
       hostLabel: function(hc){
         return {"api":"audited","api-lead":"API lead","unclassified":"pending audit",
                 "social-widget":"social","analytics":"analytics","asset-cdn":"asset/CDN",
-                "vendored-lib":"library","boilerplate":"schema"}[hc] || hc || "";
+                "vendored-lib":"library","boilerplate":"schema","own-infra":"own infra"}[hc] || hc || "";
       },
       onRowClick: function(idx){ if(this.mode==="actions" || this.mode==="endpoints") this.toggleRow(idx); },
       toggleRow: function(idx){ this.expanded[idx] = !this.expanded[idx]; },

@@ -35,6 +35,22 @@ def test_endpoints_carry_hostclass(tmp_path):
     assert by["www.zillow.com"] == "unclassified"             # unknown service — SHOWN, not excluded
 
 
+def test_own_domain_multi_subdomain_is_tagged_own_infra(tmp_path):
+    """A registrable domain reached at >=2 distinct hosts is the repo's OWN infra, not a vendor, so
+    it drops out of the integration/pending count (the bobavida/neptunes.sebagofoods.com case). A
+    single-host third party is NOT swept in."""
+    _write(tmp_path, "a.php", '$x=file_get_contents("https://bobavida.sebagofoods.com/x");\n')
+    _write(tmp_path, "b.php", '$y=file_get_contents("https://neptunes.sebagofoods.com/y");\n')
+    _write(tmp_path, "c.php", '$z=file_get_contents("https://sebagofoods.com/z");\n')
+    _write(tmp_path, "d.php", '$r=$client->get("https://api.keepa.com/product");\n')
+    ms = [_url("a.php", 1), _url("b.php", 1), _url("c.php", 1), _url("d.php", 1)]
+    by = {e["domain"]: e["hostClass"] for e in scan_endpoints(ms, str(tmp_path), _VENDORS)["endpoints"]}
+    assert by["bobavida.sebagofoods.com"] == "own-infra"
+    assert by["neptunes.sebagofoods.com"] == "own-infra"
+    assert by["sebagofoods.com"] == "own-infra"
+    assert by["api.keepa.com"] == "api-lead"      # single-host third party is NOT swept into own-infra
+
+
 def test_boilerplate_hosts_are_bucketed_not_silently_dropped(tmp_path):
     """The honesty change: formerly-_IGNORE hosts (fonts / CDNs / schemas / doc links) are no longer
     deleted from the stream — they appear as endpoints with a NON-integration hostClass, so 'N
