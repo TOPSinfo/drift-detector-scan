@@ -57,8 +57,11 @@ def load_attestations(path: str | None = None) -> dict:
     out = {}
     for a in raw:
         if isinstance(a, dict) and a.get("vendor") and a.get("checked") and a.get("source"):
+            # `by` records provenance: "human" (default) vs "ai-research". An AI-attested "current"
+            # is weaker than a human one — a missed sunset renders green and nobody re-checks green —
+            # so it is surfaced distinctly and still governed by the same STALE_DAYS TTL.
             out[a["vendor"]] = {"checked": str(a["checked"]), "source": str(a["source"]),
-                                "note": a.get("note", "")}
+                                "note": a.get("note", ""), "by": str(a.get("by") or "human")}
     return out
 
 
@@ -108,7 +111,8 @@ def build(endpoints: list, sunsets: list, attestations: dict, now: str,
         out.append({"vendor": vendor, "callSites": sites,
                     "catalogEntries": entries.get(vendor, 0),
                     "verdict": verdict, "reasons": reasons,
-                    "checked": checked, "source": att.get("source", "")})
+                    "checked": checked, "source": att.get("source", ""),
+                    "by": att.get("by", "human")})   # provenance: human vs ai-research
     # loudest first: unaudited before stale before current, then by exposure
     rank = {UNAUDITED: 0, STALE: 1, CURRENT: 2}
     out.sort(key=lambda r: (rank[r["verdict"]], -r["callSites"], r["vendor"]))
