@@ -14,6 +14,26 @@ from agent.lib import verify
 from agent.lib.verify import Violation
 
 
+def test_host_class_invariant_every_endpoint_classed_and_counts_agree():
+    good = {"endpoints": [{"domain": "api.x.io", "hostClass": "api-lead", "classified": False},
+                          {"domain": "cdn.x.io", "hostClass": "asset-cdn", "classified": False}],
+            "counts": {"hostClasses": {"api-lead": 1, "asset-cdn": 1},
+                       "integrations": 1, "excluded": 1, "unknown": 1}}
+    verify.check_host_classes(good)   # no raise
+
+    # a class outside the closed vocab must fire (a dropped/renamed class)
+    bad_vocab = {"endpoints": [{"domain": "x", "hostClass": "mystery", "classified": False}],
+                 "counts": {"hostClasses": {"mystery": 1}, "integrations": 0, "excluded": 1, "unknown": 0}}
+    with pytest.raises(Violation):
+        verify.check_host_classes(bad_vocab)
+
+    # a derived count that disagrees must fire — asset-cdn is EXCLUDED, so integrations can't be 1
+    bad_count = {"endpoints": [{"domain": "cdn", "hostClass": "asset-cdn", "classified": False}],
+                 "counts": {"hostClasses": {"asset-cdn": 1}, "integrations": 1, "excluded": 0, "unknown": 0}}
+    with pytest.raises(Violation):
+        verify.check_host_classes(bad_count)
+
+
 def _sunset_finding(op, date, rec, files, domain=None):
     return {"repo": "ebayapi", "ref": "eBay", "kind": "sunset", "severity": "SUNSET",
             "status": "DEPRECATED", "operation": op, "domain": domain, "version": None,

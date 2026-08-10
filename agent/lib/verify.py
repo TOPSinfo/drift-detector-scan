@@ -17,6 +17,9 @@ Deterministic and dependency-free: pure Python over a dict.
 from __future__ import annotations
 
 import re
+from collections import Counter
+
+from agent.lib import host_class
 
 
 class Violation(ValueError):
@@ -442,6 +445,34 @@ def check_timeline_lanes(template_src: str) -> None:
                         f"page while the tile stays green")
 
 
+def check_host_classes(payload: dict) -> None:
+    """Every endpoint is triaged into the closed hostClass VOCAB, and the counts derived from it
+    (hostClasses / integrations / excluded / unknown) agree with an independent recount of the
+    endpoints. A dropped/renamed class, or a count computed a second way that drifts, fires here —
+    the tile-vs-table discipline of check_tile_counts, applied to the integration taxonomy so the
+    cockpit can never show 'N integrations' while the endpoints say otherwise."""
+    endpoints = payload.get("endpoints", [])
+    counts = payload.get("counts", {})
+    for e in endpoints:
+        hc = e.get("hostClass")
+        if hc not in host_class.VOCAB:
+            raise Violation("hostclass-vocab",
+                            f"endpoint {e.get('domain')!r} has hostClass {hc!r}, outside the closed vocab")
+    recount = dict(Counter(e.get("hostClass") for e in endpoints))
+    if recount != (counts.get("hostClasses") or {}):
+        raise Violation("hostclass-count",
+                        f"counts.hostClasses={counts.get('hostClasses')} but the endpoints recount to {recount}")
+    integrations = sum(1 for e in endpoints if host_class.is_integration(e.get("hostClass")))
+    derived = {"integrations": integrations,
+               "excluded": len(endpoints) - integrations,
+               "unknown": sum(1 for e in endpoints
+                              if host_class.is_integration(e.get("hostClass")) and not e.get("classified"))}
+    for name, expect in derived.items():
+        if counts.get(name) != expect:
+            raise Violation("hostclass-derived-count",
+                            f"counts.{name}={counts.get(name)} but recomputing from endpoints yields {expect}")
+
+
 def verify_payload(payload: dict, findings: list) -> list:
     """Run every payload invariant. Returns the violations rather than raising, so
     `drift verify` can report all of them in one pass instead of one per run."""
@@ -449,6 +480,7 @@ def verify_payload(payload: dict, findings: list) -> list:
     for fn, args in ((check_tile_counts, (payload, findings)),
                      (check_owner_split, (payload,)),
                      (check_row_labels_distinct, (payload,)),
+                     (check_host_classes, (payload,)),
                      (check_number_formats, (payload,))):
         try:
             fn(*args)
