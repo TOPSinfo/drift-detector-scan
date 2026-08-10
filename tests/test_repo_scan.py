@@ -39,11 +39,13 @@ def test_scan_repo_assembles_manifests_and_endpoints(tmp_path):
     assert note["engineErrors"] == []
 
 
-def test_scan_repo_drops_boilerplate_and_bare_lines(tmp_path):
+def test_scan_repo_surfaces_boilerplate_as_bucketed_not_dropped(tmp_path):
     _w(tmp_path, "x.php", '"http://www.w3.org/2001/XMLSchema"; // no real endpoint here\n')
     rules = tmp_path / "rules.yaml"
     write_ruleset(_VENDORS, str(rules))
     canned = astgrep_fake.canned(astgrep_fake.hit("url-literal", "x.php", 1))
     record, _ = scan_repo(str(tmp_path), "r", 1, _VENDORS, str(rules), engine="semgrep",
                           run=_fake_opengrep(canned), git=lambda a: "")
-    assert record["endpoints"] == []                           # boilerplate host -> dropped
+    eps = record["endpoints"]                                  # a schema host is now SHOWN, bucketed
+    assert [e["domain"] for e in eps] == ["www.w3.org"]
+    assert eps[0]["hostClass"] == "reference" and not eps[0]["classified"]

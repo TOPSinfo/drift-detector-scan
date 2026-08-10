@@ -35,6 +35,19 @@ def test_endpoints_carry_hostclass(tmp_path):
     assert by["www.zillow.com"] == "unclassified"             # unknown service — SHOWN, not excluded
 
 
+def test_boilerplate_hosts_are_bucketed_not_silently_dropped(tmp_path):
+    """The honesty change: formerly-_IGNORE hosts (fonts / CDNs / schemas / doc links) are no longer
+    deleted from the stream — they appear as endpoints with a NON-integration hostClass, so 'N
+    non-integrations filtered' is visible. Only extraction artifacts / placeholders are dropped."""
+    _write(tmp_path, "a.html", '<link href="https://fonts.googleapis.com/css?family=Inter">\n')
+    _write(tmp_path, "b.php", '// docs https://www.w3.org/TR/xml/ and http://localhost/health\n')
+    out = scan_endpoints([_url("a.html", 1), _url("b.php", 1)], str(tmp_path), _VENDORS)
+    by = {e["domain"]: e["hostClass"] for e in out["endpoints"]}
+    assert by["fonts.googleapis.com"] == "asset-cdn"   # shown + bucketed, NOT dropped
+    assert by["www.w3.org"] == "reference"
+    assert "localhost" not in by                        # a genuine non-host is still dropped
+
+
 def test_output_is_deterministic_regardless_of_match_order(tmp_path):
     """SHIPPED-LATENT BUG: the engine's match order is not stable run-to-run, and endpoints
     were emitted in insertion order — a container double-run produced two drift.json files
@@ -77,17 +90,28 @@ def test_uncatalogued_url_is_unknown_external(tmp_path):
     assert eps[0]["domain"] == "api.feedonomics.com" and eps[0]["version"] == "v2"
 
 
-def test_boilerplate_hosts_ignored(tmp_path):
+def test_boilerplate_hosts_are_surfaced_and_bucketed_not_dropped(tmp_path):
+    """Honesty change (was test_boilerplate_hosts_ignored): formerly-dropped boilerplate now appears
+    as endpoints with a NON-integration hostClass, so 'N non-integrations filtered' is visible
+    instead of a hidden subtraction."""
     _write(tmp_path, "e.php", '"http://www.w3.org/2001/XMLSchema"; "https://fonts.googleapis.com/css";\n')
-    assert build_endpoints([_url("e.php", 1)], str(tmp_path), _VENDORS) == []
+    eps = build_endpoints([_url("e.php", 1)], str(tmp_path), _VENDORS)
+    by = {e["domain"]: e["hostClass"] for e in eps}
+    assert by["www.w3.org"] == "reference"
+    assert by["fonts.googleapis.com"] == "asset-cdn"
+    assert all(not e["classified"] for e in eps)
 
 
 def test_known_vendor_kept_even_if_its_registrable_is_on_ignore_list(tmp_path):
-    # facebook.com is ignored (marketing links) but graph.facebook.com is a real known API
+    # facebook.com is denoised (marketing) but graph.facebook.com is a real known API — and
+    # www.facebook.com now surfaces too, typed 'social' (shown, not dropped).
     _write(tmp_path, "g.php", '"https://graph.facebook.com/v19.0/me"; "https://www.facebook.com/share";\n')
     meta = Vendor("Meta Graph API", "api:meta-graph", ("graph.facebook.com",), r'/(v[0-9.]+)')
     eps = build_endpoints([_url("g.php", 1)], str(tmp_path), [meta])
-    assert len(eps) == 1 and eps[0]["vendor"] == "Meta Graph API"    # graph.* kept, www.* ignored
+    by = {e["domain"]: e for e in eps}
+    assert by["graph.facebook.com"]["vendor"] == "Meta Graph API"    # catalogued -> api
+    assert by["graph.facebook.com"]["hostClass"] == "api"
+    assert by["www.facebook.com"]["hostClass"] == "social"           # shown, uncatalogued
 
 
 def test_same_resource_groups_and_counts(tmp_path):
