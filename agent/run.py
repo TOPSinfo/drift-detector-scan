@@ -66,8 +66,15 @@ def run_pipeline(roots, state_dir, now, *, pull=False,
     payload = build_payload(doc, audit, diff=scan["diff"], gitlab_hosts=gitlab_hosts)
     _write_json(os.path.join(state_dir, "drift.json"), payload)
     _write(os.path.join(state_dir, "drift.md"), render_markdown(payload, now))
+    # AI-research tier (optional): if a research pass wrote research.json into this state, surface it
+    # in the AI Frontier plane — a SEPARATE blob, so the certified drift-data stays byte-identical.
+    research = None
+    _rp = os.path.join(state_dir, "research.json")
+    if os.path.exists(_rp):
+        with open(_rp, encoding="utf-8") as fh:
+            research = json.load(fh)
     _write(os.path.join(state_dir, "dashboard.html"),
-           render_payload(payload, now, bundle=build_bundle(doc, audit, now)))
+           render_payload(payload, now, bundle=build_bundle(doc, audit, now), research=research))
     _write(os.path.join(state_dir, "chart.html"), render_chart(payload, now))
 
     return {"scope": doc.get("scope", {}), "auditCounts": audit["counts"],

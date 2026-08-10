@@ -10,6 +10,9 @@
   // the AI-SHAPED tier (drift-adhoc/v1) — a SEPARATE, optional blob. null when the ad-hoc pass
   // never ran: the tab is then HIDDEN, not shown as "0" ("cannot see" ≠ "clean", extended here).
   var ADHOC = document.getElementById("adhoc-data") ? blob("adhoc-data") : null;
+  // the AI-RESEARCH tier — what the research loop found in the wild (vendors researched, sunsets
+  // discovered + sourced, verdicts needing a human). Separate blob; null when no research has run.
+  var RESEARCH = document.getElementById("research-data") ? blob("research-data") : null;
   // generic scan methodology (Sources / Versions / Parked tiers / catalog note) is boilerplate,
   // identical every scan — it goes to its own "methodology" footer, NOT mixed into the
   // data-specific coverage warnings (unaudited vendors, unreachable sources, …).
@@ -40,6 +43,7 @@
         DATA: DATA, counts: C,
         SBOM: Vue.markRaw(SBOM), SPDX: Vue.markRaw(SPDX), SARIF: Vue.markRaw(SARIF),
         ADHOC: ADHOC ? Vue.markRaw(ADHOC) : null,
+        RESEARCH: RESEARCH ? Vue.markRaw(RESEARCH) : null,
         generated: DATA.generated || "",
         scope: "",            // global repo scope ("" = all)
         plane: "drift",        // active TOP-LEVEL plane: supply | drift | ai. Opens on Vendor
@@ -83,6 +87,12 @@
           return a.status==="DEPRECATED" && a.kind!=="sunset"; }).length;
       },
       shapedRepos: function(){ return ((this.ADHOC&&this.ADHOC.byRepo)||[]).length; },
+      // the AI-research tier — what the research loop found in the wild
+      hasResearch: function(){ return !!this.RESEARCH; },
+      researchList: function(){ return (this.RESEARCH && this.RESEARCH.verdicts) || []; },
+      researchedCount: function(){ return this.researchList.length; },
+      sunsetsFoundCount: function(){ return this.researchList.filter(function(v){ return v.status==="retiring"; }).length; },
+      needsHumanCount: function(){ return this.researchList.filter(function(v){ return v.status==="unverified"||v.status==="blocked"; }).length; },
       // all three planes ALWAYS render — the AI Frontier plane is present even when no shaping
       // pass has run (it then shows an honest empty-state, never a misleading clean zero).
       planeDefs: function(){
@@ -119,8 +129,10 @@
             {key:"private",label:"Private",n:c.private},
             {key:"unaudited",label:"Unaudited",n:c.unaudited}]},
           {plane:"ai", title:"AI frontier", tiles:[
-            {key:"shaped",label:"Shaped",n:this.shapedCount},
-            {key:"shapedrepos",label:"Repos",n:this.shapedRepos}]}
+            {key:"researched",label:"Researched",n:this.researchedCount},
+            {key:"aisunsets",label:"Sunsets found",n:this.sunsetsFoundCount,sev:this.sunsetsFoundCount?"warn":""},
+            {key:"needshuman",label:"Need review",n:this.needsHumanCount},
+            {key:"shaped",label:"Shaped",n:this.shapedCount}]}
         ];
       },
       tileGroups: function(){
