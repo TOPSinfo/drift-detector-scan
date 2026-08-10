@@ -25,6 +25,7 @@
     "./commands/drift-detector.md",
     "./commands/drift-absorb.md",
     "./commands/drift-deepen.md",
-    "./commands/drift-refresh.md"
+    "./commands/drift-refresh.md",
+    "./commands/drift-research.md"
   ]
 }
