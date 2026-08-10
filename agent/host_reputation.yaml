@@ -61,6 +61,9 @@ vendored-lib:       # front-end libraries / UI kits the app bundles or links its
   - ckeditor.com
   - cksource.com
   - feathericons.com
+  - datatables.net
+  - fullcalendar.io
+  - apexcharts.com
 boilerplate:        # schema / namespace / doc / code hosts — links & namespaces, never a runtime integration
   - w3.org
   - schema.org
