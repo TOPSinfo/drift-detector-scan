@@ -15,11 +15,17 @@ from agent.lib.verify import Violation
 
 
 def test_host_class_invariant_every_endpoint_classed_and_counts_agree():
-    good = {"endpoints": [{"domain": "api.x.io", "hostClass": "api-lead", "classified": False},
-                          {"domain": "cdn.x.io", "hostClass": "asset-cdn", "classified": False}],
+    good = {"endpoints": [{"domain": "api.x.io", "hostClass": "api-lead", "classified": False, "coverage": "queued"},
+                          {"domain": "cdn.x.io", "hostClass": "asset-cdn", "classified": False, "coverage": "na"}],
             "counts": {"hostClasses": {"api-lead": 1, "asset-cdn": 1},
-                       "detected": 2, "integrations": 1, "excluded": 1, "unknown": 1}}
+                       "detected": 2, "integrations": 1, "excluded": 1, "unknown": 1,
+                       "coverage": {"tracked": 0, "queued": 1, "needs-human": 0, "blocked": 0, "na": 1}}}
     verify.check_host_classes(good)   # no raise
+
+    # the coverage lifecycle must partition every endpoint — a lost/miscounted state must fire
+    bad_cov = {**good, "counts": {**good["counts"], "coverage": {"queued": 2}}}
+    with pytest.raises(Violation):
+        verify.check_host_classes(bad_cov)
 
     # THE INVENTORY GUARANTEE: the headline "detected" count must equal the real endpoint total —
     # the tool can never claim it read more or fewer than it did.
@@ -200,7 +206,7 @@ def test_live_projection_parity_over_real_build_actions():
 # there is no live row to pull `set(row)` from the way `payload["actions"][0]` works below.
 # Endpoint fields: see _endpoints_of(); private fields: see _build_projection()'s private
 # loop; catalog fields: see catalog_coverage.py's record builder.
-_ENDPOINT_SAMPLE = {"repo", "domain", "vendor", "version", "classified", "hostClass", "file_count", "files"}
+_ENDPOINT_SAMPLE = {"repo", "domain", "vendor", "version", "classified", "hostClass", "coverage", "file_count", "files"}
 _PRIVATE_SAMPLE = {"repo", "source", "kind", "via"}
 _CATALOG_SAMPLE = {"vendor", "callSites", "catalogEntries", "verdict", "reasons", "checked", "source"}
 

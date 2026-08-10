@@ -57,14 +57,30 @@ def _project_action(a: dict) -> dict:
     }
 
 
+# The coverage lifecycle: where a detected endpoint sits on the way to being tracked. It resolves,
+# it is not a dead-end. `queued` = an API service we haven't researched yet (the research loop's
+# work-list); `needs-human`/`blocked` are set once research runs and can't auto-resolve (a low-
+# confidence verdict, or a doc site that refused the fetch).
+COVERAGE = ("tracked", "queued", "needs-human", "blocked", "na")
+
+
+def _coverage(host_class: str, classified: bool) -> str:
+    if classified:
+        return "tracked"                                   # catalogued vendor — retirements monitored
+    if host_class in ("api-lead", "unclassified"):
+        return "queued"                                    # detected API service, research pending
+    return "na"                                            # widget / asset / own-infra — not an API to track
+
+
 def _endpoints_of(inventory: dict) -> list:
     out = []
     for r in inventory.get("repos", []):
         for e in r.get("endpoints", []):
+            hc = e.get("hostClass") or ("api" if e.get("classified") else "unclassified")
             out.append({"repo": r.get("path"), "domain": e.get("domain"),
                         "vendor": e.get("vendor"), "version": e.get("version"),
                         "classified": bool(e.get("classified")),
-                        "hostClass": e.get("hostClass") or ("api" if e.get("classified") else "unclassified"),
+                        "hostClass": hc, "coverage": _coverage(hc, bool(e.get("classified"))),
                         "file_count": e.get("file_count"), "files": e.get("files", [])})
     return out
 
@@ -152,6 +168,8 @@ def _build_projection(inventory: dict, audit: dict, gitlab_hosts=frozenset()) ->
         # THE HEADLINE: every outbound endpoint the engine READ — the complete integration
         # inventory. Classification (below) is a filter over this, never a gate that hides a row.
         "detected": len(endpoints),
+        # the coverage lifecycle — a partition of every detected endpoint (sums to `detected`)
+        "coverage": {s: sum(1 for e in endpoints if e["coverage"] == s) for s in COVERAGE},
         "integrations": sum(1 for e in endpoints if host_class.is_integration(e["hostClass"])),
         "excluded": sum(1 for e in endpoints if not host_class.is_integration(e["hostClass"])),
         "unknown": sum(1 for e in endpoints

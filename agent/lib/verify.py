@@ -472,6 +472,16 @@ def check_host_classes(payload: dict) -> None:
         if counts.get(name) != expect:
             raise Violation("hostclass-derived-count",
                             f"counts.{name}={counts.get(name)} but recomputing from endpoints yields {expect}")
+    # the coverage lifecycle must PARTITION every endpoint — none lost to a dead-end, none double-counted
+    cov = counts.get("coverage") or {}
+    recount = Counter(e.get("coverage") for e in endpoints)
+    if sum(cov.values()) != len(endpoints):
+        raise Violation("coverage-sum",
+                        f"coverage states sum to {sum(cov.values())}, not {len(endpoints)} endpoints")
+    for state, n in recount.items():
+        if cov.get(state) != n:
+            raise Violation("coverage-partition",
+                            f"counts.coverage[{state}]={cov.get(state)} but the endpoints hold {n}")
 
 
 def verify_payload(payload: dict, findings: list) -> list:

@@ -114,7 +114,7 @@
             {key:"sunsets",label:"Sunsets",n:c.sunsets},
             {key:"pastdue",label:"Past-due",n:c.pastDue,sev:"warn"},
             {key:"apis",label:"Tracked",n:c.apis},
-            {key:"unknown",label:"Untracked",n:c.unknown},
+            {key:"unknown",label:"Queued",n:c.unknown},
             {key:"excluded",label:"Assets",n:c.excluded},
             {key:"private",label:"Private",n:c.private},
             {key:"unaudited",label:"Unaudited",n:c.unaudited}]},
@@ -151,8 +151,8 @@
       summaryTabLabel: function(){
         if(this.plane !== "drift") return "Findings";
         return {detected:"Detected endpoints", sunsets:"Retiring integrations", pastdue:"Retiring integrations",
-                apis:"Tracked integrations", unknown:"Detected · not yet tracked",
-                excluded:"Assets & libraries", private:"Private sources",
+                apis:"Tracked integrations", unknown:"Queued for research (detected, not yet tracked)",
+                excluded:"Third-party services & assets", private:"Private sources",
                 unaudited:"Unaudited vendors"}[this.tab] || "Detected endpoints";
       },
       mode: function(){
@@ -632,12 +632,11 @@
       },
       // IDENTITY vs COVERAGE are separate: we identified the host; "tracked" only says whether its
       // RETIREMENTS are in the catalog yet. "not yet tracked" is roadmap, never a failure — never green.
-      trackState: function(e){
-        if(e.classified) return "tracked";
-        return this.isIntegration(e.hostClass) ? "untracked" : "na";
-      },
+      // coverage lifecycle (from the payload) — a RESOLVING queue, not a dead-end
+      trackState: function(e){ return e.coverage || (e.classified ? "tracked" : "queued"); },
       trackLabel: function(e){
-        return {tracked:"tracked", untracked:"not yet tracked", na:"—"}[this.trackState(e)];
+        return {tracked:"tracked", queued:"queued · research pending", "needs-human":"needs review",
+                blocked:"blocked · doc access", na:"—"}[this.trackState(e)] || "—";
       },
       exportCsv: function(){
         var self = this, head = ["repo","host","kind","recognized_as","tracking","call_sites","files"];
