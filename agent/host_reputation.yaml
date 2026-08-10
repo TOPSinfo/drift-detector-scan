@@ -35,6 +35,9 @@ social-widget:      # share / embed / follow / messaging destinations
 
 # ── Non-integration classes: EXCLUDED from the integration total (shown under "assets & libraries") ─
 asset-cdn:          # fonts, icons, images, generic static-asset CDNs — not a service the app calls
+  - cloudflare.com
+  - static.arcgis.com
+  - maxcdn.com
   - fonts.googleapis.com
   - fonts.gstatic.com
   - gstatic.com
@@ -52,6 +55,10 @@ asset-cdn:          # fonts, icons, images, generic static-asset CDNs — not a 
   - picsum.photos
   - flagcdn.com
 vendored-lib:       # front-end libraries / UI kits the app bundles or links its own copy of
+  - sweetalert2.github.io
+  - tiny.cloud
+  - svgjs.dev
+  - amcharts.com
   - keenthemes.com
   - momentjs.com
   - jquery.com
@@ -67,6 +74,8 @@ vendored-lib:       # front-end libraries / UI kits the app bundles or links its
   - tinymce.com
   - select2.org
 boilerplate:        # schema / namespace / doc / code hosts — links & namespaces, never a runtime integration
+  - ietf.org
+  - github.io
   - w3.org
   - schema.org
   - json-schema.org
