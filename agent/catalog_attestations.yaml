@@ -83,3 +83,46 @@
     months' notice via the changelog (developer.microsoft.com/graph/changelog); none of
     the retiring surfaces (Azure AD Graph on graph.windows.net, EWS, the Security legacy
     Alerts API) are on graph.microsoft.com, so marketplacehub's usage is unaffected.
+
+- vendor: Keepa
+  checked: '2026-08-10'
+  source: https://github.com/keepacom/api_backend/releases
+  note: 'AI web-research pass: active API, no announced retirement/sunset found. Keepa''s official api_backend release notes
+    (latest release 2.05, July 25, 2026) show an actively maintained JSON REST API; changes are field-level deprecations/removals
+    (e.g. ''mate'
+- vendor: PrintNode
+  checked: '2026-08-10'
+  source: https://www.printnode.com/en/docs/api/curl
+  note: 'AI web-research pass: active API, no announced retirement/sunset found. api.printnode.com is PrintNode''s REST cloud-printing
+    API that developers call directly. I fetched the official PrintNode API reference (version 3.0.0), which shows an actively
+    main'
+- vendor: BlueCart API
+  checked: '2026-08-10'
+  source: https://trajectdata.com/ecommerce/blue-cart-api/
+  note: 'AI web-research pass: active API, no announced retirement/sunset found. Fetched the vendor''s own product page, which
+    confirms BlueCart is an active, developer-integrated Walmart Product Data API with no deprecation, sunset, or version
+    end-of-life notic'
+- vendor: Seller Snap
+  checked: '2026-08-10'
+  source: https://api.sellersnap.io
+  note: "AI web-research pass: active API, no announced retirement/sunset found. api.sellersnap.io returns a live 302 redirect\
+    \ to login.sellersnap.io \u2014 an active, authenticated application API backend for Seller Snap. No public developer\
+    \ docs, versioned API cha"
+- vendor: TikTok Business API
+  checked: '2026-08-10'
+  source: https://github.com/tiktok/tiktok-business-api-sdk/blob/main/Changelog.md
+  note: 'AI web-research pass: active API, no announced retirement/sunset found. business-api.tiktok.com is the callable host
+    for TikTok''s API for Business (Marketing API), currently on v1.3. The official tiktok-org SDK changelog I fetched shows
+    only active dev'
+- vendor: OpenStreetMap
+  checked: '2026-08-10'
+  source: https://wiki.openstreetmap.org/wiki/API_v0.6
+  note: 'AI web-research pass: active API, no announced retirement/sunset found. osm.org is OpenStreetMap, whose editing API
+    (v0.6, a real callable REST API) has been the current version since April 2009. The official wiki API v0.6 page states
+    it is the current'
+- vendor: Vimeo Player
+  checked: '2026-08-10'
+  source: https://github.com/vimeo/player.js
+  note: 'AI web-research pass: active API, no announced retirement/sunset found. player.vimeo.com hosts Vimeo''s Player SDK
+    (player.vimeo.com/api/player.js) and the embed iframe player, a callable JS integration surface. The vendor-owned vimeo/player.js
+    repo REA'

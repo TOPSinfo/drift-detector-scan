@@ -78,6 +78,10 @@ vendored-lib:       # front-end libraries / UI kits the app bundles or links its
   - tinymce.com
   - select2.org
 boilerplate:        # schema / namespace / doc / code hosts — links & namespaces, never a runtime integration
+  - www.amazon.com
+  - www.walmart.com
+  - open.spotify.com
+  - esriurl.com
   - openxmlformats.org
   - schemas.microsoft.com
   - ietf.org
