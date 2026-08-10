@@ -30,7 +30,7 @@ _CACHE = None
 
 # share/messaging URL grammars (host-INDEPENDENT): these paths ARE the button, not an API call
 _SHARE_PATHS = re.compile(r"/(intent[/?]|share[/?]|pin/create|sharer|dialog/|tweet)", re.I)
-_API_LABEL = re.compile(r"(^|\.)api(\.|-|$)", re.I)
+_API_LABEL = re.compile(r"(^|\.|-)api(\.|-|$)", re.I)   # api. / .api. / -api. / api- host label
 _API_PATH = re.compile(r"/(v[0-9]+|rest|graphql|oauth|api)(/|$|\?)", re.I)
 _ASSET_EXT = re.compile(r"\.(png|jpe?g|gif|svg|webp|woff2?|ttf|eot|css|js|ico|mp4|pdf)(\?|$)", re.I)
 _ASSET_FILE_EXTS = {".css", ".scss", ".less"}
@@ -83,10 +83,10 @@ def classify(host: str, *, url: str | None = None, in_call: bool = False,
         return "social-widget"
     if (file_ext or "").lower() in _ASSET_FILE_EXTS or _ASSET_EXT.search(u):
         return "asset-cdn"
-    if in_call and (_API_LABEL.search(host) or _API_PATH.search(u)):
-        return "api-lead"
-    # an api-shaped host even without a proven call context is still worth surfacing as a lead
-    if _API_LABEL.search(host) and _API_PATH.search(u):
+    # an api. / api- host is a strong API signal on its own (api.keepa.com, geocode-api.arcgis.com);
+    # a versioned/REST path counts as a lead when it shows up in a real client call. Either way it
+    # rises above the residue instead of hiding in "pending audit".
+    if _API_LABEL.search(host) or (in_call and _API_PATH.search(u)):
         return "api-lead"
     # an unknown host is still a third-party the code reaches — SHOW it as found/pending-audit
     return "unclassified"

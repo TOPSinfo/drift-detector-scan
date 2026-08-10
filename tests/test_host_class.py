@@ -32,6 +32,15 @@ def test_api_shape_in_call_context_is_a_lead():
                        in_call=True) == "api-lead"
 
 
+def test_api_labeled_host_is_a_lead_without_a_versioned_path_or_call():
+    """A real repo (sebago-foods) reaches api.keepa.com / api.printnode.com / geocode-api.arcgis.com
+    with no /vN path and via wrappers we don't sniff as calls. The `api.`/`api-`/`-api.` label alone
+    is a strong enough API signal to surface them as leads, not bury them in 'pending audit'."""
+    for host in ("api.keepa.com", "api.printnode.com", "api.sellersnap.io",
+                 "geocode-api.arcgis.com", "api.bluecartapi.com"):
+        assert hc.classify(host) == "api-lead", host
+
+
 def test_asset_by_extension_or_path():
     assert hc.classify("images.unsplash.com", url="https://images.unsplash.com/photo-1.jpg") == "asset-cdn"
     assert hc.classify("cdn.example.com", file_ext=".css") == "asset-cdn"
