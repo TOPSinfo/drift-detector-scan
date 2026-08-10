@@ -149,6 +149,9 @@ def _build_projection(inventory: dict, audit: dict, gitlab_hosts=frozenset()) ->
         # schemas; "unknown" now means FOUND-but-not-yet-audited integrations only — not the noise
         # floor — so the tile reads as "leads to audit", not "the tool detected nothing useful".
         "hostClasses": dict(Counter(e["hostClass"] for e in endpoints)),
+        # THE HEADLINE: every outbound endpoint the engine READ — the complete integration
+        # inventory. Classification (below) is a filter over this, never a gate that hides a row.
+        "detected": len(endpoints),
         "integrations": sum(1 for e in endpoints if host_class.is_integration(e["hostClass"])),
         "excluded": sum(1 for e in endpoints if not host_class.is_integration(e["hostClass"])),
         "unknown": sum(1 for e in endpoints

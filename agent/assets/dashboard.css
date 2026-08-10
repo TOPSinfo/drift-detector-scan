@@ -36,6 +36,11 @@ a{color:var(--accent-2);text-decoration:none} a:hover{text-decoration:underline}
   border-radius:5px;padding:1px 5px;margin-left:7px;white-space:nowrap;vertical-align:middle}
 .hc[data-hc="api-lead"]{color:var(--accent);border-color:color-mix(in oklab,var(--accent) 45%,var(--line))}
 .hc[data-hc="asset-cdn"],.hc[data-hc="vendored-lib"],.hc[data-hc="boilerplate"]{opacity:.55}
+/* tracking status — COVERAGE, not identity. "not yet tracked" is neutral/roadmap, never green. */
+.trk{font-size:10px;letter-spacing:.03em;padding:1px 8px;border-radius:20px;white-space:nowrap;
+  border:1px solid var(--line);color:var(--muted);background:var(--panel)}
+.trk[data-trk="tracked"]{color:#2e7d32;border-color:color-mix(in oklab,#2e7d32 45%,var(--line))}
+.trk[data-trk="na"]{opacity:.4}
 .cap.hot{color:var(--accent);border-color:color-mix(in oklab,var(--accent) 40%,var(--line))}
 @container (max-width:720px){.caps{display:none}}
 .themebtn{appearance:none;background:var(--panel);border:1px solid var(--line);color:var(--muted);

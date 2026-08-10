@@ -124,7 +124,7 @@
             <div class="track"><div class="fill" :style="{width: b.pct + '%', background: b.color}"></div></div>
           </div>
         </div>
-        <p class="empty" v-else>No {{ tab === 'unknown' ? 'found-but-unaudited integration' : tab === 'excluded' ? 'excluded asset/library' : 'audited API' }}
+        <p class="empty" v-else>No {{ tab === 'unknown' ? 'untracked' : tab === 'excluded' ? 'excluded asset/library' : tab === 'apis' ? 'tracked' : 'detected' }}
           endpoints found<template v-if="scope"> for {{ repoLabelOf(scope) }}</template>.</p>
       </template>
       <!-- Supply Chain plane intro: the familiar SCA/CVE story, pointing at the SBOM/SARIF tabs. -->
@@ -215,6 +215,8 @@
       <div class="toolbar">
         <input class="search" id="search" type="search" v-model="q"
                placeholder="Filter by repo, package or vendor…">
+        <button v-if="mode === 'endpoints'" class="tab" @click="exportCsv"
+                title="Download every detected endpoint as CSV">⬇ Export endpoints</button>
       </div>
       <table id="panel">
         <tbody>
@@ -225,6 +227,12 @@
           <tr v-if="mode === 'private' && rows.length">
             <td colspan="5" class="intro">Sub-dependencies the scan couldn't crawl — private or
               unreachable.</td>
+          </tr>
+          <tr v-if="mode === 'endpoints' && (!tab || tab === 'detected') && rows.length">
+            <td colspan="5" class="intro"><b>{{ counts.detected }} endpoints detected</b> — every
+              outbound call the engine read, the complete integration inventory. "tracked" = its
+              retirement data is on file; "not yet tracked" = detected, catalog coverage coming (not
+              a failure).</td>
           </tr>
           <template v-for="(row, idx) in rows" :key="mode + '-' + idx">
             <tr class="row" @click="onRowClick(idx)">
@@ -237,10 +245,9 @@
               </template>
               <template v-else-if="mode === 'endpoints'">
                 <td>{{ row.repo }}</td>
-                <td>{{ row.domain }}
-                  <span class="hc" :data-hc="row.hostClass">{{ hostLabel(row.hostClass) }}</span></td>
-                <td>{{ row.classified ? row.vendor : '—' }}</td>
-                <td>{{ row.version || '?' }}</td>
+                <td>{{ row.domain }}</td>
+                <td>{{ kindOf(row.hostClass) }}<template v-if="row.classified"> · {{ row.vendor }}</template></td>
+                <td><span class="trk" :data-trk="trackState(row)">{{ trackLabel(row) }}</span></td>
                 <td>{{ row.file_count }}</td>
               </template>
               <template v-else-if="mode === 'private'">
