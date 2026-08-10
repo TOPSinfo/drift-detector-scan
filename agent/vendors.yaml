@@ -7,7 +7,7 @@
 
 # ── Marketplaces / e-commerce ──────────────────────────────────────────────
 - { vendor: Amazon SP-API,     techKey: api:amazon-sp-api,       domains: [sellingpartnerapi] }
-- { vendor: Amazon MWS,        techKey: api:amazon-mws,          domains: [mws.amazonservices.com] }
+- { vendor: Amazon MWS,        techKey: api:amazon-mws,          domains: [amazonservices] }   # `amazonservices` fragment catches EVERY regional MWS TLD (.co.uk/.de/.ca/…), not just .com — MWS is deprecated, so the regional endpoints must flag too
 - { vendor: Amazon Ads API,    techKey: api:amazon-ads,          domains: [advertising-api] }
 - { vendor: eBay,              techKey: api:ebay,                domains: [ebay.com] }
 - { vendor: Walmart,           techKey: api:walmart-marketplace, domains: [walmartapis.com] }

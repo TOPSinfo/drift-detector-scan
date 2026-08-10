@@ -35,6 +35,7 @@ social-widget:      # share / embed / follow / messaging destinations
 
 # ── Non-integration classes: EXCLUDED from the integration total (shown under "assets & libraries") ─
 asset-cdn:          # fonts, icons, images, generic static-asset CDNs — not a service the app calls
+  - lorempixel.com
   - cloudflare.com
   - static.arcgis.com
   - maxcdn.com

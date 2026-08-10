@@ -82,21 +82,23 @@ def classify(host: str, *, url: str | None = None, in_call: bool = False,
     `in_call` — the URL was matched inside an HTTP-client call (vs. an href/src/CSS url()).
     `file_ext` — the source file's extension (a `.css`/`.scss` origin biases toward a static asset).
     """
+    host = host or ""
+    if _OWN_CLOUD.search(host):
+        return "own-infra"                 # your own cloud backend (Cognito, API GW, serverless…)
+    # an api. / -api. / api- host is a real API even UNDER a reputationed parent domain — so
+    # business-api.tiktok.com is the TikTok API, not "social"; api.cloudflare.com is a lead, not a CDN.
+    # (This also enforces the no-pre-bury rule: an api. tracker never sinks into the analytics panel.)
+    if _API_LABEL.search(host):
+        return "api-lead"
     rep = _reputation(host)
     if rep:
         return rep
     u = url or ""
-    host = host or ""
-    if _OWN_CLOUD.search(host):
-        return "own-infra"                 # your own cloud backend (Cognito, API GW, serverless…)
     if _SHARE_PATHS.search(u):
         return "social-widget"
     if (file_ext or "").lower() in _ASSET_FILE_EXTS or _ASSET_EXT.search(u):
         return "asset-cdn"
-    # an api. / api- host is a strong API signal on its own (api.keepa.com, geocode-api.arcgis.com);
-    # a versioned/REST path counts as a lead when it shows up in a real client call. Either way it
-    # rises above the residue instead of hiding in "pending audit".
-    if _API_LABEL.search(host) or (in_call and _API_PATH.search(u)):
+    if in_call and _API_PATH.search(u):    # a versioned/REST path in a real client call is a lead
         return "api-lead"
     # an unknown host is still a third-party the code reaches — SHOW it as found/pending-audit
     return "unclassified"

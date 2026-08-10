@@ -63,3 +63,14 @@ def test_real_api_and_bucket_hosts_survive_the_denoise():
               "velocityfrequentflyerau-prod.mirakl.net",
               "cw-prod-bucket-for-application-1234.s3.ap-southeast-2.amazonaws.com"):
         assert not is_ignored(h), h
+
+
+def test_amazon_mws_matches_every_regional_tld():
+    """MWS is deprecated; the regional endpoints (.co.uk/.de/…) must classify as Amazon MWS — not
+    just .com — so the sunset flags everywhere it's still called."""
+    from agent.lib.classify_url import classify_host
+    from agent.lib.vendors import Vendor
+    mws = Vendor("Amazon MWS", "api:amazon-mws", ("amazonservices",), r"/(v\d+)")
+    for h in ("mws.amazonservices.co.uk", "mws.amazonservices.de", "mws.amazonservices.com"):
+        v = classify_host(h, [mws])
+        assert v and v.vendor == "Amazon MWS", h
