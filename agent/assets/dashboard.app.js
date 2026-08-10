@@ -156,6 +156,7 @@
       },
       mode: function(){
         var f = this.tab;
+        if(this.plane==="drift" && !f) return "endpoints";   // drift opens on the integrations list
         if(f==="apis" || f==="unknown" || f==="excluded") return "endpoints";
         if(f==="private") return "private";
         if(f==="unaudited") return "catalog";
@@ -417,7 +418,10 @@
         // bars for apis/unknown, and the honest empty-state for a genuinely-zero dimension.
         var TIMELINE_TABS = {sunsets:1, pastdue:1};
         var t = this.tab;
-        if(t === null || TIMELINE_TABS[t]) return "timeline";
+        // default (no tile picked): lead with the timeline only if there ARE sunsets to plot;
+        // otherwise lead with the integrations so a zero-sunset repo doesn't look empty.
+        if(t === null) return (this.counts.sunsets || 0) > 0 ? "timeline" : "vendors";
+        if(TIMELINE_TABS[t]) return "timeline";
         if(t === "apis" || t === "unknown") return "vendors";
         return (this.tileCountsByKey[t] || 0) === 0 ? "empty" : "timeline";
       },
@@ -425,7 +429,7 @@
         var m = this.heroMode;
         if(m === "ai") return "AI Frontier — shaped, gate-validated";
         if(m === "supply") return "Supply-chain security";
-        if(m === "vendors") return this.tab === "apis" ? "Integrations by vendor" : "Unclassified endpoints";
+        if(m === "vendors") return this.tab === "unknown" ? "Unclassified endpoints" : "Integrations by vendor";
         if(m === "empty") return this.tabName(this.tab);
         return "Retirement timeline";
       },
@@ -564,6 +568,7 @@
           if(!self.matchesQ((e.repo || "") + " " + (e.domain || "") + " " + (e.vendor || ""))) return false;
           // "Pending audit" = found integrations we have not audited (NOT the asset/lib noise);
           // "Assets" = the excluded non-integrations; "APIs" = the audited/catalogued ones.
+          if(!f)             return self.isIntegration(e.hostClass);   // default view = all found integrations
           if(f==="excluded") return !self.isIntegration(e.hostClass);
           if(f==="unknown")  return self.isIntegration(e.hostClass) && !e.classified;
           if(f==="apis")     return e.classified;
