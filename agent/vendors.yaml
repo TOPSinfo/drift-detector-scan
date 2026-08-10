@@ -83,3 +83,7 @@
 - { vendor: GitHub,            techKey: api:github,              domains: [api.github.com] }
 - { vendor: LinkedIn,          techKey: api:linkedin,            domains: [api.linkedin.com] }
 - { vendor: Twitter X,         techKey: api:twitter,             domains: [api.twitter.com, api.x.com] }
+
+# ── Media / maps (added 2026-08-10 from an AI web-research pass, each with a fetched sunset source) ──
+- { vendor: Dailymotion,       techKey: api:dailymotion,         domains: [dailymotion.com] }
+- { vendor: Esri ArcGIS,       techKey: api:arcgis,              domains: [arcgis.com] }
