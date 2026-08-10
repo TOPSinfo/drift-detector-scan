@@ -176,7 +176,7 @@
        AI Frontier has no sub-tabs — the shaped list IS its content — so the bar is hidden. -->
   <div class="subbar" id="subbar" role="tablist" v-if="plane !== 'ai'">
     <button class="subtab" role="tab" :data-on="sub === 'summary' ? '1' : '0'"
-            @click="sub = 'summary'">{{ plane === 'drift' ? 'Retiring integrations' : 'Findings' }}</button>
+            @click="sub = 'summary'">{{ summaryTabLabel }}</button>
     <template v-if="plane === 'supply'">
       <button class="subtab" role="tab" :data-on="sub === 'sbom' ? '1' : '0'"
               @click="sub = 'sbom'">SBOM</button>
