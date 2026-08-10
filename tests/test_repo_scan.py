@@ -48,4 +48,4 @@ def test_scan_repo_surfaces_boilerplate_as_bucketed_not_dropped(tmp_path):
                           run=_fake_opengrep(canned), git=lambda a: "")
     eps = record["endpoints"]                                  # a schema host is now SHOWN, bucketed
     assert [e["domain"] for e in eps] == ["www.w3.org"]
-    assert eps[0]["hostClass"] == "reference" and not eps[0]["classified"]
+    assert eps[0]["hostClass"] == "boilerplate" and not eps[0]["classified"]

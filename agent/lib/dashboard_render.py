@@ -11,7 +11,9 @@ import html
 import json
 import os
 import re
+from collections import Counter
 
+from agent.lib import host_class
 from agent.lib.actions import build_actions
 
 _MAX_CVES = 20            # cap the per-action CVE list embedded in the blob
@@ -62,6 +64,7 @@ def _endpoints_of(inventory: dict) -> list:
             out.append({"repo": r.get("path"), "domain": e.get("domain"),
                         "vendor": e.get("vendor"), "version": e.get("version"),
                         "classified": bool(e.get("classified")),
+                        "hostClass": e.get("hostClass") or ("api" if e.get("classified") else "unclassified"),
                         "file_count": e.get("file_count"), "files": e.get("files", [])})
     return out
 
@@ -141,7 +144,15 @@ def _build_projection(inventory: dict, audit: dict, gitlab_hosts=frozenset()) ->
                        if a["kind"] == "sunset" and a["status"] == "DEPRECATED"
                        and a.get("date")),
         "apis": len({e["vendor"] for e in endpoints if e["classified"]}),
-        "unknown": sum(1 for e in endpoints if not e["classified"]),
+        # hostClass reframes the residue: "integrations" = every found third-party service
+        # (api/api-lead/social-widget/analytics/unclassified); "excluded" = bundled assets/libs/
+        # schemas; "unknown" now means FOUND-but-not-yet-audited integrations only — not the noise
+        # floor — so the tile reads as "leads to audit", not "the tool detected nothing useful".
+        "hostClasses": dict(Counter(e["hostClass"] for e in endpoints)),
+        "integrations": sum(1 for e in endpoints if host_class.is_integration(e["hostClass"])),
+        "excluded": sum(1 for e in endpoints if not host_class.is_integration(e["hostClass"])),
+        "unknown": sum(1 for e in endpoints
+                       if host_class.is_integration(e["hostClass"]) and not e["classified"]),
         "reposAffected": (audit.get("counts") or {}).get("reposAffected", 0),
         # "1 repos" read as "it only scanned one". Both numbers, or neither.
         "reposScanned": (inventory.get("scope") or {}).get("reposScanned", 0),

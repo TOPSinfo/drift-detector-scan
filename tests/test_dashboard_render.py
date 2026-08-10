@@ -76,6 +76,28 @@ def test_tile_counts_apis_and_unknown_from_endpoints():
     assert data["counts"]["unknown"] == 1
 
 
+def test_projection_carries_hostclass_and_integration_counts():
+    from agent.lib import host_class
+    eps = [{"domain": "api.ebay.com", "vendor": "eBay", "version": "v1", "classified": True,
+            "file_count": 1, "files": ["a:1"], "hostClass": "api"},
+           {"domain": "www.zillow.com", "vendor": "Unknown", "version": None, "classified": False,
+            "file_count": 1, "files": ["b:1"], "hostClass": "unclassified"},
+           {"domain": "wa.me", "vendor": "Unknown", "version": None, "classified": False,
+            "file_count": 1, "files": ["c:1"], "hostClass": "social-widget"},
+           {"domain": "fonts.googleapis.com", "vendor": "Unknown", "version": None,
+            "classified": False, "file_count": 1, "files": ["d:1"], "hostClass": "asset-cdn"}]
+    data = _blob(render_dashboard(_inv(eps), _audit([]), "2026-07-15"))
+    assert all("hostClass" in e for e in data["endpoints"])
+    c = data["counts"]
+    # found integrations = api + social + unclassified (3); excluded assets/libs = asset-cdn (1)
+    assert c["integrations"] == 3 and c["excluded"] == 1
+    assert c["integrations"] + c["excluded"] == len(data["endpoints"])
+    # 'unknown' now means found-but-unaudited integrations (zillow, wa.me) — NOT the asset noise
+    assert c["unknown"] == 2
+    assert c["hostClasses"]["asset-cdn"] == 1 and c["hostClasses"]["api"] == 1
+    assert set(c["hostClasses"]) <= host_class.VOCAB
+
+
 def test_eol_action_tile_and_no_command():
     eol = {"repo": "r", "ref": "php", "kind": "eol", "version": "^7.4", "fixed": "8.5.8",
            "severity": "EOL", "status": "DEPRECATED", "first_seen": "2026-07-15",

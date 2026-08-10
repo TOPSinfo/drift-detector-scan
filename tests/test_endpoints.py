@@ -30,7 +30,7 @@ def test_endpoints_carry_hostclass(tmp_path):
     out = scan_endpoints(ms, str(tmp_path), _VENDORS)
     by = {e["domain"]: e["hostClass"] for e in out["endpoints"]}
     assert by["sellingpartnerapi-na.amazon.com"] == "api"     # catalogued vendor
-    assert by["wa.me"] == "social"                            # share link — a shown integration
+    assert by["wa.me"] == "social-widget"                     # share link — a shown integration
     assert by["api.greatschools.org"] == "api-lead"           # api-shaped, in a client call
     assert by["www.zillow.com"] == "unclassified"             # unknown service — SHOWN, not excluded
 
@@ -44,7 +44,7 @@ def test_boilerplate_hosts_are_bucketed_not_silently_dropped(tmp_path):
     out = scan_endpoints([_url("a.html", 1), _url("b.php", 1)], str(tmp_path), _VENDORS)
     by = {e["domain"]: e["hostClass"] for e in out["endpoints"]}
     assert by["fonts.googleapis.com"] == "asset-cdn"   # shown + bucketed, NOT dropped
-    assert by["www.w3.org"] == "reference"
+    assert by["www.w3.org"] == "boilerplate"
     assert "localhost" not in by                        # a genuine non-host is still dropped
 
 
@@ -97,7 +97,7 @@ def test_boilerplate_hosts_are_surfaced_and_bucketed_not_dropped(tmp_path):
     _write(tmp_path, "e.php", '"http://www.w3.org/2001/XMLSchema"; "https://fonts.googleapis.com/css";\n')
     eps = build_endpoints([_url("e.php", 1)], str(tmp_path), _VENDORS)
     by = {e["domain"]: e["hostClass"] for e in eps}
-    assert by["www.w3.org"] == "reference"
+    assert by["www.w3.org"] == "boilerplate"
     assert by["fonts.googleapis.com"] == "asset-cdn"
     assert all(not e["classified"] for e in eps)
 
@@ -111,7 +111,7 @@ def test_known_vendor_kept_even_if_its_registrable_is_on_ignore_list(tmp_path):
     by = {e["domain"]: e for e in eps}
     assert by["graph.facebook.com"]["vendor"] == "Meta Graph API"    # catalogued -> api
     assert by["graph.facebook.com"]["hostClass"] == "api"
-    assert by["www.facebook.com"]["hostClass"] == "social"           # shown, uncatalogued
+    assert by["www.facebook.com"]["hostClass"] == "social-widget"    # shown, uncatalogued
 
 
 def test_same_resource_groups_and_counts(tmp_path):
