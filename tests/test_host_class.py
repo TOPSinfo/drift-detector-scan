@@ -88,6 +88,7 @@ def test_own_cloud_backends_are_own_infra():
     assert hc.classify("tpncy-web-services.auth.us-east-1.amazoncognito.com") == "own-infra"
     assert hc.classify("myapp.herokuapp.com") == "own-infra"
     assert hc.classify("svc-x.cloudfunctions.net") == "own-infra"
+    assert hc.classify("myserver.mooo.com") == "own-infra"    # dynamic-DNS = self-hosted, not a vendor
     assert not hc.is_integration("own-infra")
 
 
