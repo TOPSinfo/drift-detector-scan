@@ -323,15 +323,36 @@
       </div>
     </section>
     <section v-show="plane === 'ai'" class="panel active">
-      <!-- honest empty-state when NO shaping pass ran: this plane is always present, but a
-           genuine "no shapes" is said plainly, never rendered as a clean zero. -->
-      <div v-if="!hasShaped" class="planehero">
-        <p><b>No shaping pass has run on this scan.</b> The AI Frontier fills in when an AI shapes
-           a repo the deterministic scan couldn't read — attributing real call-sites the tool then
-           re-checks. Run <code>/drift-absorb</code> on the UNKNOWN repos to shape them, then
-           re-scan and they'll appear here, gate-validated.</p>
+      <!-- AI-RESEARCH tier: the record of the tool teaching itself — vendors it researched in the
+           wild, sunsets it found (sourced), verdicts needing a human. -->
+      <template v-if="hasResearch">
+        <div class="tierlead">
+          <b>The tool taught itself.</b> An AI pass looked up each detected-but-untracked vendor's own
+          deprecation docs — <b>{{ researchedCount }} researched</b>,
+          <b>{{ sunsetsFoundCount }} sunset{{ sunsetsFoundCount === 1 ? '' : 's' }} found</b> (each with a
+          fetched source — no invented dates), {{ needsHumanCount }} needing a human. Retirements flow
+          into the certified catalog; this is the record of the search.
+        </div>
+        <table id="panel">
+          <thead><tr><th>Vendor</th><th>Verdict</th><th>Retires</th><th>Source</th></tr></thead>
+          <tbody>
+            <tr class="row" v-for="(rv, ri) in researchList" :key="'rv' + ri">
+              <td>{{ rv.vendor }} <span class="op">{{ rv.host }}</span></td>
+              <td><span class="trk" :data-trk="rv.status === 'retiring' ? 'needs-human' : rv.status === 'current' ? 'tracked' : 'na'">{{ rv.status }}</span></td>
+              <td>{{ rv.date || '—' }}</td>
+              <td class="loc"><a v-if="safeUrl(rv.source_url)" :href="safeUrl(rv.source_url)" rel="noopener">source</a><template v-else>—</template></td>
+            </tr>
+          </tbody>
+        </table>
+      </template>
+      <!-- honest empty-state when NO AI pass ran: the plane is always present, said plainly. -->
+      <div v-if="!hasShaped && !hasResearch" class="planehero">
+        <p><b>No AI pass has run on this scan.</b> The AI Frontier fills in two ways: an AI
+           <b>researches</b> a detected-but-untracked vendor's retirement docs (untracked → tracked),
+           or <b>shapes</b> a repo the deterministic scan couldn't read. Run the research/absorb pass,
+           re-scan, and it lands here — gate-validated.</p>
       </div>
-      <template v-else>
+      <template v-if="hasShaped">
         <div class="tierlead">
           <b>Found by AI, re-checked by the tool.</b> These are real call-sites in code the tool
           couldn't read on its own — an AI pointed them out, and the tool then confirmed each one is

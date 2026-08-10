@@ -285,6 +285,54 @@ def _cmd_catalog_refresh(args) -> int:
     return 3 if result["specUnflagged"] else 0
 
 
+def _cmd_research(args) -> int:
+    """The research loop's deterministic half. Two modes:
+
+      research --state <dir>                 → print the QUEUED work-list (untracked API services)
+                                               as JSON — the input an AI research pass consumes.
+      research --state <dir> --apply v.json  → gate-validate a completed pass and write research.json
+                                               into the state (the AI-Frontier record). The gate: a
+                                               'retiring' verdict MUST carry a source_url + parseable
+                                               date — never an invented one. Zero tokens; the AI ran
+                                               elsewhere, this only validates + records what it found.
+    """
+    drift_path = os.path.join(args.state, "drift.json")
+    if not os.path.exists(drift_path):
+        print(f"research: no drift.json in {args.state} — run a scan first", file=sys.stderr)
+        return 3
+    with open(drift_path, encoding="utf-8") as fh:
+        drift = json.load(fh)
+    if not args.apply:
+        queued = sorted({e.get("domain") for e in drift.get("endpoints", [])
+                         if e.get("coverage") == "queued"})
+        print(json.dumps(queued, indent=2))
+        print(f"# {len(queued)} vendor(s) queued for research", file=sys.stderr)
+        return 0
+    with open(args.apply, encoding="utf-8") as fh:
+        payload = json.load(fh)
+    verdicts = payload.get("verdicts", payload) if isinstance(payload, dict) else payload
+    problems = []
+    for v in verdicts:
+        if v.get("status") == "retiring":
+            if not v.get("source_url"):
+                problems.append(f"{v.get('host')}: 'retiring' with no source_url")
+            if not v.get("date"):
+                problems.append(f"{v.get('host')}: 'retiring' with no date")
+    if problems:
+        print("research: GATE REJECTED — a retirement needs a fetched source + a real date:", file=sys.stderr)
+        for p in problems:
+            print("  •", p, file=sys.stderr)
+        return 3
+    record = {"checked": args.now, "researched": len(verdicts), "verdicts": verdicts}
+    with open(os.path.join(args.state, "research.json"), "w", encoding="utf-8") as fh:
+        json.dump(record, fh, indent=1)
+    n_ret = sum(1 for v in verdicts if v.get("status") == "retiring")
+    print(f"✓ research recorded: {len(verdicts)} verdict(s), {n_ret} sunset(s) found — written to "
+          f"{os.path.join(args.state, 'research.json')}")
+    print("  re-run `render`/`run` on this state to surface them in the AI Frontier plane.")
+    return 0
+
+
 def _cmd_verify(args) -> int:
     """Check a produced report against itself: do the tiles agree with the tables, does
     the page carry the data the JSON claims, is every row distinguishable?
@@ -1075,11 +1123,13 @@ def _cmd_render(args) -> int:
         return 2
     adhoc = _load("adhoc.json", required=False)
     leads = _load("leads.json", required=False)
+    research = _load("research.json", required=False)
     html = render_payload(payload, args.now, bundle=build_bundle(inv, audit, args.now),
-                          adhoc=adhoc, leads=leads)
+                          adhoc=adhoc, leads=leads, research=research)
     with open(os.path.join(args.state, "dashboard.html"), "w", encoding="utf-8") as fh:
         fh.write(html)
-    tiers = "certified" + (" + shaped" if adhoc else "") + (" + leads" if leads else "")
+    tiers = "certified" + (" + shaped" if adhoc else "") + (" + leads" if leads else "") \
+            + (" + research" if research else "")
     print(f"render: dashboard.html rewritten ({tiers})")
     return 0
 
@@ -1224,6 +1274,12 @@ def main(argv: list[str]) -> int:
     pv = sub.add_parser("verify")         # do the report's numbers agree with its data?
     pv.add_argument("--state", required=True)
     pv.set_defaults(func=_cmd_verify)
+
+    prs = sub.add_parser("research")      # list the queued work-list, or record a gate-validated pass
+    prs.add_argument("--state", required=True)
+    prs.add_argument("--apply")           # verdicts.json from an AI research pass
+    prs.add_argument("--now", default=None)
+    prs.set_defaults(func=_cmd_research)
 
     ppl = sub.add_parser("plan")          # resolve sources + report what WOULD scan
     ppl.add_argument("--root", action="append", required=True)

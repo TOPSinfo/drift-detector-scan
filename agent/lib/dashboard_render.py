@@ -270,10 +270,12 @@ def build_bundle(inventory: dict, audit: dict, now: str) -> dict:
 
 
 def render_dashboard(inventory: dict, audit: dict, now: str, *, diff: dict | None = None,
-                     gitlab_hosts=frozenset()) -> str:
-    """The cockpit: the drift report + the SBOM (CycloneDX/SPDX) + SARIF, one self-contained file."""
+                     gitlab_hosts=frozenset(), research: dict | None = None) -> str:
+    """The cockpit: the drift report + the SBOM (CycloneDX/SPDX) + SARIF, one self-contained file.
+    `research` (optional) is the AI-tier research record — what the research loop found — emitted as
+    its own blob so the certified drift-data stays byte-identical."""
     payload = build_payload(inventory, audit, diff=diff, gitlab_hosts=gitlab_hosts)
-    return render_payload(payload, now, bundle=build_bundle(inventory, audit, now))
+    return render_payload(payload, now, bundle=build_bundle(inventory, audit, now), research=research)
 
 
 def _blob_script(el_id: str, obj) -> str:
@@ -284,7 +286,8 @@ def _blob_script(el_id: str, obj) -> str:
 
 
 def render_payload(projection: dict, now: str, *, bundle: dict | None = None,
-                   adhoc: dict | None = None, leads: dict | None = None) -> str:
+                   adhoc: dict | None = None, leads: dict | None = None,
+                   research: dict | None = None) -> str:
     """Injector: CSS + the in-DOM Vue template + the data blobs + the vendored Vue runtime
     + the app skeleton. `now` is unused by the body (the page reads `projection["generated"]`,
     which `_build_projection` sets from the same `now` the caller audited with) — kept for
@@ -309,6 +312,8 @@ def render_payload(projection: dict, now: str, *, bundle: dict | None = None,
         p.append(_blob_script("adhoc-data", adhoc))
     if leads is not None:
         p.append(_blob_script("leads-data", leads))
+    if research is not None:
+        p.append(_blob_script("research-data", research))   # AI-tier: what the research loop found
     p += ["<script>" + VUE_SRC + "</script>",
           "<script>" + APP_JS_SRC + "</script>",
           "</body></html>"]
