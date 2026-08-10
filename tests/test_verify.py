@@ -194,7 +194,7 @@ def test_live_projection_parity_over_real_build_actions():
 # there is no live row to pull `set(row)` from the way `payload["actions"][0]` works below.
 # Endpoint fields: see _endpoints_of(); private fields: see _build_projection()'s private
 # loop; catalog fields: see catalog_coverage.py's record builder.
-_ENDPOINT_SAMPLE = {"repo", "domain", "vendor", "version", "classified", "file_count", "files"}
+_ENDPOINT_SAMPLE = {"repo", "domain", "vendor", "version", "classified", "hostClass", "file_count", "files"}
 _PRIVATE_SAMPLE = {"repo", "source", "kind", "via"}
 _CATALOG_SAMPLE = {"vendor", "callSites", "catalogEntries", "verdict", "reasons", "checked", "source"}
 

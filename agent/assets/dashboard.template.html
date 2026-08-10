@@ -124,7 +124,7 @@
             <div class="track"><div class="fill" :style="{width: b.pct + '%', background: b.color}"></div></div>
           </div>
         </div>
-        <p class="empty" v-else>No {{ tab === 'unknown' ? 'unclassified' : 'classified' }}
+        <p class="empty" v-else>No {{ tab === 'unknown' ? 'found-but-unaudited integration' : tab === 'excluded' ? 'excluded asset/library' : 'audited API' }}
           endpoints found<template v-if="scope"> for {{ repoLabelOf(scope) }}</template>.</p>
       </template>
       <!-- Supply Chain plane intro: the familiar SCA/CVE story, pointing at the SBOM/SARIF tabs. -->
@@ -237,8 +237,9 @@
               </template>
               <template v-else-if="mode === 'endpoints'">
                 <td>{{ row.repo }}</td>
-                <td>{{ row.domain }}</td>
-                <td>{{ row.vendor }}</td>
+                <td>{{ row.domain }}
+                  <span class="hc" :data-hc="row.hostClass">{{ hostLabel(row.hostClass) }}</span></td>
+                <td>{{ row.classified ? row.vendor : '—' }}</td>
                 <td>{{ row.version || '?' }}</td>
                 <td>{{ row.file_count }}</td>
               </template>

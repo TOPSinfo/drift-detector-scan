@@ -460,8 +460,11 @@ def test_dashboard_is_a_self_contained_vue_app():
     from the embedded blob. Tables/charts/deep-links are later tasks; this proves the shell."""
     from agent.lib import dashboard_render as dr
     html = dr.render_dashboard(_inv(), _audit([_cve(repo="web")]), "2026-07-15")
-    # single self-contained file: Vue inlined, no external fetch
-    assert "createApp" in html and "cdn" not in html.lower() and "unpkg" not in html.lower()
+    # single self-contained file: Vue inlined, no external fetch. (Check real CDN hosts, not the
+    # bare substring "cdn" — the hostClass name "asset-cdn" legitimately contains it.)
+    low = html.lower()
+    assert "createApp" in html
+    assert "unpkg" not in low and "cdnjs" not in low and "jsdelivr" not in low and "//cdn." not in low
     assert 'id="app"' in html                                  # the mount point
     assert "Vue" in html and len(html) > 80_000                # runtime is inlined
     # the trust anchor is intact
