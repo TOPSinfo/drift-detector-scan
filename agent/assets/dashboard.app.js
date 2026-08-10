@@ -145,6 +145,15 @@
       // pre-Vue _CLIENT_JS: actionsFor/endpointsFor/privateFor/catalogFor + the render()
       // mode map). "mode" mirrors the vanilla state.mode; "rows" mirrors calling the right
       // …For() and feeding it to the right renderX().
+      // the drift-plane content view's label follows the selected tile — "Retiring integrations"
+      // only fits the sunset tiles; APIs/Pending/Assets are current/found integrations, not retiring.
+      summaryTabLabel: function(){
+        if(this.plane !== "drift") return "Findings";
+        return {sunsets:"Retiring integrations", pastdue:"Retiring integrations",
+                apis:"Audited integrations", unknown:"Found · pending audit",
+                excluded:"Assets & libraries", private:"Private sources",
+                unaudited:"Unaudited vendors"}[this.tab] || "Integrations";
+      },
       mode: function(){
         var f = this.tab;
         if(f==="apis" || f==="unknown" || f==="excluded") return "endpoints";
