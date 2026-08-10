@@ -65,6 +65,25 @@ def is_ignored(host: str) -> bool:
     return any(host == s or host.endswith("." + s) for s in _IGNORE)
 
 
+# Test/placeholder domains that are never a real third-party integration.
+_PLACEHOLDER = ("example.com", "example.org", "example.net", "test.com", "localhost")
+
+
+def is_nonhost(host: str) -> bool:
+    """A genuine non-host: a URL-extraction artifact (empty / bare / raw IP / malformed labels) or a
+    test/placeholder domain. This is the ONLY drop the endpoint scan makes now — boilerplate hosts
+    (fonts, CDNs, schemas, doc links) are NO LONGER silently deleted; they flow through and
+    host_class buckets them (asset-cdn / reference / library), so "N non-integrations filtered" is a
+    VISIBLE count instead of a hidden subtraction ("cannot-see" != "clean")."""
+    if not host or "." not in host or host.replace(".", "").isdigit():   # empty / bare / raw IP
+        return True
+    labels = host.split(".")
+    if len(labels) < 2 or any(not _LABEL.match(lab) for lab in labels):  # extraction artifact
+        return True
+    h = host.lower()
+    return any(h == s or h.endswith("." + s) for s in _PLACEHOLDER)
+
+
 _HOSTCHAR = frozenset("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-")
 
 
