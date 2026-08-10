@@ -113,7 +113,8 @@
             {key:"sunsets",label:"Sunsets",n:c.sunsets},
             {key:"pastdue",label:"Past-due",n:c.pastDue,sev:"warn"},
             {key:"apis",label:"APIs",n:c.apis},
-            {key:"unknown",label:"Unknown",n:c.unknown},
+            {key:"unknown",label:"Pending audit",n:c.unknown},
+            {key:"excluded",label:"Assets",n:c.excluded},
             {key:"private",label:"Private",n:c.private},
             {key:"unaudited",label:"Unaudited",n:c.unaudited}]},
           {plane:"ai", title:"AI frontier", tiles:[
@@ -146,7 +147,7 @@
       // …For() and feeding it to the right renderX().
       mode: function(){
         var f = this.tab;
-        if(f==="apis" || f==="unknown") return "endpoints";
+        if(f==="apis" || f==="unknown" || f==="excluded") return "endpoints";
         if(f==="private") return "private";
         if(f==="unaudited") return "catalog";
         return "actions";
@@ -545,12 +546,22 @@
       },
       endpointsFor: function(){
         var f = this.tab, self = this;
-        return (this.DATA.endpoints || []).filter(function(e){
+        var rows = (this.DATA.endpoints || []).filter(function(e){
           if(!self.matchesRepo(e.repo)) return false;                  // global repo scope
           if(!self.matchesQ((e.repo || "") + " " + (e.domain || "") + " " + (e.vendor || ""))) return false;
-          if(f==="unknown") return !e.classified;
-          if(f==="apis")    return e.classified;
+          // "Pending audit" = found integrations we have not audited (NOT the asset/lib noise);
+          // "Assets" = the excluded non-integrations; "APIs" = the audited/catalogued ones.
+          if(f==="excluded") return !self.isIntegration(e.hostClass);
+          if(f==="unknown")  return self.isIntegration(e.hostClass) && !e.classified;
+          if(f==="apis")     return e.classified;
           return true;
+        });
+        // real API leads first, so a live integration never hides under the social/asset noise
+        var rank = {"api":0,"api-lead":1,"unclassified":2,"social-widget":3,"analytics":4,
+                    "asset-cdn":5,"vendored-lib":6,"boilerplate":7};
+        return rows.slice().sort(function(x,y){
+          var rx = rank[x.hostClass], ry = rank[y.hostClass];
+          return (rx==null?9:rx) - (ry==null?9:ry);
         });
       },
       privateFor: function(){
@@ -583,6 +594,15 @@
       // ---- row drill-down: inline-accordion, one flag per row (keyed by its position in
       // the current `rows`). Only actions/endpoints rows expand — private/catalog rows never
       // had a click handler in the vanilla engine either. ----
+      // A found integration (a third-party service the code calls) vs. an excluded non-integration
+      // (a bundled asset/library or a schema host). Mirrors host_class.is_integration on the server;
+      // the verify hostClass invariant keeps the two in agreement.
+      isIntegration: function(hc){ return !!hc && !{"asset-cdn":1,"vendored-lib":1,"boilerplate":1}[hc]; },
+      hostLabel: function(hc){
+        return {"api":"audited","api-lead":"API lead","unclassified":"pending audit",
+                "social-widget":"social","analytics":"analytics","asset-cdn":"asset/CDN",
+                "vendored-lib":"library","boilerplate":"schema"}[hc] || hc || "";
+      },
       onRowClick: function(idx){ if(this.mode==="actions" || this.mode==="endpoints") this.toggleRow(idx); },
       toggleRow: function(idx){ this.expanded[idx] = !this.expanded[idx]; },
 

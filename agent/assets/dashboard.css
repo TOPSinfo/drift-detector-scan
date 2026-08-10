@@ -31,6 +31,11 @@ a{color:var(--accent-2);text-decoration:none} a:hover{text-decoration:underline}
 .brand .meta{color:var(--muted);font-size:12.5px} .spacer{flex:1}
 .caps{display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin-right:8px}
 .cap{font-size:10px;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:2px 7px;background:var(--panel)}
+/* endpoint type badge — a found integration reads as a type ("API lead"/"social"), never "Unknown" */
+.hc{font-size:9px;letter-spacing:.05em;text-transform:uppercase;color:var(--muted);border:1px solid var(--line);
+  border-radius:5px;padding:1px 5px;margin-left:7px;white-space:nowrap;vertical-align:middle}
+.hc[data-hc="api-lead"]{color:var(--accent);border-color:color-mix(in oklab,var(--accent) 45%,var(--line))}
+.hc[data-hc="asset-cdn"],.hc[data-hc="vendored-lib"],.hc[data-hc="boilerplate"]{opacity:.55}
 .cap.hot{color:var(--accent);border-color:color-mix(in oklab,var(--accent) 40%,var(--line))}
 @container (max-width:720px){.caps{display:none}}
 .themebtn{appearance:none;background:var(--panel);border:1px solid var(--line);color:var(--muted);
