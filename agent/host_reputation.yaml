@@ -1,0 +1,90 @@
+# Deterministic host reputation — triages UNCATALOGUED egress hosts into a visible hostClass so the
+# cockpit can show found integrations as a SUCCESS (breadth is the value) and keep bundled
+# assets/libraries/schemas out of the integration count. It NEVER affects classified/vendor/dates.
+#
+# Hand-curated, reviewed data — NO imported blocklist. A public tool ships no third-party list's
+# licensing obligations (DDG Tracker Radar etc. are CC-BY-SA), and this set is small enough to own by
+# hand. New entries enter via review, same discipline as vendors.yaml.
+#
+# Keys are hostClass values. A dotted entry matches as a registrable-domain SUFFIX, so prefer a
+# SPECIFIC host (images.unsplash.com) when the bare domain (unsplash.com) has a real API worth surfacing.
+
+# ── Integration classes: SHOWN as found integrations ───────────────────────────────────────────────
+analytics:          # trackers / tag managers / session recorders — third-party services, still integrations
+  - connect.facebook.net
+  - static.hotjar.com
+  - google-analytics.com
+  - googletagmanager.com
+  - clarity.ms
+  - segment.com
+  - mixpanel.com
+  - fullstory.com
+  - hotjar.com
+social:             # share / embed / follow / messaging destinations
+  - wa.me
+  - whatsapp.com
+  - pinterest.com
+  - tiktok.com
+  - x.com
+  - twitter.com
+  - facebook.com
+  - instagram.com
+  - linkedin.com
+  - youtube.com
+  - youtu.be
+
+# ── Non-integration classes: EXCLUDED from the integration count (shown under "assets & libraries") ──
+asset-cdn:          # fonts, icons, images, generic static-asset CDNs — not a service the app calls
+  - fonts.googleapis.com
+  - fonts.gstatic.com
+  - gstatic.com
+  - fonts.bunny.net
+  - cdnjs.cloudflare.com
+  - bootstrapcdn.com
+  - jsdelivr.net
+  - unpkg.com
+  - kwcdn.com
+  - images.unsplash.com
+  - gravatar.com
+  - placehold.co
+  - placeholder.com
+  - via.placeholder.com
+  - picsum.photos
+  - flagcdn.com
+library:            # front-end libraries / UI kits the app bundles or links its own copy of
+  - keenthemes.com
+  - momentjs.com
+  - jquery.com
+  - jqueryui.com
+  - getbootstrap.com
+  - popper.js.org
+  - ckeditor.com
+  - cksource.com
+  - feathericons.com
+reference:          # schema / namespace / doc / code hosts — links & namespaces, never a runtime integration
+  - w3.org
+  - schema.org
+  - json-schema.org
+  - xmlsoap.org
+  - purl.org
+  - apache.org
+  - iso.org
+  - sitemaps.org
+  - gmpg.org
+  - github.com
+  - gitlab.com
+  - bitbucket.org
+  - php.net
+  - laravel.com
+  - laracasts.com
+  - symfony.com
+  - npmjs.com
+  - packagist.org
+  - getcomposer.org
+  - wordpress.org
+  - readthedocs.io
+  - mozilla.org
+  - nodejs.org
+  - python.org
+  - macromedia.com
+  - ebaystatic.com
