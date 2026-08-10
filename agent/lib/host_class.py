@@ -1,29 +1,34 @@
-"""Deterministic triage of UNCATALOGUED egress hosts into a hostClass.
+"""Deterministic triage of UNCATALOGUED egress hosts into a hostClass (the M1 classifier).
 
-Splits every host into an INTEGRATION class (a third-party service the code talks to — shown as a
-found integration; breadth is the value) or a NON-INTEGRATION class (a bundled library, a static
-asset/CDN, or a schema/doc reference — excluded from the integration count, shown separately). It
-NEVER sets classified/vendor/a date: catalogued vendors are handled upstream and always get `api`,
-so this is only ever asked about the *rest*.
+Turns the "wall of unknowns" into a ranked list: real API leads on top, noise bucketed but NEVER
+hidden. hostClass is orthogonal to vendor classification — nothing here sets classified/vendor/a
+date; catalogued vendors are handled upstream and always get `api`, so this is only ever asked
+about the *rest*.
 
-Reviewed reputation catalog first (hand-curated; no imported blocklist), then URL-shape +
-call-context heuristics. An unknown service errs toward being SHOWN (`unclassified`) — never hidden.
+Reviewed reputation catalog first (hand-curated; NO imported blocklist — see the plan's "Decision:
+no imported blocklist"), then URL-shape + call-context heuristics. An unknown host errs toward being
+SHOWN (`unclassified`), never hidden. A tracker that ships a real, versioned API (segment, mixpanel,
+…) is deliberately absent from the catalog so it stays attention-worthy rather than pre-buried.
 """
 from __future__ import annotations
 import os
 import re
 import yaml
 
-# The closed vocabulary. Integration classes surface as found integrations; the rest are excluded
-# from the integration count (still counted + shown under "assets & libraries").
-INTEGRATION_CLASSES = ("api", "api-lead", "analytics", "social", "unclassified")
-NON_INTEGRATION_CLASSES = ("asset-cdn", "library", "reference")
-ALL_CLASSES = INTEGRATION_CLASSES + NON_INTEGRATION_CLASSES
+# The closed vocabulary — one shared set across endpoints.py (write), dashboard_render.py
+# (project+count), verify.py (check) and the cockpit (group). No name drift.
+VOCAB = {"api", "api-lead", "social-widget", "asset-cdn", "analytics",
+         "vendored-lib", "boilerplate", "unclassified"}
+
+# Classes that are NOT third-party service integrations — bundled assets/libs and schema/doc hosts.
+# Everything else (api / api-lead / social-widget / analytics / unclassified) is a found integration
+# the cockpit surfaces; these three are still shown + counted, just outside the integration total.
+_NON_INTEGRATION = {"asset-cdn", "vendored-lib", "boilerplate"}
 
 _REPUTATION_FILE = os.path.join(os.path.dirname(os.path.dirname(__file__)), "host_reputation.yaml")
 _CACHE = None
 
-# share/messaging URL grammars (host-independent): these paths ARE the button, not an API call
+# share/messaging URL grammars (host-INDEPENDENT): these paths ARE the button, not an API call
 _SHARE_PATHS = re.compile(r"/(intent[/?]|share[/?]|pin/create|sharer|dialog/|tweet)", re.I)
 _API_LABEL = re.compile(r"(^|\.)api(\.|-|$)", re.I)
 _API_PATH = re.compile(r"/(v[0-9]+|rest|graphql|oauth|api)(/|$|\?)", re.I)
@@ -32,8 +37,8 @@ _ASSET_FILE_EXTS = {".css", ".scss", ".less"}
 
 
 def is_integration(host_class: str) -> bool:
-    """A found integration worth surfacing (vs. a bundled asset/library/schema)."""
-    return host_class in INTEGRATION_CLASSES
+    """A found third-party integration worth surfacing (vs. a bundled asset/library/schema host)."""
+    return host_class in VOCAB and host_class not in _NON_INTEGRATION
 
 
 def _load() -> dict:
@@ -64,7 +69,7 @@ def _reputation(host: str) -> str | None:
 
 def classify(host: str, *, url: str | None = None, in_call: bool = False,
              file_ext: str | None = None) -> str:
-    """Return the hostClass for an UNCATALOGUED host (one of ALL_CLASSES).
+    """Return the hostClass for an UNCATALOGUED host (always a member of VOCAB).
 
     `in_call` — the URL was matched inside an HTTP-client call (vs. an href/src/CSS url()).
     `file_ext` — the source file's extension (a `.css`/`.scss` origin biases toward a static asset).
@@ -75,7 +80,7 @@ def classify(host: str, *, url: str | None = None, in_call: bool = False,
     u = url or ""
     host = host or ""
     if _SHARE_PATHS.search(u):
-        return "social"
+        return "social-widget"
     if (file_ext or "").lower() in _ASSET_FILE_EXTS or _ASSET_EXT.search(u):
         return "asset-cdn"
     if in_call and (_API_LABEL.search(host) or _API_PATH.search(u)):

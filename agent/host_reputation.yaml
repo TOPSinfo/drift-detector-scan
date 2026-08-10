@@ -1,26 +1,26 @@
 # Deterministic host reputation — triages UNCATALOGUED egress hosts into a visible hostClass so the
 # cockpit can show found integrations as a SUCCESS (breadth is the value) and keep bundled
-# assets/libraries/schemas out of the integration count. It NEVER affects classified/vendor/dates.
+# assets/libraries/schemas out of the integration total. It NEVER affects classified/vendor/dates.
 #
-# Hand-curated, reviewed data — NO imported blocklist. A public tool ships no third-party list's
-# licensing obligations (DDG Tracker Radar etc. are CC-BY-SA), and this set is small enough to own by
-# hand. New entries enter via review, same discipline as vendors.yaml.
+# Hand-curated, reviewed data — NO imported blocklist (see the plan's "Decision: no imported
+# blocklist"): a public tool ships no third-party list's licensing obligations, and this set is small
+# enough to own by hand. A tracker that ALSO ships a real, versioned API (segment, mixpanel,
+# intercom, amplitude, …) is deliberately LEFT OUT so it stays attention-worthy (api-lead /
+# unclassified) rather than pre-buried in `analytics`. If one is ever tracked it goes in vendors.yaml.
 #
 # Keys are hostClass values. A dotted entry matches as a registrable-domain SUFFIX, so prefer a
 # SPECIFIC host (images.unsplash.com) when the bare domain (unsplash.com) has a real API worth surfacing.
 
-# ── Integration classes: SHOWN as found integrations ───────────────────────────────────────────────
-analytics:          # trackers / tag managers / session recorders — third-party services, still integrations
+# ── Integration classes: SHOWN as found integrations (analytics + social are still third-party) ─────
+analytics:          # PURE trackers / tag managers / session recorders (no first-class API we audit)
   - connect.facebook.net
   - static.hotjar.com
+  - hotjar.com
   - google-analytics.com
   - googletagmanager.com
   - clarity.ms
-  - segment.com
-  - mixpanel.com
   - fullstory.com
-  - hotjar.com
-social:             # share / embed / follow / messaging destinations
+social-widget:      # share / embed / follow / messaging destinations
   - wa.me
   - whatsapp.com
   - pinterest.com
@@ -33,7 +33,7 @@ social:             # share / embed / follow / messaging destinations
   - youtube.com
   - youtu.be
 
-# ── Non-integration classes: EXCLUDED from the integration count (shown under "assets & libraries") ──
+# ── Non-integration classes: EXCLUDED from the integration total (shown under "assets & libraries") ─
 asset-cdn:          # fonts, icons, images, generic static-asset CDNs — not a service the app calls
   - fonts.googleapis.com
   - fonts.gstatic.com
@@ -51,7 +51,7 @@ asset-cdn:          # fonts, icons, images, generic static-asset CDNs — not a 
   - via.placeholder.com
   - picsum.photos
   - flagcdn.com
-library:            # front-end libraries / UI kits the app bundles or links its own copy of
+vendored-lib:       # front-end libraries / UI kits the app bundles or links its own copy of
   - keenthemes.com
   - momentjs.com
   - jquery.com
@@ -61,7 +61,7 @@ library:            # front-end libraries / UI kits the app bundles or links its
   - ckeditor.com
   - cksource.com
   - feathericons.com
-reference:          # schema / namespace / doc / code hosts — links & namespaces, never a runtime integration
+boilerplate:        # schema / namespace / doc / code hosts — links & namespaces, never a runtime integration
   - w3.org
   - schema.org
   - json-schema.org
