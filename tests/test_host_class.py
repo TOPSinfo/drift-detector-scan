@@ -73,11 +73,20 @@ def test_analytics_vendors_with_real_apis_are_not_pre_buried():
         assert hc.classify(host) != "analytics", f"{host} pre-buried as analytics"
 
 
+def test_own_cloud_backends_are_own_infra():
+    """Account-specific cloud endpoints are the deployer's OWN infra, never a third-party you
+    integrate WITH — so they must not sit in 'pending audit' as if they were a vendor."""
+    assert hc.classify("tpncy-web-services.auth.us-east-1.amazoncognito.com") == "own-infra"
+    assert hc.classify("myapp.herokuapp.com") == "own-infra"
+    assert hc.classify("svc-x.cloudfunctions.net") == "own-infra"
+    assert not hc.is_integration("own-infra")
+
+
 def test_every_result_is_in_the_closed_vocabulary():
     """The vocab is a closed set shared by endpoints.py (write), dashboard_render.py
     (project+count), verify.py (check) and the cockpit (group). No name drift."""
     assert hc.VOCAB == {"api", "api-lead", "social-widget", "asset-cdn", "analytics",
-                        "vendored-lib", "boilerplate", "unclassified"}
+                        "vendored-lib", "boilerplate", "own-infra", "unclassified"}
     samples = [
         ("fonts.gstatic.com", {}), ("wa.me", {"url": "https://wa.me/1"}),
         ("api.stripe.com", {"url": "https://api.stripe.com/v1/charges", "in_call": True}),
