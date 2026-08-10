@@ -92,6 +92,12 @@ green. Then write the Phase-2 plan (brainstorm → writing-plans) for the Recon/
   `DRIFT_INTERNAL_IDS` deny-list). See `tests/test_no_internal_identifiers.py`.
 
 ## Repo state
-- Branch `feat/triage-first` off the canonical clean history (`463f8da`).
-- This branch carries: the M1 plan + this handover. No code yet — M1 is unbuilt.
-- The parallel "all-integrations demo flip" work is on a **different branch** — ignore it here.
+- `feat/triage-first`, merged to master 2026-08-10 — **M1 is COMPLETE + verify-green** (7 commits,
+  856 tests): the host-triage taxonomy that turns the "wall of unknowns" into typed found-integrations
+  (classifier + hand-curated reputation, hostClass on every endpoint, reframed counts, the verify
+  invariant, the incident regression, and the cockpit reframe).
+- The "all-integrations demo flip" the owner asked for turned out to BE M1 (the same host-triage), so
+  it was built ONCE here, not on a separate branch.
+- **Next = Phase 2**: the Recon + Shaper agents + the tool seam (see "Phase 2+" above). Start with
+  brainstorming → writing-plans for that, then subagent-driven-development. The AI plane now consumes
+  the small `api-lead` bucket M1 produces, never the raw wall.
