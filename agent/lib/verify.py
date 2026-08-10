@@ -463,7 +463,8 @@ def check_host_classes(payload: dict) -> None:
         raise Violation("hostclass-count",
                         f"counts.hostClasses={counts.get('hostClasses')} but the endpoints recount to {recount}")
     integrations = sum(1 for e in endpoints if host_class.is_integration(e.get("hostClass")))
-    derived = {"integrations": integrations,
+    derived = {"detected": len(endpoints),          # the headline: EVERY endpoint the engine read
+               "integrations": integrations,
                "excluded": len(endpoints) - integrations,
                "unknown": sum(1 for e in endpoints
                               if host_class.is_integration(e.get("hostClass")) and not e.get("classified"))}

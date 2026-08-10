@@ -110,10 +110,11 @@
             {key:"fixes",label:"Fixes",n:this.supplyFixes},
             {key:"eol",label:"EOL",n:c.eol}]},
           {plane:"drift", title:"Vendor drift", tiles:[
+            {key:"detected",label:"Detected",n:c.detected},
             {key:"sunsets",label:"Sunsets",n:c.sunsets},
             {key:"pastdue",label:"Past-due",n:c.pastDue,sev:"warn"},
-            {key:"apis",label:"APIs",n:c.apis},
-            {key:"unknown",label:"Pending audit",n:c.unknown},
+            {key:"apis",label:"Tracked",n:c.apis},
+            {key:"unknown",label:"Untracked",n:c.unknown},
             {key:"excluded",label:"Assets",n:c.excluded},
             {key:"private",label:"Private",n:c.private},
             {key:"unaudited",label:"Unaudited",n:c.unaudited}]},
@@ -149,14 +150,15 @@
       // only fits the sunset tiles; APIs/Pending/Assets are current/found integrations, not retiring.
       summaryTabLabel: function(){
         if(this.plane !== "drift") return "Findings";
-        return {sunsets:"Retiring integrations", pastdue:"Retiring integrations",
-                apis:"Audited integrations", unknown:"Found · pending audit",
+        return {detected:"Detected endpoints", sunsets:"Retiring integrations", pastdue:"Retiring integrations",
+                apis:"Tracked integrations", unknown:"Detected · not yet tracked",
                 excluded:"Assets & libraries", private:"Private sources",
-                unaudited:"Unaudited vendors"}[this.tab] || "Integrations";
+                unaudited:"Unaudited vendors"}[this.tab] || "Detected endpoints";
       },
       mode: function(){
         var f = this.tab;
-        if(this.plane==="drift" && !f) return "endpoints";   // drift opens on the integrations list
+        // drift opens on the COMPLETE detected-endpoint inventory; tiles filter that one list
+        if(this.plane==="drift" && (!f || f==="detected")) return "endpoints";
         if(f==="apis" || f==="unknown" || f==="excluded") return "endpoints";
         if(f==="private") return "private";
         if(f==="unaudited") return "catalog";
@@ -568,7 +570,7 @@
           if(!self.matchesQ((e.repo || "") + " " + (e.domain || "") + " " + (e.vendor || ""))) return false;
           // "Pending audit" = found integrations we have not audited (NOT the asset/lib noise);
           // "Assets" = the excluded non-integrations; "APIs" = the audited/catalogued ones.
-          if(!f)             return self.isIntegration(e.hostClass);   // default view = all found integrations
+          if(!f || f==="detected") return true;   // COMPLETE inventory — every endpoint, every kind
           if(f==="excluded") return !self.isIntegration(e.hostClass);
           if(f==="unknown")  return self.isIntegration(e.hostClass) && !e.classified;
           if(f==="apis")     return e.classified;
@@ -620,6 +622,37 @@
         return {"api":"audited","api-lead":"API lead","unclassified":"pending audit",
                 "social-widget":"social","analytics":"analytics","asset-cdn":"asset/CDN",
                 "vendored-lib":"library","boilerplate":"schema","own-infra":"own infra"}[hc] || hc || "";
+      },
+      // the 4 human buckets the inventory shows (the 9-way hostClass is the machine truth + filter)
+      kindOf: function(hc){
+        return {"api":"API integration","api-lead":"API integration",
+                "analytics":"Third-party service","social-widget":"Third-party service",
+                "asset-cdn":"Asset / library","vendored-lib":"Asset / library","boilerplate":"Asset / library",
+                "own-infra":"Your infrastructure"}[hc] || "Other";
+      },
+      // IDENTITY vs COVERAGE are separate: we identified the host; "tracked" only says whether its
+      // RETIREMENTS are in the catalog yet. "not yet tracked" is roadmap, never a failure — never green.
+      trackState: function(e){
+        if(e.classified) return "tracked";
+        return this.isIntegration(e.hostClass) ? "untracked" : "na";
+      },
+      trackLabel: function(e){
+        return {tracked:"tracked", untracked:"not yet tracked", na:"—"}[this.trackState(e)];
+      },
+      exportCsv: function(){
+        var self = this, head = ["repo","host","kind","recognized_as","tracking","call_sites","files"];
+        var rows = [head];
+        (this.DATA.endpoints || []).forEach(function(e){
+          rows.push([e.repo, e.domain, self.kindOf(e.hostClass), e.classified ? e.vendor : "",
+                     self.trackLabel(e), e.file_count, (e.files || []).join(" ")]);
+        });
+        var csv = rows.map(function(r){ return r.map(function(x){
+          x = String(x == null ? "" : x);
+          return /[",\n]/.test(x) ? '"' + x.replace(/"/g, '""') + '"' : x;
+        }).join(","); }).join("\n");
+        var blob = new Blob([csv], {type: "text/csv"}), url = URL.createObjectURL(blob);
+        var link = document.createElement("a");   // NOT `a`: that letter is reserved for accessor-coverage
+        link.href = url; link.download = "endpoints.csv"; link.click(); URL.revokeObjectURL(url);
       },
       onRowClick: function(idx){ if(this.mode==="actions" || this.mode==="endpoints") this.toggleRow(idx); },
       toggleRow: function(idx){ this.expanded[idx] = !this.expanded[idx]; },
