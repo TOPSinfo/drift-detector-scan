@@ -73,6 +73,15 @@ def test_analytics_vendors_with_real_apis_are_not_pre_buried():
         assert hc.classify(host) != "analytics", f"{host} pre-buried as analytics"
 
 
+def test_api_label_beats_a_reputationed_parent_domain():
+    """business-api.tiktok.com is the TikTok API, not a social widget, and api.cloudflare.com is a
+    lead, not a CDN — an api. label wins over the parent domain's reputation. A host with NO api
+    label (www.tiktok.com) still follows reputation."""
+    assert hc.classify("business-api.tiktok.com") == "api-lead"
+    assert hc.classify("api.cloudflare.com") == "api-lead"
+    assert hc.classify("www.tiktok.com") == "social-widget"
+
+
 def test_own_cloud_backends_are_own_infra():
     """Account-specific cloud endpoints are the deployer's OWN infra, never a third-party you
     integrate WITH — so they must not sit in 'pending audit' as if they were a vendor."""
