@@ -89,11 +89,12 @@ def test_projection_carries_hostclass_and_integration_counts():
     data = _blob(render_dashboard(_inv(eps), _audit([]), "2026-07-15"))
     assert all("hostClass" in e for e in data["endpoints"])
     c = data["counts"]
-    # found integrations = api + social + unclassified (3); excluded assets/libs = asset-cdn (1)
-    assert c["integrations"] == 3 and c["excluded"] == 1
+    # API integrations = api + unclassified (2); everything else — social widget + asset-cdn — is
+    # SHOWN but outside the integration total (excluded = 2). integrations + excluded == all endpoints.
+    assert c["integrations"] == 2 and c["excluded"] == 2
     assert c["integrations"] + c["excluded"] == len(data["endpoints"])
-    # 'unknown' now means found-but-unaudited integrations (zillow, wa.me) — NOT the asset noise
-    assert c["unknown"] == 2
+    # 'untracked' = uncatalogued API services only (zillow) — NOT the social widget, NOT the asset
+    assert c["unknown"] == 1
     assert c["hostClasses"]["asset-cdn"] == 1 and c["hostClasses"]["api"] == 1
     assert set(c["hostClasses"]) <= host_class.VOCAB
 

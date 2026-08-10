@@ -20,11 +20,12 @@ import yaml
 VOCAB = {"api", "api-lead", "social-widget", "asset-cdn", "analytics",
          "vendored-lib", "boilerplate", "own-infra", "unclassified"}
 
-# Classes that are NOT third-party service integrations — bundled assets/libs, schema/doc hosts, and
-# the repo's OWN infrastructure. Everything else (api / api-lead / social-widget / analytics /
-# unclassified) is a found integration the cockpit surfaces; these are shown + counted, just outside
-# the integration total.
-_NON_INTEGRATION = {"asset-cdn", "vendored-lib", "boilerplate", "own-infra"}
+# The API-integration audit backlog is api / api-lead / unclassified — the real services whose
+# retirements you track. Everything else is SHOWN in the inventory (typed by kindOf) but is not part
+# of that backlog: social-widget + analytics are third-party WIDGETS (a share embed / a tracker pixel,
+# not an API you version-track), and asset-cdn / vendored-lib / boilerplate / own-infra aren't
+# third-party services at all. So "integrations" == tracked + untracked, a clean partition.
+_NON_INTEGRATION = {"social-widget", "analytics", "asset-cdn", "vendored-lib", "boilerplate", "own-infra"}
 
 # Account-specific cloud endpoints — always the deployer's OWN infra, never a third party you
 # integrate WITH (the random subdomain is assigned to your cloud account). Serverless/PaaS hosts too.
