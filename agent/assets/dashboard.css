@@ -40,6 +40,8 @@ a{color:var(--accent-2);text-decoration:none} a:hover{text-decoration:underline}
 .trk{font-size:10px;letter-spacing:.03em;padding:1px 8px;border-radius:20px;white-space:nowrap;
   border:1px solid var(--line);color:var(--muted);background:var(--panel)}
 .trk[data-trk="tracked"]{color:#2e7d32;border-color:color-mix(in oklab,#2e7d32 45%,var(--line))}
+.trk[data-trk="queued"]{color:var(--accent);border-color:color-mix(in oklab,var(--accent) 40%,var(--line))}
+.trk[data-trk="needs-human"],.trk[data-trk="blocked"]{color:var(--sun,#b26a00);border-color:color-mix(in oklab,var(--sun,#b26a00) 40%,var(--line))}
 .trk[data-trk="na"]{opacity:.4}
 .cap.hot{color:var(--accent);border-color:color-mix(in oklab,var(--accent) 40%,var(--line))}
 @container (max-width:720px){.caps{display:none}}
