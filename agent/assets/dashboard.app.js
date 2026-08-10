@@ -440,7 +440,10 @@
       vendorBars: function(){
         var self = this, wantUnknown = this.tab === "unknown";
         var eps = (this.DATA.endpoints || []).filter(function(e){
-          return self.matchesRepo(e.repo) && !!e.classified === !wantUnknown;
+          if(!self.matchesRepo(e.repo)) return false;
+          // pending-audit hero shows only REAL found integrations we have not audited — never the
+          // excluded asset/lib/schema noise (that is what surfaced w3.org's 298 schema refs here).
+          return wantUnknown ? (self.isIntegration(e.hostClass) && !e.classified) : !!e.classified;
         });
         var byKey = {}, order = [];
         eps.forEach(function(e){
@@ -450,13 +453,14 @@
           g.hosts[e.domain || ""] = true;
           g.records += 1;
           g.files += (e.file_count || 0);
+          g.hc = e.hostClass;
         });
         var maxRecords = Math.max.apply(null, order.map(function(k){ return byKey[k].records; }).concat([1]));
         var palette = ["var(--accent)", "var(--sun)", "var(--accent-2)", "var(--high)", "var(--low)"];
         return order.map(function(k, i){
           var g = byKey[k], hostN = Object.keys(g.hosts).filter(Boolean).length;
           var sub = wantUnknown
-            ? (g.files + " call site" + (g.files === 1 ? "" : "s") + " — unclassified")
+            ? (g.files + " call site" + (g.files === 1 ? "" : "s") + " · " + self.hostLabel(g.hc))
             : (hostN + " host" + (hostN === 1 ? "" : "s") + " · " + g.records + " endpoint" + (g.records === 1 ? "" : "s"));
           return {
             name: k, sub: sub,

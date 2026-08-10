@@ -64,6 +64,8 @@ vendored-lib:       # front-end libraries / UI kits the app bundles or links its
   - datatables.net
   - fullcalendar.io
   - apexcharts.com
+  - tinymce.com
+  - select2.org
 boilerplate:        # schema / namespace / doc / code hosts — links & namespaces, never a runtime integration
   - w3.org
   - schema.org
