@@ -31,7 +31,10 @@ _NON_INTEGRATION = {"asset-cdn", "vendored-lib", "boilerplate", "own-infra"}
 _OWN_CLOUD = re.compile(
     r"(execute-api\.[a-z0-9-]+\.amazonaws\.com|amazoncognito\.com|appsync-api\.[a-z0-9-]+\.amazonaws\.com"
     r"|cloudfunctions\.net|\.run\.app|workers\.dev|azurewebsites\.net|herokuapp\.com|vercel\.app"
-    r"|netlify\.app|pages\.dev)$", re.I)
+    r"|netlify\.app|pages\.dev"
+    # dynamic-DNS providers — a host here is almost always a SELF-HOSTED box, not a third party you
+    # integrate with (generic rule, so a client's own dyn-dns host is caught without naming it).
+    r"|mooo\.com|no-ip\.(com|org|biz|info)|duckdns\.org|dyndns\.org|hopto\.org|ddns\.net|freedns\.org)$", re.I)
 
 _REPUTATION_FILE = os.path.join(os.path.dirname(os.path.dirname(__file__)), "host_reputation.yaml")
 _CACHE = None
