@@ -2,6 +2,31 @@
 
 All notable changes to the Drift Detector plugin. Dates are YYYY-MM-DD.
 
+## v0.15.0-beta — 2026-08-10
+
+**The complete integration inventory — and the tool teaches itself.**
+
+### Added
+
+- **Complete "Detected" inventory as the headline.** Every outbound endpoint the engine reads is
+  now one flat, exportable list (Host · Kind · recognized-as · call-sites · coverage), with a
+  `verify` invariant that the shown count equals the real endpoint count. Classification collapses
+  to four human buckets (API integration / third-party service / asset-library / your-infra) as a
+  filter, not tiles that fragment the list. Deficit language ("unclassified/unaudited") → inventory
+  language. Includes a client-side **Export endpoints** (CSV).
+- **Coverage lifecycle.** Each endpoint carries a `coverage` state — `tracked · queued ·
+  needs-human · blocked · na` — that `verify` proves partitions the total. "Untracked" is now a
+  *resolving queue*, not a dead-end.
+- **`/drift-research` — the self-teaching loop.** For each `queued` (detected-but-uncatalogued) API
+  service, an AI reads the vendor's own deprecation docs in the wild and returns a **sourced**
+  verdict; the deterministic `research` command gates it (a retirement's date must appear *verbatim*
+  in its fetched excerpt — no invented or inferred dates) and records it. The **AI Frontier** plane
+  now shows what the tool taught itself (vendors researched, sunsets found, sourced).
+- **Own-infra detection.** Account-cloud endpoints (Cognito/API-Gateway/serverless), dynamic-DNS
+  hosts, and multi-subdomain own domains are recognized as *your* infrastructure, not vendors.
+- **Attestation provenance + TTL.** Attestations record `by: human | ai-research`; an AI "current"
+  is surfaced distinctly and expires under the existing 90-day re-check TTL.
+
 ## v0.13.0-beta — 2026-07-21
 
 **See what's already broken — and a charts view.**
