@@ -25,104 +25,74 @@
 #   • Attestations go STALE (see shapes/catalog verdicts). Re-checking means re-fetching
 #     the page and moving the date, not editing this line.
 #   • A vendor absent from this file is UNAUDITED even if it has catalog entries.
-
 - vendor: Amazon SP-API
-  checked: "2026-07-20"
+  checked: '2026-07-20'
   source: https://developer-docs.amazon/sp-api/docs/sp-api-deprecations
-  note: >-
-    SP-API Deprecation Schedule, the vendor's canonical table. Reconciled in full: 8 of
-    the 13 listed retirements were staged; the remainder (Authorization v1, Data Kiosk
-    dataset) do not appear in any scanned repo. Two entries are family-scoped because
-    Amazon names an operation subset without enumerating it.
-
+  note: 'SP-API Deprecation Schedule, the vendor''s canonical table. Reconciled in full: 8 of the 13 listed retirements were staged; the remainder (Authorization v1, Data Kiosk dataset) do not appear in
+    any scanned repo. Two entries are family-scoped because Amazon names an operation subset without enumerating it.'
 - vendor: eBay
-  checked: "2026-07-29"
+  checked: '2026-07-29'
   source: https://www.edp.ebay.com/rss/api-deprecation
-  note: >-
-    Reconciled against eBay's structured deprecation RSS (canonical
-    developer.ebay.com/rss/api-deprecation returns 403 to non-browser clients; the
-    www.edp.ebay.com mirror serves the identical feed and is what was fetched).
-    2026-07-29 re-fetch: all 13 current feed items reviewed — the monthly catalog-check
-    stage flagged GetAdFormatLeads (decommission 2026-09-21) as NEW, absorbed via the
-    gate the same session; diff now reports 0 new / 0 changed, 9 dated items covered.
-    Earlier 2026-07-20 pass added 7 method-scoped retirements and independently
-    confirmed GetCategoryFeatures. STILL OPEN: Merchandising, Return Management and
-    Business Policies Management (+ Trading notification item) are whole-API/TBD
-    deprecations with no host or operation scope we could verify — NOT in the catalog.
-
+  note: "Reconciled against eBay's structured deprecation RSS (canonical developer.ebay.com/rss/api-deprecation returns 403 to non-browser clients; the www.edp.ebay.com mirror serves the identical feed\
+    \ and is what was fetched). 2026-07-29 re-fetch: all 13 current feed items reviewed \u2014 the monthly catalog-check stage flagged GetAdFormatLeads (decommission 2026-09-21) as NEW, absorbed via the\
+    \ gate the same session; diff now reports 0 new / 0 changed, 9 dated items covered. Earlier 2026-07-20 pass added 7 method-scoped retirements and independently confirmed GetCategoryFeatures. STILL OPEN:\
+    \ Merchandising, Return Management and Business Policies Management (+ Trading notification item) are whole-API/TBD deprecations with no host or operation scope we could verify \u2014 NOT in the catalog."
 - vendor: Shopify
-  checked: "2026-07-21"
+  checked: '2026-07-21'
   source: https://shopify.dev/docs/api/usage/versioning
-  note: >-
-    Shopify retirements are COMPUTED, not curated: the versioning page publishes a
-    rule (a version is accessible for 12 months + 15 days from its calendar release),
-    verified this session against all 7 rows of the published support table. So every
-    detected version is dated by agent/lib/version_lifecycle without a per-version
-    catalog entry, and the coverage cannot go stale as new quarters ship. Note Shopify
-    "falls forward" — a retired version is served by the oldest accessible version, not
-    a 4xx, so an out-of-date version is silent behavioural drift.
-
+  note: "Shopify retirements are COMPUTED, not curated: the versioning page publishes a rule (a version is accessible for 12 months + 15 days from its calendar release), verified this session against all\
+    \ 7 rows of the published support table. So every detected version is dated by agent/lib/version_lifecycle without a per-version catalog entry, and the coverage cannot go stale as new quarters ship.\
+    \ Note Shopify \"falls forward\" \u2014 a retired version is served by the oldest accessible version, not a 4xx, so an out-of-date version is silent behavioural drift."
 - vendor: Walmart
-  checked: "2026-07-21"
+  checked: '2026-07-21'
   source: https://developer.walmart.com/us-marketplace/docs/walmart-marketplace-api-deprecation-guide
-  note: >-
-    Reconciled against Walmart's deprecation guide. 6 endpoints with both a path and a
-    date were catalogued (path-scoped). NOT catalogued, because they lack a path or a
-    parseable date: Price management (no endpoint path; sunset "2026"), and the Get /
-    Confirm / Print / Cancel carrier-rate-quote operations (endpoints not specified in
-    the guide). Recorded here rather than invented.
-
+  note: 'Reconciled against Walmart''s deprecation guide. 6 endpoints with both a path and a date were catalogued (path-scoped). NOT catalogued, because they lack a path or a parseable date: Price management
+    (no endpoint path; sunset "2026"), and the Get / Confirm / Print / Cancel carrier-rate-quote operations (endpoints not specified in the guide). Recorded here rather than invented.'
 - vendor: Microsoft Graph
-  checked: "2026-07-28"
+  checked: '2026-07-28'
   source: https://learn.microsoft.com/en-us/graph/versioning-and-support
-  note: >-
-    Fetched Microsoft Graph's canonical deprecation-policy page this session. It states
-    verbatim: "Currently, no versions of Microsoft Graph are deprecated or unsupported."
-    v1.0 (graph.microsoft.com/v1.0 — what marketplacehub calls for Socialite login + Azure
-    service) is the current GA version, nothing retiring. Individual GA APIs carry 24
-    months' notice via the changelog (developer.microsoft.com/graph/changelog); none of
-    the retiring surfaces (Azure AD Graph on graph.windows.net, EWS, the Security legacy
-    Alerts API) are on graph.microsoft.com, so marketplacehub's usage is unaffected.
-
+  note: "Fetched Microsoft Graph's canonical deprecation-policy page this session. It states verbatim: \"Currently, no versions of Microsoft Graph are deprecated or unsupported.\" v1.0 (graph.microsoft.com/v1.0\
+    \ \u2014 what marketplacehub calls for Socialite login + Azure service) is the current GA version, nothing retiring. Individual GA APIs carry 24 months' notice via the changelog (developer.microsoft.com/graph/changelog);\
+    \ none of the retiring surfaces (Azure AD Graph on graph.windows.net, EWS, the Security legacy Alerts API) are on graph.microsoft.com, so marketplacehub's usage is unaffected."
 - vendor: Keepa
   checked: '2026-08-10'
   source: https://github.com/keepacom/api_backend/releases
-  note: 'AI web-research pass: active API, no announced retirement/sunset found. Keepa''s official api_backend release notes
-    (latest release 2.05, July 25, 2026) show an actively maintained JSON REST API; changes are field-level deprecations/removals
-    (e.g. ''mate'
+  note: 'AI web-research pass: active API, no announced retirement/sunset found. Keepa''s official api_backend release notes (latest release 2.05, July 25, 2026) show an actively maintained JSON REST API;
+    changes are field-level deprecations/removals (e.g. ''mate'
+  by: ai-research
 - vendor: PrintNode
   checked: '2026-08-10'
   source: https://www.printnode.com/en/docs/api/curl
-  note: 'AI web-research pass: active API, no announced retirement/sunset found. api.printnode.com is PrintNode''s REST cloud-printing
-    API that developers call directly. I fetched the official PrintNode API reference (version 3.0.0), which shows an actively
-    main'
+  note: 'AI web-research pass: active API, no announced retirement/sunset found. api.printnode.com is PrintNode''s REST cloud-printing API that developers call directly. I fetched the official PrintNode
+    API reference (version 3.0.0), which shows an actively main'
+  by: ai-research
 - vendor: BlueCart API
   checked: '2026-08-10'
   source: https://trajectdata.com/ecommerce/blue-cart-api/
-  note: 'AI web-research pass: active API, no announced retirement/sunset found. Fetched the vendor''s own product page, which
-    confirms BlueCart is an active, developer-integrated Walmart Product Data API with no deprecation, sunset, or version
-    end-of-life notic'
+  note: 'AI web-research pass: active API, no announced retirement/sunset found. Fetched the vendor''s own product page, which confirms BlueCart is an active, developer-integrated Walmart Product Data API
+    with no deprecation, sunset, or version end-of-life notic'
+  by: ai-research
 - vendor: Seller Snap
   checked: '2026-08-10'
   source: https://api.sellersnap.io
-  note: "AI web-research pass: active API, no announced retirement/sunset found. api.sellersnap.io returns a live 302 redirect\
-    \ to login.sellersnap.io \u2014 an active, authenticated application API backend for Seller Snap. No public developer\
-    \ docs, versioned API cha"
+  note: "AI web-research pass: active API, no announced retirement/sunset found. api.sellersnap.io returns a live 302 redirect to login.sellersnap.io \u2014 an active, authenticated application API backend\
+    \ for Seller Snap. No public developer docs, versioned API cha"
+  by: ai-research
 - vendor: TikTok Business API
   checked: '2026-08-10'
   source: https://github.com/tiktok/tiktok-business-api-sdk/blob/main/Changelog.md
-  note: 'AI web-research pass: active API, no announced retirement/sunset found. business-api.tiktok.com is the callable host
-    for TikTok''s API for Business (Marketing API), currently on v1.3. The official tiktok-org SDK changelog I fetched shows
-    only active dev'
+  note: 'AI web-research pass: active API, no announced retirement/sunset found. business-api.tiktok.com is the callable host for TikTok''s API for Business (Marketing API), currently on v1.3. The official
+    tiktok-org SDK changelog I fetched shows only active dev'
+  by: ai-research
 - vendor: OpenStreetMap
   checked: '2026-08-10'
   source: https://wiki.openstreetmap.org/wiki/API_v0.6
-  note: 'AI web-research pass: active API, no announced retirement/sunset found. osm.org is OpenStreetMap, whose editing API
-    (v0.6, a real callable REST API) has been the current version since April 2009. The official wiki API v0.6 page states
-    it is the current'
+  note: 'AI web-research pass: active API, no announced retirement/sunset found. osm.org is OpenStreetMap, whose editing API (v0.6, a real callable REST API) has been the current version since April 2009.
+    The official wiki API v0.6 page states it is the current'
+  by: ai-research
 - vendor: Vimeo Player
   checked: '2026-08-10'
   source: https://github.com/vimeo/player.js
-  note: 'AI web-research pass: active API, no announced retirement/sunset found. player.vimeo.com hosts Vimeo''s Player SDK
-    (player.vimeo.com/api/player.js) and the embed iframe player, a callable JS integration surface. The vendor-owned vimeo/player.js
-    repo REA'
+  note: 'AI web-research pass: active API, no announced retirement/sunset found. player.vimeo.com hosts Vimeo''s Player SDK (player.vimeo.com/api/player.js) and the embed iframe player, a callable JS integration
+    surface. The vendor-owned vimeo/player.js repo REA'
+  by: ai-research

@@ -67,11 +67,18 @@ This refuses any `retiring` verdict lacking a source + date, then writes `resear
 
 ## 4 · Absorb the retirements (queued → tracked)
 
-For each **`retiring`** verdict, this is where "the tool taught itself" becomes permanent. Add the vendor to the detection catalog and stage its sunset, then let the gate re-check it against the repo:
+This is where "the tool taught itself" becomes permanent. In every case, add the vendor to detection
+first: `{ vendor: <Name>, techKey: api:<slug>, domains: [<host>] }` in `agent/vendors.yaml`. Then:
 
-- Add `{ vendor: <Name>, techKey: api:<slug>, domains: [<host>] }` to `agent/vendors.yaml` (detection).
-- Stage `sunsets.yaml` in a staging dir: `{ vendor: <Name>, domain: <host>, retires: "<date>", source: <url>, note: <what retires> }`.
-- Attest it: `{ vendor: <Name>, checked: "<today>", source: <url>, note: <verdict> }`.
+- **`retiring`** → stage `sunsets.yaml` `{ vendor: <Name>, domain: <host>, retires: "<date>", source: <url>, note: <what retires> }` and run `absorb` (below). The gate re-checks it against the repo.
+- **`current`** → write an attestation so it reads *tracked · current* (not merely detected):
+  `{ vendor: <Name>, checked: "<today>", source: <url>, by: ai-research, note: <verdict> }`.
+  The **`by: ai-research`** is load-bearing: an AI "no retirement found" is weaker than a human's (nobody re-checks green), so it's shown distinctly and expires under the 90-day TTL — re-run this command to refresh it.
+- **`not-an-api`** → the host is a link/storefront, not an integration; leave it out of the vendor catalog.
+
+```bash
+"$SCAN" absorb --staged <staging-dir> --repo "$F" --now "$(date +%F)"   # for the retiring entries
+```
 
 ```bash
 "$SCAN" absorb --staged <staging-dir> --repo "$F" --now "$(date +%F)"
