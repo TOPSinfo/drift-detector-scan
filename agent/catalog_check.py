@@ -35,6 +35,24 @@ def _default_fetch(url: str) -> str:
         return r.read().decode("utf-8", "replace")
 
 
+def stale_attestations(attestations=None, now: str | None = None, stale_days: int | None = None) -> list:
+    """Every attestation past its freshness TTL — the re-research work-list. An attestation nobody
+    re-checked in `stale_days` (default 90) reverts toward UNAUDITED; a vendor that was reconciled
+    once and then forgotten is no better than never-checked. Surfacing these fleet-wide is what keeps
+    a batch `research --vendors` pass from being a one-off that quietly rots. Zero network — pure
+    date arithmetic on the attestation file."""
+    attestations = attestations if attestations is not None else catalog_coverage.load_attestations()
+    kw = {} if stale_days is None else {"stale_days": stale_days}
+    out = []
+    for vendor in sorted(attestations):
+        verdict, _reasons, checked = catalog_coverage.verdict_for(vendor, attestations, now, **kw)
+        if verdict == "STALE":
+            att = attestations.get(vendor) or {}
+            out.append({"vendor": vendor, "kind": "stale-attestation",
+                        "checked": checked, "by": att.get("by", "human")})
+    return out
+
+
 def check_all(*, fetch=None, catalog=None, attestations=None, now: str | None = None) -> list:
     fetch = fetch or _default_fetch
     catalog = catalog if catalog is not None else load_sunsets()
@@ -59,12 +77,15 @@ def check_all(*, fetch=None, catalog=None, attestations=None, now: str | None = 
             verdict, _reasons, checked = catalog_coverage.verdict_for(vendor, attestations, now)
             rec["attestation"] = {"verdict": verdict, "checked": checked}
         out.append(rec)
+    # Fleet-wide staleness: every attestation past its TTL is re-research work (needs `now`).
+    if now:
+        out.extend(stale_attestations(attestations, now))
     return out
 
 
 def needs_attention(report: list) -> bool:
-    """True if any vendor has a new/changed retirement, rule drift, or an unreachable
-    source — anything a human should act on."""
+    """True if any vendor has a new/changed retirement, rule drift, an unreachable source, or a
+    STALE attestation — anything a human should act on."""
     for r in report:
         if r.get("error"):
             return True
@@ -72,12 +93,17 @@ def needs_attention(report: list) -> bool:
             return True
         if r.get("kind") == "rule" and r.get("drift"):
             return True
+        if r.get("kind") == "stale-attestation":
+            return True
     return False
 
 
 def render(report: list) -> str:
     L = ["catalog-check · re-checking vendor sources against our catalog", ""]
+    stale = [r for r in report if r.get("kind") == "stale-attestation"]
     for r in report:
+        if r.get("kind") == "stale-attestation":
+            continue                          # rendered as their own section below
         att = r.get("attestation") or {}
         head = f"  {r['vendor']}"
         if att:
@@ -111,6 +137,14 @@ def render(report: list) -> str:
     L.append("")
     for vendor, how in UNAUTOMATED.items():
         L.append(f"  {vendor}: not auto-checked — {how}")
+    if stale:
+        L.append("")
+        L.append(f"  ⏳ {len(stale)} attestation(s) past the freshness TTL — re-research these "
+                 f"(they've reverted toward UNAUDITED):")
+        for r in stale:
+            L.append(f"        {r['vendor']} — last checked {r['checked'] or 'never'} (by {r['by']})")
+        names = ",".join(r["vendor"] for r in stale)
+        L.append(f"    → re-run: drift-scan research --vendors \"{names}\"  (then --apply --attest)")
     L.append("")
     L.append("Nothing was written. Stage any change and run `drift-scan absorb`.")
     return "\n".join(L)
