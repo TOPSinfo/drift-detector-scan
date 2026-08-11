@@ -21,7 +21,3 @@ Contents:
 
 The scan reads `config/drift.yml` + `catalog/`, scans the fleet, and commits `state/` back
 here. A run's report is browsable at `state/drift.md`.
-
-> An internal-GitLab-runner path (never sending code outside your network) is also possible —
-> the plugin ships a `Dockerfile` + `docs/CONTAINER.md`. Use that when a client's code can't
-> touch GitHub's infrastructure.

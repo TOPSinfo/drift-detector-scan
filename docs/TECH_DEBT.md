@@ -222,9 +222,11 @@ merging regresses the scan job to `contents: write` (it could rewrite the scanne
 portable tool to this deployment's private state (which a future reimplementation would want kept
 separate). The genuine simplification is **one host (GitLab), two repos** — not one repo.
 
-**Where it plugs in.** The container is already built + tested for this (`docs/CONTAINER.md`,
-`.github/workflows/container.yml`, `tests/test_container.py`, pinned to `bin/drift-scan`'s engine
-version). Port `.github/workflows/scan.yml` → a GitLab `.gitlab-ci.yml` scheduled job; publish the
+**Where it plugs in.** A no-AI container image once carried this (`Dockerfile`, `docs/CONTAINER.md`,
+`.github/workflows/container.yml`, `tests/test_container.py`) — **removed in v0.15.1-beta** when the
+tool went plugin-only, but **recoverable from git** (revert commit removing GHCR) if this GitLab-runner
+path is revived; it was pinned to `bin/drift-scan`'s engine version and would need a re-pin on revival.
+Port `.github/workflows/scan.yml` → a GitLab `.gitlab-ci.yml` scheduled job; publish the
 Cockpit via GitLab Pages from `drift-ops`; set `PUBLISH_PAGES=false` and retire the GitHub Pages job.
 Cheap tightening while there: gitignore `audit.json` / `chart.html` / `rules.generated.yaml` in
 `drift-ops` (derived artifacts, ~30% of per-run state churn).
