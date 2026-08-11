@@ -5,8 +5,8 @@
 # on THIS project — the key lives only in GitLab CI/CD settings, NEVER in this file.
 #
 # Cadence is a *pipeline schedule* (Build → Pipeline schedules), created by onboard; the rules below
-# make the job fire only on scheduled or manual (web) runs, never on every push. Placeholder
-# __FLEET__ is filled in by onboard.
+# make the job fire only on scheduled or manual (web) runs, never on every push. The scan target
+# is filled in by onboard.
 drift-detector:
   image: node:20
   rules:
