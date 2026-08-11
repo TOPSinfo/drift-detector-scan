@@ -2,6 +2,35 @@
 
 All notable changes to the Drift Detector plugin. Dates are YYYY-MM-DD.
 
+## v0.15.1-beta — 2026-08-11
+
+**The plugin runs its own engine, headless-ready — and the PyPI channel is gone.**
+
+### Fixed
+
+- **The plugin now always runs the engine it ships.** `/drift-detector` previously preferred a
+  `uvx --from drift-detector-scan` PyPI package, which had drifted onto a separate version line and
+  silently ran a *stale* engine — producing dashboards that FAILED this plugin's own `verify` (e.g.
+  `sqs.*.amazonaws.com → hostClass None`). The runner now resolves the bundled `bin/drift-scan`
+  first and only that, guaranteeing engine == orchestration == verify. A regression test in
+  `tests/test_runner.py` asserts the `uvx --from` runner can never come back.
+- **Headless / `-p` runs complete unattended.** In print mode with sources already given, the
+  command skips the interactive plan-approval + report-sharing gates and scans local-only, so
+  `claude -p "/drift-detector <repos>"` runs to a verified report in CI.
+
+### Removed
+
+- **The PyPI distribution channel.** `pyproject.toml`, the `publish` workflow, and
+  `docs/PUBLISHING.md` are gone — the plugin is the product, and it ships its own self-provisioning
+  engine (`bin/drift-scan`: a venv from `requirements-plugin.txt` + the pinned ast-grep binary). No
+  `uvx`/`pipx` install path, one fewer CI workflow, no version-skew surface. (The GHCR container —
+  the separate no-AI CI runner — is unaffected.)
+
+### Added
+
+- **Dailymotion + Esri ArcGIS sunsets** folded from the local research overlay into the committed
+  catalog, so a fresh clone carries them (each sourced + dated, entered via the absorb gate).
+
 ## v0.15.0-beta — 2026-08-10
 
 **The complete integration inventory — and the tool teaches itself.**

@@ -1,7 +1,7 @@
 """Guards the runner (`bin/drift-scan`), the intake doctrine (`docs/drift-absorb.md`), and the
 Claude-plugin surface (restored as the primary product in the AI-driven pivot). The runner's
 engine pin + subcommand dispatch, the absorb gate's guardrails, and the plugin's rewiring
-(persistent catalog + uvx runner + quarantined AI leads) are all load-bearing."""
+(persistent catalog + the bundled engine + quarantined AI leads) are all load-bearing."""
 import os
 import stat
 from pathlib import Path
@@ -70,8 +70,9 @@ def test_absorb_doctrine_present_and_states_its_guardrails():
 
 def test_plugin_scaffolding_present_and_wired():
     """The Claude-plugin surface is the primary product again (the AI-driven pivot). Validate it's
-    present AND correctly rewired: persistent local catalog + the published package as the runner +
-    the AI cross-check kept quarantined (leads, separate artifact, `retired` a tri-state not a date)."""
+    present AND correctly rewired: persistent local catalog + the BUNDLED engine as the runner (never
+    a PyPI/uvx package) + the AI cross-check kept quarantined (leads, separate artifact, `retired` a
+    tri-state not a date)."""
     import json
     pj = _ROOT / ".claude-plugin" / "plugin.json"
     mj = _ROOT / ".claude-plugin" / "marketplace.json"
@@ -80,9 +81,12 @@ def test_plugin_scaffolding_present_and_wired():
     for rel in plugin.get("commands", []):                       # every listed command must exist
         assert (_ROOT / rel.lstrip("./")).exists(), f"missing command file: {rel}"
     main = (_ROOT / "commands" / "drift-detector.md").read_text()
-    # the two things the rewiring added: persistent catalog (so absorb survives upgrades) + uvx runner
+    # the two things the rewiring added: persistent catalog (so absorb survives upgrades) + the
+    # BUNDLED engine. The plugin runs its OWN bin/drift-scan, never a PyPI/uvx package — that path
+    # once silently ran a divergent published version that failed this plugin's own `verify`.
     assert 'DRIFT_CATALOG_DIR="${DRIFT_CATALOG_DIR:-$HOME/.drift/catalog}"' in main
-    assert "uvx --from drift-detector-scan drift-scan" in main
+    assert 'SCAN="${CLAUDE_PLUGIN_ROOT:-}/bin/drift-scan"' in main
+    assert "uvx --from" not in main, "the PyPI/uvx runner must never come back — it causes engine/verify skew"
     # the firewall, enforced in the promptfile: AI output is leads in a SEPARATE artifact, and a
     # lead's `retired` is a tri-state — never a date (a date is a certified-tier claim only).
     assert "AI · unverified" in main and "probabilistic.html" in main

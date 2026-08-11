@@ -43,8 +43,8 @@ schedule for fleets — filing a ticket per problem in the repo that has it.)*
 | **SARIF** | A standard file format for code-scan results (GitHub code-scanning and VS Code read it). |
 | **the Cockpit** | The interactive dashboard the tool publishes each run. |
 
-- **How you run it:** a **Claude Code plugin** (the main way) · a standalone **CLI** (`uvx`/`pipx`,
-  no clone) · or **headless on a schedule** for fleets — no server to operate.
+- **How you run it:** a **Claude Code plugin** (the main way) · a standalone **CLI** (clone & run —
+  `bin/drift-scan` self-provisions) · or **headless on a schedule** for fleets — no server to operate.
 - **What it's made of:** the deterministic core is Python (stdlib + PyYAML) + the **ast-grep**
   engine — **zero AI tokens**; the AI plane (in the plugin) adds *leads*, kept strictly separate.
 - **Trustworthy by construction:** same inputs → identical output; every certified report is
@@ -68,8 +68,9 @@ Install the plugin, point it at a folder, and Claude runs the whole thing — se
 One command runs **all three planes** — CVE/EOL and vendor-API sunsets (certified) plus an AI
 cross-check (leads) — then opens the **Cockpit** alongside a separate **AI · unverified** view.
 Anything Claude learns about how a new integration is shaped persists to `~/.drift/catalog` and
-makes every later run smarter. *(Needs [`uv`](https://docs.astral.sh/uv/); the plugin pulls the scan
-engine from PyPI — nothing else to install.)*
+makes every later run smarter. *(Needs [`uv`](https://docs.astral.sh/uv/) or Python 3.11+ with venv;
+the plugin provisions its own venv and fetches the pinned ast-grep engine on first run — nothing else
+to install.)*
 
 ---
 
@@ -78,17 +79,8 @@ engine from PyPI — nothing else to install.)*
 Point it at any folder — a single project or a directory of many. **No token, no config, no
 server**; the only network call is the audit step (to public CVE/EOL databases).
 
-**Install-free** — with [uv](https://docs.astral.sh/uv/) (or `pipx`), no clone needed:
-
-```
-uvx --from drift-detector-scan drift-scan run --root ~/code/my-project --state /tmp/out --now $(date +%F)
-# or:  pipx install drift-detector-scan   →   drift-scan run --root .
-```
-
-The scan engine (ast-grep) comes along as a pinned dependency — nothing else to install. (The
-command is `drift-scan`; the PyPI package is [`drift-detector-scan`](https://pypi.org/project/drift-detector-scan/).)
-
-**Or clone and run** — `bin/drift-scan` provisions its own Python venv + the engine on first run:
+**Clone and run** — `bin/drift-scan` provisions its own Python venv + the pinned ast-grep engine on
+first run (needs [uv](https://docs.astral.sh/uv/) or Python 3.11+ with venv — nothing else):
 
 ```
 git clone https://github.com/TOPSinfo/drift-detector-scan && cd drift-detector-scan
@@ -110,8 +102,8 @@ drift-scan clean --state /tmp/out # just one run's output
 ```
 
 <p align="center">
-  <img src="docs/screenshots/cli.png" alt="Install-free CLI run across several projects, then a self-consistency verify" width="840">
-  <br><em>Install-free on real projects — one <code>uvx</code> command across several repos, then <code>verify</code> confirms the report is self-consistent.</em>
+  <img src="docs/screenshots/cli.png" alt="CLI run across several projects, then a self-consistency verify" width="840">
+  <br><em>On real projects — one <code>bin/drift-scan</code> command across several repos, then <code>verify</code> confirms the report is self-consistent.</em>
 </p>
 
 ---

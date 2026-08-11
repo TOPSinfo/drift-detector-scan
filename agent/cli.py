@@ -1333,15 +1333,5 @@ def main(argv: list[str]) -> int:
     return args.func(args)
 
 
-def _console() -> None:
-    """Console entry point for the `drift-scan` command (pyproject [project.scripts]).
-
-    setuptools console_scripts call a ZERO-arg callable, but main() takes argv — so this reads
-    sys.argv itself, mirroring the __main__ block below and the bin/drift-scan clone-and-run path.
-    This is the uvx/pipx path (`uvx drift-detector`): the engine (ast-grep) arrives as the
-    `ast-grep-cli` dependency, so no bootstrap is needed."""
-    raise SystemExit(main(sys.argv[1:]))
-
-
 if __name__ == "__main__":
     raise SystemExit(main(sys.argv[1:]))
