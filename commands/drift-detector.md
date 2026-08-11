@@ -16,17 +16,22 @@ Set up the runner + the persistent catalog (used by every mode):
 set -- $ARGUMENTS
 # Learned idioms/sunsets persist HERE (survive upgrades) and load on every scan. One line, everything hinges on it.
 export DRIFT_CATALOG_DIR="${DRIFT_CATALOG_DIR:-$HOME/.drift/catalog}"; mkdir -p "$DRIFT_CATALOG_DIR"
-# The scanner: the published PyPI package via uvx (no clone, no venv, engine pinned). A one-line
-# shim keeps every `"$SCAN" …` call below unchanged. Fallback: the plugin's bundled bin/drift-scan.
-if command -v uvx >/dev/null 2>&1; then
-  mkdir -p "$HOME/.drift/bin"
-  printf '#!/bin/sh\nexec uvx --from drift-detector-scan drift-scan "$@"\n' > "$HOME/.drift/bin/drift-scan"
-  chmod +x "$HOME/.drift/bin/drift-scan"; SCAN="$HOME/.drift/bin/drift-scan"
-else
-  SCAN="${CLAUDE_PLUGIN_ROOT:-}/bin/drift-scan"
-  [ -x "$SCAN" ] || SCAN="$(find "$HOME/.claude/plugins" -type f -name drift-scan -path '*drift-detector*' 2>/dev/null | sort -V | tail -1)"
+# The scanner: ALWAYS the engine this plugin ships (bin/drift-scan self-bootstraps its own venv on
+# first run). This guarantees engine == orchestration == verify — no version skew. Do NOT prefer a
+# uvx/PyPI package: `drift-detector-scan` on PyPI is a divergent line that lags this codebase, so
+# uvx would silently run an engine that fails this plugin's own `verify`. uvx is a last resort only.
+SCAN="${CLAUDE_PLUGIN_ROOT:-}/bin/drift-scan"
+[ -x "$SCAN" ] || SCAN="$(find "$HOME/.claude/plugins" -type f -name drift-scan -path '*drift-detector*' 2>/dev/null | sort -V | tail -1)"
+if [ -z "$SCAN" ] || [ ! -x "$SCAN" ]; then
+  # No bundled engine found (unusual). Fall back to uvx, but warn: it may not match this orchestration.
+  if command -v uvx >/dev/null 2>&1; then
+    echo "drift-detector: WARNING — no bundled engine found; falling back to the uvx/PyPI package, which may lag this plugin and fail verify." >&2
+    mkdir -p "$HOME/.drift/bin"
+    printf '#!/bin/sh\nexec uvx --from drift-detector-scan drift-scan "$@"\n' > "$HOME/.drift/bin/drift-scan"
+    chmod +x "$HOME/.drift/bin/drift-scan"; SCAN="$HOME/.drift/bin/drift-scan"
+  fi
 fi
-[ -n "$SCAN" ] && [ -x "$SCAN" ] || { echo "drift-detector: no runner — install uv (https://docs.astral.sh/uv/) or the plugin's bin/drift-scan" >&2; exit 4; }
+[ -n "$SCAN" ] && [ -x "$SCAN" ] || { echo "drift-detector: no runner — the plugin's bin/drift-scan is missing and uv (https://docs.astral.sh/uv/) is not installed" >&2; exit 4; }
 ```
 
 If the runner reports `uv`/python missing, run `"$SCAN" doctor`, relay the fix, and STOP — never fabricate a result. Management modes are one call each: `audit` → `"$SCAN" audit --progress --in "$D/inventory.json" --now "$(date +%F)" --out-json "$D/audit.json" --out-html "$D/dashboard.html"` (needs an existing `inventory.json`, else tell them to run a scan first); `unschedule` → `"$SCAN" unschedule --state "$D"`; `doctor` → `"$SCAN" doctor "${2:-}"`; `clean` → **the single cleanup command**: run `"$SCAN" clean --report` to see what's reclaimable, relay it, and on an explicit yes run `"$SCAN" clean --all --yes` (sweeps every run output the tool recorded across the machine + `~/.drift/{reports,eval}` — **keeps** the user's absorbed catalog unless they also ask to drop it, `--catalog`), or `"$SCAN" clean --state "$D" --yes` for just this folder's outputs. Never pass `--catalog` without an explicit ask — it discards learned shapes. For these, `D="$F/.drift-detector"` where `F` is the folder argument.
