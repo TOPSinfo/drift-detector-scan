@@ -43,7 +43,8 @@ def _project_action(a: dict) -> dict:
     cves = []
     for f in a.get("fixes", []):
         if f.get("cve") or f.get("id"):
-            cves.append({"id": f.get("cve") or f.get("id"), "title": f.get("detail") or ""})
+            cves.append({"id": f.get("cve") or f.get("id"), "title": f.get("detail") or "",
+                         "source": f.get("source_url") or ""})   # link each CVE to ITS own advisory
     return {
         "repo": a.get("repo"), "ref": a.get("ref"), "unit": a.get("unit"),
         "date": a.get("date"), "pkg": a.get("pkg"),
