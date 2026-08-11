@@ -80,6 +80,16 @@ def test_plugin_scaffolding_present_and_wired():
     plugin = json.loads(pj.read_text())
     for rel in plugin.get("commands", []):                       # every listed command must exist
         assert (_ROOT / rel.lstrip("./")).exists(), f"missing command file: {rel}"
+    # plugin.json and the marketplace entry MUST agree on version. They silently drifted for
+    # multiple releases (marketplace.json stuck at 0.14.1-beta while plugin.json advanced to 0.15.x);
+    # `claude plugin update` compares the MARKETPLACE version, so a stale entry blocks updates from
+    # ever reaching installed users — the fix landed via reinstall, but the guard is what keeps it fixed.
+    market = json.loads(mj.read_text())
+    entry = next(p for p in market["plugins"] if p["name"] == plugin["name"])
+    assert entry["version"] == plugin["version"], (
+        f'version drift: marketplace.json says {entry["version"]!r}, plugin.json says {plugin["version"]!r} '
+        f"— bump BOTH together or `claude plugin update` silently no-ops for users"
+    )
     main = (_ROOT / "commands" / "drift-detector.md").read_text()
     # the two things the rewiring added: persistent catalog (so absorb survives upgrades) + the
     # BUNDLED engine. The plugin runs its OWN bin/drift-scan, never a PyPI/uvx package — that path
