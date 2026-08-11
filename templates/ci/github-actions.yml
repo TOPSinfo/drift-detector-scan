@@ -4,7 +4,7 @@
 # keeps the Cockpit as a build artifact. The scan is billed to the ANTHROPIC_API_KEY secret you set
 # on THIS repo — the key lives only in GitHub Actions secrets, NEVER in this file.
 #
-# Placeholders __CRON__ and __FLEET__ are filled in by onboard. Pin the actions to SHAs if your
+# The schedule and the scan target are filled in by onboard. Pin the actions to SHAs if your
 # org requires it (onboard leaves them on major-version tags for readability).
 name: drift-detector
 
