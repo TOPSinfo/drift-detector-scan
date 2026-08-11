@@ -1,0 +1,42 @@
+# Drift Detector — scheduled integration-drift scan.
+#
+# Installed by `/drift-detector onboard`. Runs the Claude Code plugin headless on a schedule and
+# keeps the Cockpit as a build artifact. The scan is billed to the ANTHROPIC_API_KEY secret you set
+# on THIS repo — the key lives only in GitHub Actions secrets, NEVER in this file.
+#
+# Placeholders __CRON__ and __FLEET__ are filled in by onboard. Pin the actions to SHAs if your
+# org requires it (onboard leaves them on major-version tags for readability).
+name: drift-detector
+
+on:
+  schedule:
+    - cron: "__CRON__"
+  workflow_dispatch: {}          # manual "Run workflow" button
+
+permissions:
+  contents: read
+
+jobs:
+  scan:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install uv (provides Python; the engine self-provisions on first run)
+        run: curl -LsSf https://astral.sh/uv/install.sh | sh
+      - name: Install Claude Code
+        run: npm install -g @anthropic-ai/claude-code
+      - name: Install the Drift Detector plugin
+        run: |
+          claude plugin marketplace add TOPSinfo/drift-detector-scan
+          claude plugin install drift-detector@tops-tools
+      - name: Scan
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        run: |
+          claude -p "/drift-detector __FLEET__" --permission-mode bypassPermissions
+          mkdir -p cockpit && cp -r "$HOME/.drift-detector/"*/ cockpit/ 2>/dev/null || true
+      - name: Keep the Cockpit
+        uses: actions/upload-artifact@v4
+        with:
+          name: drift-cockpit
+          path: cockpit/

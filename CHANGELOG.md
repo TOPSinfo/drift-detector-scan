@@ -2,6 +2,21 @@
 
 All notable changes to the Drift Detector plugin. Dates are YYYY-MM-DD.
 
+## v0.16.0-beta — 2026-08-11
+
+**The last mile — turn-key CI deployment.**
+
+### Added
+
+- **`/drift-detector onboard <repo>` — one command to a scheduled deployment.** Detects the platform
+  (GitHub Actions *or* GitLab CI), scaffolds a scheduled workflow that installs the plugin and runs
+  `claude -p "/drift-detector …"`, wires the client's **own `ANTHROPIC_API_KEY`** as a CI secret,
+  opens a PR/MR, and **self-verifies** the run — so onboarding proves it works, not just leaves YAML.
+  Two hard guardrails: the API key **never** passes through the session or the repo (the user sets it
+  directly via `gh secret set` / `glab variable set`), and changes land on a branch + PR, never the
+  default branch. Single-repo by default; `--fleet` opts into multi-repo scanning with a PAT.
+  Templates ship in `templates/ci/{github-actions,gitlab-ci}.yml`.
+
 ## v0.15.1-beta — 2026-08-11
 
 **The plugin runs its own engine, headless-ready — and the PyPI channel is gone.**
