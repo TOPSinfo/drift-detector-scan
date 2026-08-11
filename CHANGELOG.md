@@ -2,6 +2,27 @@
 
 All notable changes to the Drift Detector plugin. Dates are YYYY-MM-DD.
 
+## v0.17.0-beta — 2026-08-11
+
+**Pre-audited mainstream vendors — demos stop hitting "unaudited" blanks.**
+
+### Added
+
+- **`drift-scan research --vendors` — batch/catalog research.** Lists every `vendors.yaml` entry
+  with no attestation (the demo-blank tail), no repo needed; `--apply … --attest … --now …` gates a
+  completed AI pass and writes `current` verdicts as `ai-research` attestations (UNAUDITED →
+  tracked-current), reporting `retiring` verdicts for absorb. Two trust guards, each tested against
+  its bug: **mega-vendors** (Google APIs, Amazon AWS, …) refuse a blanket `current` (they retire
+  services constantly — must be scoped per product); a **`current`** attestation must cite a real
+  deprecation/changelog/versioning page with an excerpt — a login/redirect/product-only source is
+  rejected (the live Seller Snap 302 bug).
+- **29 mainstream vendors pre-audited.** A batch pass reconciled 29 vendors against their own
+  deprecation pages and recorded attestations: payments (Stripe, PayPal, Braintree, Square, Adyen,
+  Razorpay, Authorize.Net, Klarna, Checkout.com), comms (SendGrid, Mailgun, Klaviyo, +sunsets for
+  Twilio/Mailchimp/Vonage/Slack), AI/dev (OpenAI, Anthropic, GitHub, Google Maps/OAuth2, Meta Graph,
+  LinkedIn), shipping/tax (ShipStation, EasyPost, Shippo, Avalara, TaxJar, +FedEx sunset). A scan
+  that used to say "7 unaudited" now says "tracked-current, last checked <date>."
+
 ## v0.16.0-beta — 2026-08-11
 
 **The last mile — turn-key CI deployment.**
