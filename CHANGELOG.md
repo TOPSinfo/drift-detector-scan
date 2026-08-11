@@ -23,8 +23,12 @@ All notable changes to the Drift Detector plugin. Dates are YYYY-MM-DD.
 - **The PyPI distribution channel.** `pyproject.toml`, the `publish` workflow, and
   `docs/PUBLISHING.md` are gone — the plugin is the product, and it ships its own self-provisioning
   engine (`bin/drift-scan`: a venv from `requirements-plugin.txt` + the pinned ast-grep binary). No
-  `uvx`/`pipx` install path, one fewer CI workflow, no version-skew surface. (The GHCR container —
-  the separate no-AI CI runner — is unaffected.)
+  `uvx`/`pipx` install path, one fewer CI workflow, no version-skew surface.
+- **The GHCR container channel.** `Dockerfile`, `.dockerignore`, `.github/workflows/container.yml`,
+  `docs/CONTAINER.md`, `tests/test_container.py` — gone too. It was a separate no-AI deterministic CI
+  runner; with CI going through the plugin (`claude -p`), it was unused surface. Recoverable from git
+  if a no-Claude CI path is ever needed. (Dockerfile *scanning* of target repos — `runtime_pins` — is
+  unaffected; that reads clients' Dockerfiles and stays.)
 
 ### Added
 
