@@ -22,6 +22,14 @@ All notable changes to the Drift Detector plugin. Dates are YYYY-MM-DD.
   Twilio/Mailchimp/Vonage/Slack), AI/dev (OpenAI, Anthropic, GitHub, Google Maps/OAuth2, Meta Graph,
   LinkedIn), shipping/tax (ShipStation, EasyPost, Shippo, Avalara, TaxJar, +FedEx sunset). A scan
   that used to say "7 unaudited" now says "tracked-current, last checked <date>."
+- **3 dated sunsets, scoped to their retiring surface only.** Of 8 retirements the pass found, three
+  join cleanly on the endpoint model and were added — **OpenAI Assistants API** (`/v1/assistants`,
+  2026-08-26), **Mailchimp Export API** (`/export/1.0`, 2023-06-01), **FedEx SOAP** (`ws.fedex.com`,
+  2026-06-01) — each proven to flag ONLY the retiring path/host (a fixture using `/v1/assistants`
+  flags; `/v1/chat/completions` does not). The other five (Twilio region-domains, Vonage, Slack
+  classic-apps, Anthropic models, Google Maps KmlLayer) are recorded in the attestations but held
+  from the sunset catalog until operation/model-marker detection lands — adding them broad would flag
+  healthy usage.
 
 ## v0.16.0-beta — 2026-08-11
 
