@@ -51,6 +51,7 @@ Run these steps IN ORDER. Do not skip the plan, and never scan the current direc
 This clones any URLs and classifies every source — **git repo · plain folder · cloned · error** — without scanning. Relay it as a short plan the user can approve: how many will scan, which are git vs plain (plain = no history/permalinks), and **any that failed and why** (a wrong path, a private URL that would not clone). If it exits 4 (nothing resolved), STOP and help fix the sources — never run on nothing.
 
 **3 · Get approval.** Ask the user to confirm the plan before any scanning. Wait for yes.
+> **Non-interactive / print (`-p`) mode — do NOT stall here.** If sources were already given in `$ARGUMENTS` and you have no way to receive a reply (headless run), skip this approval gate *and* the report-sharing question: the plan already resolved cleanly, so go straight to the scan (step 4), **local-only**. Those two gates are for interactive sessions; a headless run must complete on its own and print the result.
 
 **4 · Scan — all three planes together** (only after approval; NO further prompts). Kick both off in this one step, no gate between them:
 - **Integrations + CVE/EOL** — the deterministic pipeline (zero tokens), one command:
