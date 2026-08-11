@@ -364,3 +364,42 @@
   source: https://developers.arcgis.com/documentation/security-and-authentication/api-key-authentication/api-key-legacy/
   note: >-
     ArcGIS legacy API keys retire 2026-06-27 — migrate to OAuth 2.0 / current API keys.
+
+# ── Pre-audit batch (drift-scan research --vendors, 2026-08-11) — dated retirements the research
+# pass surfaced, each scoped to ONLY its retiring surface (path or host), never the whole vendor, so
+# healthy usage is not flagged. Sources fetched that session. Five more dated retirements were found
+# (Twilio region-domains, Vonage Number-Verification, Slack classic-apps, Anthropic model retirements,
+# Google Maps KmlLayer) but are scoped by app-type / model-in-body / JS-class / niche-host that the
+# endpoint model can't join on without over-flagging — recorded in catalog_attestations.yaml, held
+# from here until operation/model-marker detection lands (they'd flag healthy usage otherwise).
+#
+# OpenAI Assistants API — removed 2026-08-26 (deprecated 2025-08-26). Scoped to the /v1/assistants
+# path; Chat Completions, Responses, and every other OpenAI endpoint are NOT affected.
+- vendor: OpenAI
+  path: /v1/assistants
+  retires: "2026-08-26"
+  replacement: the Responses API
+  source: https://developers.openai.com/api/docs/deprecations
+  note: >-
+    OpenAI Assistants API removed 2026-08-26 (notified 2025-08-26) — migrate to the Responses API.
+    Flags ONLY /v1/assistants; other OpenAI endpoints are current.
+# Mailchimp Export API 1.0 & 2.0 — RETIRED 2023-06-01 (already past; the endpoint returns HTTP 410).
+# Scoped to the /export/1.0 path; the current Marketing API (/3.0) is NOT affected.
+- vendor: Mailchimp
+  path: /export/1.0
+  retires: "2023-06-01"
+  replacement: Marketing API 3.0
+  source: https://mailchimp.com/developer/release-notes/export-api-1-0-and-api-2-0-no-longer-supported/
+  note: >-
+    Mailchimp Export API 1.0/2.0 retired 2023-06-01 (HTTP 410) — migrate to Marketing API 3.0.
+    Flags ONLY the /export/1.0 path; the /3.0 Marketing API is current.
+# FedEx legacy Web Services (SOAP) — migrate to REST by 2026-06-01. Scoped to the SOAP host
+# ws.fedex.com; the modern REST APIs on apis.fedex.com are NOT affected.
+- vendor: FedEx
+  domain: ws.fedex.com
+  retires: "2026-06-01"
+  replacement: FedEx REST APIs (apis.fedex.com)
+  source: https://developer.fedex.com/api/en-us/announcements/Migrate_to_FedEx_APIs_Act_Now.html
+  note: >-
+    FedEx legacy Web Services (SOAP) retire 2026-06-01 — complete migration to the REST APIs.
+    Flags ONLY the SOAP host ws.fedex.com.
