@@ -285,8 +285,125 @@ def _cmd_catalog_refresh(args) -> int:
     return 3 if result["specUnflagged"] else 0
 
 
+# Vendors whose single "current" attestation would be DISHONEST — many products on
+# independent lifecycles, retirements happen constantly (Google retires services monthly).
+# A `current` verdict for these is refused; they must be scoped per product first, then
+# attested per product. (Fable review 2026-08-11: an over-broad green on Google would be
+# the tool's first dishonest verdict.)
+_MEGA_VENDORS = {
+    "Google APIs", "Google Cloud", "Amazon AWS", "Amazon Web Services",
+    "Microsoft Azure", "Azure", "Oracle Cloud", "IBM Cloud",
+}
+# Source kinds that make a `current` verdict trustworthy — the page that WOULD reveal a
+# retirement if there were one. A product/marketing page or a login redirect does NOT
+# qualify: the Seller Snap attestation cited a 302-to-login and is exactly the weak source
+# this guard rejects (Fable review 2026-08-11).
+_CURRENT_SOURCE_KINDS = {"deprecation-page", "changelog", "versioning-policy",
+                         "api-reference", "release-notes"}
+
+
+def _unattested_vendors(vendors_path=None, attest_path=None) -> list:
+    """[{vendor, domains}] for every vendor in vendors.yaml with NO attestation — the batch
+    research work-list. Each is a proven future demo blank (detected but never checked)."""
+    from agent.lib import vendors as _vendors, catalog_coverage
+    att = catalog_coverage.load_attestations(attest_path)
+    out = []
+    for v in _vendors.load_vendors(vendors_path):
+        name = getattr(v, "vendor", None)
+        if name and name not in att:
+            out.append({"vendor": name, "domains": list(getattr(v, "domains", []) or [])})
+    return out
+
+
+def _append_attestations(path: str, new_atts: list) -> None:
+    """Merge attestations into a YAML file (list of {vendor,checked,source,by,note}), dedup by
+    vendor (newest wins), sorted. Matches catalog_attestations.yaml's shape so the file can be
+    reviewed as a diff and merged into the committed catalog."""
+    import yaml
+    existing = []
+    if os.path.exists(path):
+        with open(path, encoding="utf-8") as fh:
+            existing = yaml.safe_load(fh) or []
+    by_vendor = {a["vendor"]: a for a in existing if isinstance(a, dict) and a.get("vendor")}
+    for a in new_atts:
+        by_vendor[a["vendor"]] = a
+    ordered = sorted(by_vendor.values(), key=lambda a: a["vendor"])
+    with open(path, "w", encoding="utf-8") as fh:
+        yaml.safe_dump(ordered, fh, default_flow_style=False, sort_keys=False, allow_unicode=True)
+
+
+def _research_vendors(args) -> int:
+    """Batch/catalog research — the work-list is vendors.yaml (unattested), not a scanned repo.
+    List mode prints the vendors to research; --apply gates a completed pass and writes `current`
+    verdicts as attestations (mega-vendors refused, weak sources rejected) and reports `retiring`
+    verdicts for `absorb`."""
+    spec = args.vendors
+    if not args.apply:
+        work = _unattested_vendors()
+        if spec != "all-unattested":
+            want = {s.strip() for s in spec.split(",") if s.strip()}
+            work = [w for w in work if w["vendor"] in want]
+        print(json.dumps(work, indent=2))
+        print(f"# {len(work)} vendor(s) to research (unattested)", file=sys.stderr)
+        return 0
+    if not args.now:
+        print("research --vendors --apply: pass --now <YYYY-MM-DD> (the date you fetched the sources)",
+              file=sys.stderr)
+        return 2
+    from agent import absorb
+    with open(args.apply, encoding="utf-8") as fh:
+        payload = json.load(fh)
+    verdicts = payload.get("verdicts", payload) if isinstance(payload, dict) else payload
+    problems, attestations, sunsets, skipped = [], [], [], []
+    for v in verdicts:
+        vendor = v.get("vendor") or v.get("host")
+        status = v.get("status")
+        if status == "retiring":
+            if not v.get("source_url"):
+                problems.append(f"{vendor}: 'retiring' with no source_url"); continue
+            if not v.get("date"):
+                problems.append(f"{vendor}: 'retiring' with no date"); continue
+            if not v.get("excerpt"):
+                problems.append(f"{vendor}: 'retiring' with no excerpt"); continue
+            if not absorb.date_in_text(v.get("date"), v.get("excerpt")):
+                problems.append(f"{vendor}: date {v.get('date')} not in the fetched excerpt "
+                                f"(verbatim-date check)"); continue
+            sunsets.append(v)
+            attestations.append({"vendor": vendor, "checked": args.now, "source": v["source_url"],
+                                 "by": "ai-research", "note": f"retirement found ({v.get('date')})"})
+        elif status == "current":
+            if vendor in _MEGA_VENDORS:
+                problems.append(f"{vendor}: mega-vendor — a blanket 'current' is dishonest; scope "
+                                f"per product first"); continue
+            if not v.get("source_url"):
+                problems.append(f"{vendor}: 'current' with no source_url"); continue
+            if not v.get("excerpt"):
+                problems.append(f"{vendor}: 'current' with no excerpt — need the page text you read"); continue
+            if v.get("source_kind") not in _CURRENT_SOURCE_KINDS:
+                problems.append(f"{vendor}: 'current' source_kind={v.get('source_kind')!r} is not a "
+                                f"deprecation/changelog/versioning page (weak-source guard)"); continue
+            attestations.append({"vendor": vendor, "checked": args.now, "source": v["source_url"],
+                                 "by": "ai-research", "note": (v.get("note") or v.get("excerpt") or "")[:180]})
+        else:
+            skipped.append(f"{vendor} ({status})")
+    if problems:
+        print("research: GATE REJECTED — these verdicts are not admissible:", file=sys.stderr)
+        for p in problems:
+            print("  •", p, file=sys.stderr)
+        return 3
+    if args.attest and attestations:
+        _append_attestations(args.attest, attestations)
+    print(f"✓ batch research: {len(attestations)} attestation(s) → {args.attest or '(no --attest)'}; "
+          f"{len(sunsets)} sunset(s) to absorb; {len(skipped)} skipped")
+    for s in sunsets:
+        print(f"  🔴 sunset: {s.get('vendor')} — {s.get('date')} — {s.get('source_url')}")
+    if skipped:
+        print("  skipped (not-an-api / unverified):", ", ".join(skipped))
+    return 0
+
+
 def _cmd_research(args) -> int:
-    """The research loop's deterministic half. Two modes:
+    """The research loop's deterministic half. Three modes:
 
       research --state <dir>                 → print the QUEUED work-list (untracked API services)
                                                as JSON — the input an AI research pass consumes.
@@ -295,7 +412,20 @@ def _cmd_research(args) -> int:
                                                'retiring' verdict MUST carry a source_url + parseable
                                                date — never an invented one. Zero tokens; the AI ran
                                                elsewhere, this only validates + records what it found.
+      research --vendors all-unattested      → print the CATALOG work-list: every vendor in
+                                               vendors.yaml with no attestation (no repo needed). Add
+                                               --apply v.json --attest <out> --now <date> to gate the
+                                               pass and write `current` verdicts as attestations
+                                               (mega-vendors refused; weak sources rejected). This is
+                                               the batch pre-warm — pre-audit the mainstream vendors so
+                                               a demo shows "tracked-current" not "unaudited blank".
     """
+    # ── Batch / catalog mode: research vendors from vendors.yaml, not a scanned repo. ──
+    if getattr(args, "vendors", None):
+        return _research_vendors(args)
+    if not args.state:
+        print("research: --state <dir> is required (or use --vendors for the catalog work-list)", file=sys.stderr)
+        return 2
     drift_path = os.path.join(args.state, "drift.json")
     if not os.path.exists(drift_path):
         print(f"research: no drift.json in {args.state} — run a scan first", file=sys.stderr)
@@ -1282,8 +1412,10 @@ def main(argv: list[str]) -> int:
     pv.set_defaults(func=_cmd_verify)
 
     prs = sub.add_parser("research")      # list the queued work-list, or record a gate-validated pass
-    prs.add_argument("--state", required=True)
+    prs.add_argument("--state")           # per-scan mode: the state dir with drift.json
+    prs.add_argument("--vendors")         # catalog mode: "all-unattested" or a comma-list of vendor names
     prs.add_argument("--apply")           # verdicts.json from an AI research pass
+    prs.add_argument("--attest")          # catalog mode: YAML file to write `current` attestations into
     prs.add_argument("--now", default=None)
     prs.set_defaults(func=_cmd_research)
 
