@@ -287,9 +287,14 @@
                   </div>
                 </div>
                 <ul v-if="row.cves && row.cves.length">
-                  <li v-for="(c, ci) in row.cves" :key="ci">{{ c.id }} — {{ c.title }}</li>
+                  <li v-for="(c, ci) in row.cves" :key="ci">
+                    <a v-if="safeUrl(c.source)" :href="safeUrl(c.source)" target="_blank"
+                       rel="noopener">{{ c.id }} — {{ c.title }} ↗</a>
+                    <template v-else>{{ c.id }} — {{ c.title }}</template>
+                  </li>
                 </ul>
-                <div v-if="row.sources && row.sources.length">
+                <!-- fallback sources row: only for actions with no per-CVE links (EOL / sunset) -->
+                <div v-if="(!row.cves || !row.cves.length) && row.sources && row.sources.length">
                   <template v-for="(u, si) in row.sources" :key="si">
                     <a v-if="safeUrl(u)" :href="safeUrl(u)" target="_blank"
                        rel="noopener">source ↗</a>
