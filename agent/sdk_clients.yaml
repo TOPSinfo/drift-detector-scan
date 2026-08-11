@@ -1,0 +1,45 @@
+# API-client packages — a dependency whose PRESENCE is the integration.
+#
+# When a repo reaches a vendor's API through an SDK (method chains / config-injected base URLs)
+# there is no scannable host literal (the `sdk-only-no-callsite` blind spot). But the dependency in
+# composer.json / package.json IS the evidence: a repo that requires `twilio/sdk` calls the Twilio
+# API. We attribute the vendor from the manifest, evidenced at that file, attribution `sdk-client` —
+# a READ FACT, never a fabricated call-site. The synthetic endpoint carries the vendor's real host so
+# coverage/attestation/sunset join it like any scanned endpoint.
+#
+# RULES:
+#   • `package`: "<ecosystem>/<name>" exactly as it appears in the techKey (lib:composer/twilio/sdk
+#     -> composer/twilio/sdk). Quote npm scoped names (npm/@sendgrid/mail).
+#   • `vendor`: must match a name in agent/vendors.yaml (so the attestation/coverage join works).
+#   • `host`: the vendor's primary API host (drives classification + the sunset/coverage join).
+#   • Only OFFICIAL/canonical clients — a package whose whole job is that vendor's API. Not a
+#     generic HTTP lib, not a framework that merely CAN call the API.
+
+# ── Comms / email ────────────────────────────────────────────────────────────────────────
+- { package: composer/twilio/sdk,                vendor: Twilio,        host: api.twilio.com }
+- { package: npm/twilio,                         vendor: Twilio,        host: api.twilio.com }
+- { package: composer/sendgrid/sendgrid,         vendor: SendGrid,      host: api.sendgrid.com }
+- { package: "npm/@sendgrid/mail",               vendor: SendGrid,      host: api.sendgrid.com }
+- { package: "npm/@sendgrid/client",             vendor: SendGrid,      host: api.sendgrid.com }
+- { package: composer/mailgun/mailgun-php,       vendor: Mailgun,       host: api.mailgun.net }
+- { package: npm/mailgun.js,                      vendor: Mailgun,       host: api.mailgun.net }
+- { package: composer/drewm/mailchimp-api,       vendor: Mailchimp,     host: api.mailchimp.com }
+- { package: "npm/@mailchimp/mailchimp_marketing", vendor: Mailchimp,   host: api.mailchimp.com }
+- { package: composer/klaviyo/php-sdk,           vendor: Klaviyo,       host: a.klaviyo.com }
+- { package: npm/klaviyo-api,                     vendor: Klaviyo,       host: a.klaviyo.com }
+- { package: composer/vonage/client,             vendor: Vonage Nexmo,  host: api.nexmo.com }
+- { package: "npm/@vonage/server-sdk",           vendor: Vonage Nexmo,  host: api.nexmo.com }
+- { package: composer/nexmo/client,              vendor: Vonage Nexmo,  host: api.nexmo.com }
+- { package: "npm/@slack/web-api",               vendor: Slack,         host: slack.com }
+- { package: "npm/@slack/bolt",                  vendor: Slack,         host: slack.com }
+- { package: composer/slack-php/slack,           vendor: Slack,         host: slack.com }
+
+# ── Payments ─────────────────────────────────────────────────────────────────────────────
+- { package: composer/stripe/stripe-php,         vendor: Stripe,        host: api.stripe.com }
+- { package: npm/stripe,                         vendor: Stripe,        host: api.stripe.com }
+
+# ── AI providers ─────────────────────────────────────────────────────────────────────────
+- { package: composer/openai-php/client,         vendor: OpenAI,        host: api.openai.com }
+- { package: composer/openai-php/laravel,        vendor: OpenAI,        host: api.openai.com }
+- { package: npm/openai,                          vendor: OpenAI,        host: api.openai.com }
+- { package: "npm/@anthropic-ai/sdk",            vendor: Anthropic,     host: api.anthropic.com }

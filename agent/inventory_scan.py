@@ -10,7 +10,7 @@ from agent.lib.vendor_rules import write_ruleset, rule_kinds_by_language
 from agent.lib import shapes
 from agent.lib.repo_scan import scan_repo
 from agent.lib.repo_discovery import discover_repos, diagnose_root
-from agent.lib import source_resolver, sdk_profiles, idioms as idioms_mod
+from agent.lib import source_resolver, sdk_profiles, sdk_clients, idioms as idioms_mod
 from agent.lib.inv_rollups import build_rollups
 from agent.lib.inventory_diff import diff_inventories
 
@@ -175,6 +175,18 @@ def scan_folder(root, state_dir, now, *, engine=None, run=None, git=None, progre
     if _profiles:
         for r in repos:
             extra = sdk_profiles.endpoints_for(r, _profiles)
+            if extra:
+                r["endpoints"] = list(r.get("endpoints", [])) + extra
+
+    # SDK clients: for a CONSUMER repo that DEPENDS ON a known API-client package (twilio/sdk,
+    # @sendgrid/mail, …) but reaches the API through the SDK — no scannable host literal — inject a
+    # synthetic endpoint carrying the vendor's real host, attributed `sdk-client` and evidenced at
+    # the manifest file. The dependency IS the read fact. This closes the SDK-mediated blind spot
+    # the AI plane surfaces (Twilio/SendGrid), for the deterministic scan.
+    _clients = sdk_clients.load()
+    if _clients:
+        for r in repos:
+            extra = sdk_clients.endpoints_for(r, _clients)
             if extra:
                 r["endpoints"] = list(r.get("endpoints", [])) + extra
 
