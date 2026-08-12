@@ -1229,13 +1229,14 @@ def _cmd_notify(args) -> int:
 
 
 def _cmd_adhoc_report(args) -> int:
-    """Assemble the MIDDLE-tier artifact from a validated ad-hoc pass — the certified `drift.json`,
-    the ad-hoc re-scan's `drift.json`, the staged idioms + claims, and the gate's DELTA. Writes
-    `adhoc.json` + `adhoc.html` beside the certified report. `drift.json` is NEVER touched (sibling
-    document, exactly like the probabilistic artifact)."""
+    """Write the ad-hoc (gate-validated) shape record to <state>/adhoc.json — the AI Frontier tab's
+    SHAPED tier. It no longer writes a side-car HTML page: there is one dashboard.
+    Assembles the MIDDLE-tier artifact from a validated ad-hoc pass — the certified `drift.json`,
+    the ad-hoc re-scan's `drift.json`, the staged idioms + claims, and the gate's DELTA. `drift.json`
+    is NEVER touched (sibling document, exactly like the probabilistic artifact)."""
     import json as _json
     from agent import absorb as _absorb
-    from agent.lib import adhoc, adhoc_render
+    from agent.lib import adhoc
     try:
         certified = _json.load(open(os.path.join(args.state, "drift.json"), encoding="utf-8"))
         adhoc_drift = _json.load(open(os.path.join(args.adhoc_state, "drift.json"), encoding="utf-8"))
@@ -1249,11 +1250,9 @@ def _cmd_adhoc_report(args) -> int:
     doc = adhoc.bundle(certified, [per], args.now)
     with open(os.path.join(args.state, "adhoc.json"), "w", encoding="utf-8") as fh:
         _json.dump(doc, fh, indent=2, sort_keys=True)
-    with open(os.path.join(args.state, "adhoc.html"), "w", encoding="utf-8") as fh:
-        fh.write(adhoc_render.render_adhoc(doc))
     tier = "✗ over-broad (NOT validated)" if per["problems"] else "✓ gate-validated"
     print(f"adhoc-report: {tier} · {per['attributedNew']} call-site(s) shaped · "
-          f"{per['datedCount']} dated by catalog → {args.state}/adhoc.html")
+          f"{per['datedCount']} dated by catalog → {args.state}/adhoc.json")
     return 3 if per["problems"] else 0
 
 
@@ -1330,7 +1329,7 @@ def main(argv: list[str]) -> int:
     pn.add_argument("--run-url")
     pn.set_defaults(func=_cmd_notify)
 
-    par = sub.add_parser("adhoc-report")  # POC: the ad-hoc / gate-validated middle tier -> adhoc.{json,html}
+    par = sub.add_parser("adhoc-report")  # POC: the ad-hoc / gate-validated middle tier -> adhoc.json
     par.add_argument("--state", required=True)          # certified state (drift.json + where output lands)
     par.add_argument("--adhoc-state", required=True)    # the ad-hoc re-scan's state dir
     par.add_argument("--staged", required=True)         # dir with idioms.yaml + claims.yaml
