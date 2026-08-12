@@ -6,6 +6,7 @@ nothing here may set `classified`/`vendor`/a date.
 """
 import pytest
 from agent.lib import host_class as hc
+from agent.lib import own_infra
 
 
 def test_reputation_beats_heuristics():
@@ -151,3 +152,27 @@ def test_queue_noise_is_bucketed_not_queued(host, expected):
 def test_bucketed_hosts_are_not_integrations(host):
     """`is_integration` False is what keeps them out of the audit backlog — the queue count."""
     assert not hc.is_integration(hc.classify(host))
+
+
+def _sig():
+    return own_infra.signals(repo_path="/srv/promoteplus-crm",
+                             repo_id="https://git.topsdemo.in/root/promoteplus-crm.git")
+
+
+def test_own_infra_wins_over_the_api_label_rule():
+    """Ordering matters and is the whole point: `api.<client>.com` is the client's OWN API, not a
+    third-party lead. The `api.` label rule runs early, so own-infra must run before it."""
+    assert hc.classify("api.promoteplus.ai", own=_sig()) == "own-infra"
+    assert hc.classify("crm.promoteplus.ai", own=_sig()) == "own-infra"
+    assert hc.classify("qa-promoteplus-idx.topsdemo.in", own=_sig()) == "own-infra"
+
+
+def test_own_infra_never_claims_a_third_party():
+    for host in ("api.justcall.io", "hooks.zapier.com", "graph.microsoft.com"):
+        assert hc.classify(host, own=_sig()) != "own-infra", host
+
+
+def test_classify_without_signals_is_unchanged():
+    """The `own` keyword is optional; every existing caller must behave identically without it."""
+    assert hc.classify("crm.promoteplus.ai") == "unclassified"
+    assert hc.classify("api.justcall.io") == "api-lead"

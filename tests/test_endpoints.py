@@ -51,6 +51,23 @@ def test_own_domain_multi_subdomain_is_tagged_own_infra(tmp_path):
     assert by["api.keepa.com"] == "api-lead"      # single-host third party is NOT swept into own-infra
 
 
+_MAILGUN = Vendor("Mailgun", "api:mailgun", ("mailgun.net",), DEFAULT_VERSION_REGEX)
+
+
+def test_vendor_named_repo_does_not_swallow_the_vendor_as_own_infra(tmp_path):
+    """A repo named after the vendor it integrates with (acme-mailgun-sync) must not have that
+    vendor's own name suppress an UNCATALOGUED Mailgun host (e.g. its status page, a different
+    domain than the one catalogued) as own-infra. This is the Critical bug the review caught:
+    own_infra.signals() drops any derived token that collides with a `vendor_tokens` entry, but
+    only if the caller actually passes that set — scan_endpoints must derive it from the vendor
+    catalog it already has and wire it through, or the protection is inert."""
+    _write(tmp_path, "a.php", '// see https://mailgun-status.io/incidents for outages\n')
+    out = scan_endpoints([_url("a.php", 1)], str(tmp_path), [_MAILGUN],
+                         repo_id="git@git.example.com:example-org/acme-mailgun-sync.git")
+    by = {e["domain"]: e["hostClass"] for e in out["endpoints"]}
+    assert by["mailgun-status.io"] != "own-infra"
+
+
 def test_boilerplate_hosts_are_bucketed_not_silently_dropped(tmp_path):
     """The honesty change: formerly-_IGNORE hosts (fonts / CDNs / schemas / doc links) are no longer
     deleted from the stream — they appear as endpoints with a NON-integration hostClass, so 'N
