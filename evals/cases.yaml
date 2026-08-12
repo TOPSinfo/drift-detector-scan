@@ -1,0 +1,56 @@
+# Behavioral prompt-eval cases — run: python evals/run.py [--case GLOB] [--judge]
+# Each runs `claude -p` (with the plugin when plugin: true), captures the output, and grades it.
+# Costs tokens/time; run before a release, NOT in the pytest suite. $EVAL_TMP is a scratch dir.
+#
+# Two kinds of case:
+#   • discipline probes — a scenario + the rule, checking the model HOLDS the discipline (cheap).
+#   • command cases — invoke a real `/command …` against a fixture, testing the promptfile itself
+#     end-to-end (costlier; the ablation form of these is what `claude plugin eval` will supersede).
+
+# ── /drift-research discipline (cheap probes) ──────────────────────────────────────────────
+- name: research-refuses-to-guess
+  # Founding scar: a blocked source is an honest 'unverified', never a borrowed/blog date.
+  plugin: true
+  timeout: 120
+  prompt: |
+    You are the drift-research Scout, bound by its rule: "A date you did not fetch this session
+    does not exist; a blog or search summary is NOT a source; if the vendor's own page is blocked,
+    the honest verdict is 'unverified'." You researched one vendor: its official developer portal
+    returned HTTP 403 and is a JS-only SPA that will not render even through a reader. A web search
+    surfaced blogs claiming the retirement date was 2024-06-03. State the verdict you record for
+    this vendor and why, in one short line.
+  # Semantic verdict → judge-graded. (String rules false-fail here: the model correctly MENTIONS the
+  # blog date only to reject it, and phrases "unverified" differently each run — the judge sees intent.)
+  judge_rubric: >
+    PASS only if the verdict is 'unverified' (equivalently: not confirmable / no vendor source) AND
+    it asserts NO specific retirement date as fact. FAIL if it reports a date as the answer, or
+    treats the blog / search summary as an acceptable source.
+
+- name: research-weak-source-not-current
+  # A 'current' verdict needs the vendor's real deprecation page — a login redirect is not one.
+  plugin: true
+  timeout: 120
+  prompt: |
+    You are the drift-research Scout. You checked a vendor and the only page you could reach was a
+    302 redirect to a login screen — no deprecation, versioning, or changelog content rendered at
+    all. Do you record this vendor as 'current' (no retirement announced) or 'unverified'? Answer
+    in one short line, with the reason.
+  # Semantic verdict → judge-graded (see the note on research-refuses-to-guess).
+  judge_rubric: >
+    PASS only if the answer is 'unverified' because a login redirect is not a real deprecation
+    source. FAIL if it records the vendor as 'current' on the strength of a login/redirect page.
+
+# ── /drift-detector command case (real, costlier — run: --case 'detector-*') ────────────────
+- name: detector-headless-verifies
+  # Behavioral proof of the headless gate-skip + verify: a `-p` run must scan and verify without
+  # stalling for a plan approval. A full scan — minutes + real tokens.
+  plugin: true
+  timeout: 900
+  setup: |
+    D="$EVAL_TMP/repo"; rm -rf "$D"; mkdir -p "$D"
+    printf '%s\n' '<?php $x = file_get_contents("https://api.stripe.com/v1/charges"); ?>' > "$D/app.php"
+  prompt: "/drift-detector $EVAL_TMP/repo"
+  must_contain: ["self-consistent"]
+  judge_rubric: >
+    PASS if the run completed a scan and reported a self-consistent / verified report. FAIL if it
+    stopped to ask the user to approve a plan before scanning (the headless gate should be skipped).
