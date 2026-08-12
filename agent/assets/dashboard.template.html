@@ -395,7 +395,7 @@
         <table>
           <thead><tr><th>Vendor</th><th>Host</th><th>Where</th><th>Retired?</th><th>Evidence</th></tr></thead>
           <tbody>
-            <tr v-for="r in leadRows" :key="r.repo + r.host + r.file + r.line">
+            <tr v-for="(r, li) in leadRows" :key="'lr' + li">
               <td>{{ r.vendor }}</td>
               <td>{{ r.host }}</td>
               <td><code>{{ r.file }}<span v-if="r.line">:{{ r.line }}</span></code></td>

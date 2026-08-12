@@ -23,6 +23,12 @@
   var GENERIC_NOTE = [/^Sources:/, /^Versions are/, /^Parked:/, /^Vendor API sunsets:/];
   function isGenericNote(n){ return GENERIC_NOTE.some(function(r){ return r.test(n); }); }
 
+  // A truthiness guard (`x || []`) only substitutes when x is falsy — a blob that parsed as
+  // valid JSON of the WRONG shape (a bare string/number in `repos`, say) is truthy and flows
+  // straight into .reduce/.forEach, throwing inside a Vue computed and breaking the whole page
+  // render. Guard on the actual type instead.
+  function arrOr(x){ return Array.isArray(x) ? x : []; }
+
   // Deterministic "YYYY-MM-DD" -> a comparable day-ordinal, used ONLY to place the Retirement
   // Timeline's points and its "today" line. Pure integer arithmetic (Howard Hinnant's
   // days_from_civil) — no Date object, no wall-clock read, so two runs of the SAME drift.json
@@ -208,20 +214,21 @@
       shapedCount: function(){ return this.shaped.length; },
 
       // ---- the AI-LEADS tier: rawest of the three, corroborated only by the session that read
-      // it. `(LEADS.repos || [])` / `(r.integrations || [])` guard against a blob that parsed as
+      // it. `arrOr(LEADS.repos)` / `arrOr(r.integrations)` guard against a blob that parsed as
       // valid JSON of the wrong shape (a bare list/number/etc from `blob()`'s {} fallback too) —
-      // leadsCount/leadRows must degrade to 0/empty, never throw. ----
+      // leadsCount/leadRows must degrade to 0/empty, never throw. Array.isArray, NOT truthiness:
+      // a truthy non-array (a string, a number) must ALSO fall back to [], at both levels. ----
       leadsCount: function(){
         if(!LEADS) return 0;
-        return (LEADS.repos || []).reduce(function(n, r){
-          return n + ((r.integrations || []).length);
+        return arrOr(LEADS.repos).reduce(function(n, r){
+          return n + (arrOr(r.integrations).length);
         }, 0);
       },
       leadRows: function(){
         if(!LEADS) return [];
         var out = [];
-        (LEADS.repos || []).forEach(function(r){
-          (r.integrations || []).forEach(function(i){
+        arrOr(LEADS.repos).forEach(function(r){
+          arrOr(r.integrations).forEach(function(i){
             out.push({repo: r.repo, vendor: i.vendor, host: i.host, endpoint: i.endpoint,
                       file: i.file, line: i.line, retired: i.retired, note: i.note,
                       origin: "lead"});
