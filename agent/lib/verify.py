@@ -499,9 +499,22 @@ def check_ai_firewall(payload: dict) -> None:
     one document removes that guarantee, so it becomes an assertion instead. The AI blobs
     themselves stay OUTSIDE the equality check — they are not projections of drift.json and cannot
     be verified against it — but nothing they contain may cross into the certified data.
+
+    The section set used to be a hardcoded ("endpoints", "findings", "catalog") tuple, and that
+    tuple was WRONG in exactly the way this invariant exists to prevent: "findings" is not a real
+    drift.json key — build_payload() never emits one, only a hand-written test fixture invented it
+    — while "actions", the array that actually carries the per-repo remediation records, was
+    missing from the tuple entirely. Injecting an AI marker into actions[0] of a real drift.json
+    and running `drift-scan verify` produced a false GREEN. A hand-picked list of names can always
+    fall out of sync with what build_payload actually produces; walking every top-level value that
+    IS a list of dicts instead means a future section (or a renamed one) is swept in automatically,
+    the moment build_payload starts emitting it, with nobody having to remember to add its name
+    here. ("findings" is left harmless if it ever does appear — it costs nothing to also check.)
     """
-    for section in ("endpoints", "findings", "catalog"):
-        for rec in payload.get(section) or ():
+    for section, section_val in payload.items():
+        if not isinstance(section_val, list):
+            continue
+        for rec in section_val:
             if not isinstance(rec, dict):
                 continue
             for field in _AI_FIELDS:
