@@ -74,3 +74,23 @@ def test_amazon_mws_matches_every_regional_tld():
     for h in ("mws.amazonservices.co.uk", "mws.amazonservices.de", "mws.amazonservices.com"):
         v = classify_host(h, [mws])
         assert v and v.vendor == "Amazon MWS", h
+
+
+# RFC 2606 / RFC 6761 reserve these names precisely so they can never resolve to a real service.
+# `cdn.example.test` reached the research queue on a real scan, where it read as a third-party CDN
+# awaiting audit. A reserved name is the one case where dropping is honest rather than hiding:
+# there is no service behind it to be blind to.
+def test_reserved_tlds_are_not_hosts():
+    from agent.lib.classify_url import is_nonhost
+    for host in ("cdn.example.test", "api.foo.invalid", "svc.example", "thing.localhost",
+                 "shop.example.com", "api.test.com"):
+        assert is_nonhost(host), host
+
+
+def test_a_real_domain_that_merely_looks_like_a_placeholder_survives():
+    """acme.com is a REAL registrable domain — it must stay visible and be typed by
+    host_class (Task 1), never dropped here."""
+    from agent.lib.classify_url import is_nonhost
+    assert not is_nonhost("acme.com")
+    assert not is_nonhost("testing-services.io")
+    assert not is_nonhost("api.exampletree.com")
