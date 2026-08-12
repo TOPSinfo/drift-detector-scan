@@ -43,6 +43,19 @@ _PUBLIC_FORGES = frozenset({
     "sr.ht", "dev.azure.com", "visualstudio.com", "gitee.com", "launchpad.net",
 })
 
+# Public suffixes that are themselves two labels wide (`co.uk`, not `com`). Naively taking the
+# last two labels of a host under one of these turns the SUFFIX into the "registrable domain" —
+# `git.example.co.uk` -> `co.uk` — which then claims every unrelated `*.co.uk` vendor as
+# own-infra. The real organisation label sits one level further up, so hosts ending in one of
+# these need three labels, not two.
+_MULTI_PART_SUFFIXES = frozenset({
+    "co.uk", "org.uk", "me.uk", "ltd.uk", "plc.uk", "net.uk", "sch.uk",
+    "com.au", "net.au", "org.au", "edu.au",
+    "co.nz", "org.nz", "net.nz",
+    "co.za", "com.br", "co.jp", "co.in", "co.id",
+    "github.io", "gitlab.io",
+})
+
 _REMOTE = re.compile(r"^(?:(?:https?|ssh|git)://)?(?:[^@/]+@)?([^/:]+)[/:](.+?)(?:\.git)?/?$")
 
 
@@ -53,14 +66,27 @@ def _tokens(name: str) -> set:
 
 def _registrable(host: str) -> str:
     labels = [l for l in (host or "").lower().split(".") if l]
-    return ".".join(labels[-2:]) if len(labels) >= 2 else ""
+    if len(labels) < 2:
+        return ""
+    two = ".".join(labels[-2:])
+    if two in _MULTI_PART_SUFFIXES:
+        # Need an organisation label above the suffix itself; with none, the host IS the
+        # suffix (or the suffix with nothing but itself) — a public suffix is not an
+        # organisation, so claim nothing rather than risk a false own-infra match.
+        if len(labels) < 3:
+            return ""
+        return ".".join(labels[-3:])
+    return two
 
 
-def signals(repo_path: str = "", repo_id: str = "") -> dict:
+def signals(repo_path: str = "", repo_id: str = "", vendor_tokens: frozenset = frozenset()) -> dict:
     """{'tokens', 'domains'} — everything derivable about this repo's own identity.
 
     `repo_path` is the checkout directory; `repo_id` is the git remote (or the identity string
-    `scope_edges.identity` normalises), either of which may be absent.
+    `scope_edges.identity` normalises), either of which may be absent. `vendor_tokens` is the
+    set of vendor-name tokens the caller (which owns the catalog — this module deliberately does
+    not load one) already knows about; any derived token that collides with one is dropped, so a
+    repo named after its own vendor (`acme-mailgun-sync`) cannot suppress that vendor's host.
     """
     tokens = _tokens(os.path.basename((repo_path or "").rstrip("/")))
     domains: set = set()
@@ -68,9 +94,11 @@ def signals(repo_path: str = "", repo_id: str = "") -> dict:
     if m:
         host, path = m.group(1), m.group(2)
         tokens |= _tokens(path.rstrip("/").split("/")[-1])
+        host_l = host.lower()
         reg = _registrable(host)
-        if reg and reg not in _PUBLIC_FORGES:
+        if reg and reg not in _PUBLIC_FORGES and host_l not in _PUBLIC_FORGES:
             domains.add(reg)
+    tokens -= vendor_tokens
     return {"tokens": tokens, "domains": domains}
 
 
