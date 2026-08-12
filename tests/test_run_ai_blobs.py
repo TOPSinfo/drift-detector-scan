@@ -87,6 +87,24 @@ def test_run_pipeline_hides_ai_tier_when_document_is_corrupt(tmp_path, monkeypat
     assert 'id="adhoc-data"' in html               # the sibling, valid document is unaffected
 
 
+def test_run_pipeline_hides_ai_tier_when_document_has_invalid_utf8(tmp_path, monkeypatch):
+    """Invalid UTF-8 in a JSON file raises UnicodeDecodeError during json.load(), which is
+    a ValueError subclass, not OSError. Before the fix, this would crash the entire scan.
+    After the fix, _optional catches ValueError and hides the tier gracefully."""
+    root, state = _run(tmp_path, monkeypatch)
+    # Write raw invalid UTF-8 bytes (simulating a truncated write from a prior crash)
+    (state / "leads.json").write_bytes(b'{"schema": "drift-leads/v1", "x": "\xff\xfe"}')
+    _write_json(state / "adhoc.json", {"schema": "drift-adhoc/v1", "claims": []})
+
+    out = run_pipeline(str(root), str(state), "2026-07-15",
+                       engine="semgrep", run=_empty_engine, http=lambda *a, **k: {})
+
+    assert out is not None                        # the scan completed, it did not raise
+    html = (state / "dashboard.html").read_text()
+    assert 'id="leads-data"' not in html           # invalid UTF-8 -> tier hidden
+    assert 'id="adhoc-data"' in html               # the sibling, valid document is unaffected
+
+
 def test_the_certified_blob_is_byte_identical_with_and_without_ai_blobs(tmp_path, monkeypatch):
     """REGRESSION NET, not a red-green guard: this pins an existing guarantee at the run_pipeline
     layer (render_payload already keeps drift-data byte-identical; kept here as an integration-
