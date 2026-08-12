@@ -65,8 +65,13 @@ def is_ignored(host: str) -> bool:
     return any(host == s or host.endswith("." + s) for s in _IGNORE)
 
 
-# Test/placeholder domains that are never a real third-party integration.
-_PLACEHOLDER = ("example.com", "example.org", "example.net", "test.com", "localhost")
+# Test/placeholder domains that are never a real third-party integration. The bare entries are
+# RFC 2606 / RFC 6761 RESERVED names — the standard guarantees nothing resolves behind them, so
+# dropping is honest here in a way it never is for a real domain. (A real domain used as a
+# convention, like acme.com, goes to host_reputation.yaml as `boilerplate` instead: it stays
+# visible, because a genuine call to it must not vanish.)
+_PLACEHOLDER = ("example.com", "example.org", "example.net", "test.com", "localhost",
+                "test", "example", "invalid")
 
 
 def is_nonhost(host: str) -> bool:
