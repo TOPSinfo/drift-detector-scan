@@ -29,6 +29,19 @@
   // render. Guard on the actual type instead.
   function arrOr(x){ return Array.isArray(x) ? x : []; }
 
+  // arrOr only guards the CONTAINER's type — a well-typed array can still hold null (or other
+  // non-object) ELEMENTS: a crashed prior pass, a hand-edited state dir, a bare `null` slot.
+  // Property access on those (`el.integrations`, `el.vendor`) throws same as it would on a
+  // non-array container, just one level deeper (a non-null primitive like a number/string is
+  // harmless here — `(5).prop`/`("x").prop` is merely `undefined`, autoboxing does not throw;
+  // only null/undefined elements do). objArr drops the bad elements outright rather than
+  // neutralising them in place, so a null sibling disappears from the count/rows instead of
+  // surfacing as a blank row — and it does NOT discard the array's valid siblings the way
+  // bailing out to [] on the first bad element would.
+  function objArr(x){
+    return arrOr(x).filter(function(el){ return el !== null && typeof el === "object"; });
+  }
+
   // Deterministic "YYYY-MM-DD" -> a comparable day-ordinal, used ONLY to place the Retirement
   // Timeline's points and its "today" line. Pure integer arithmetic (Howard Hinnant's
   // days_from_civil) — no Date object, no wall-clock read, so two runs of the SAME drift.json
@@ -214,21 +227,25 @@
       shapedCount: function(){ return this.shaped.length; },
 
       // ---- the AI-LEADS tier: rawest of the three, corroborated only by the session that read
-      // it. `arrOr(LEADS.repos)` / `arrOr(r.integrations)` guard against a blob that parsed as
-      // valid JSON of the wrong shape (a bare list/number/etc from `blob()`'s {} fallback too) —
-      // leadsCount/leadRows must degrade to 0/empty, never throw. Array.isArray, NOT truthiness:
-      // a truthy non-array (a string, a number) must ALSO fall back to [], at both levels. ----
+      // it. `objArr(LEADS.repos)` / `objArr(r.integrations)` guard against a blob that parsed as
+      // valid JSON of the wrong shape at BOTH levels: a wrong-typed CONTAINER (a bare
+      // list/number/etc from `blob()`'s {} fallback too) falls back to [] via arrOr, and a
+      // wrong-typed ELEMENT inside an otherwise-valid array (a bare `null` repo entry, a `null`
+      // integration entry) is dropped by objArr's element filter rather than dereferenced —
+      // leadsCount/leadRows must degrade the bad element only, never throw and never abandon
+      // that element's valid siblings. Array.isArray, NOT truthiness: a truthy non-array (a
+      // string, a number) must ALSO fall back to [], at both levels. ----
       leadsCount: function(){
         if(!LEADS) return 0;
-        return arrOr(LEADS.repos).reduce(function(n, r){
-          return n + (arrOr(r.integrations).length);
+        return objArr(LEADS.repos).reduce(function(n, r){
+          return n + (objArr(r.integrations).length);
         }, 0);
       },
       leadRows: function(){
         if(!LEADS) return [];
         var out = [];
-        arrOr(LEADS.repos).forEach(function(r){
-          arrOr(r.integrations).forEach(function(i){
+        objArr(LEADS.repos).forEach(function(r){
+          objArr(r.integrations).forEach(function(i){
             out.push({repo: r.repo, vendor: i.vendor, host: i.host, endpoint: i.endpoint,
                       file: i.file, line: i.line, retired: i.retired, note: i.note,
                       origin: "lead"});

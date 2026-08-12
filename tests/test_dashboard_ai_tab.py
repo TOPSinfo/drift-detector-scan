@@ -113,6 +113,43 @@ def test_leads_computeds_degrade_on_malformed_blob_instead_of_throwing(leads_dat
     assert result == {"leadsCount": 0, "leadRows": []}
 
 
+@pytest.mark.parametrize("leads_data", [
+    '{"repos": [null]}',
+    '{"repos": [{"repo": "x", "integrations": [null]}]}',
+])
+def test_leads_computeds_degrade_on_null_elements_instead_of_throwing(leads_data):
+    """arrOr(LEADS.repos) correctly forces a non-array CONTAINER to [], but a well-typed array
+    whose ELEMENTS are null passes straight through — null is not itself a non-array, so
+    Array.isArray(LEADS.repos) is still true and the null element flows into the .reduce/
+    .forEach body, where `null.integrations` / `null.vendor` throws. Note the asymmetry with a
+    non-null-but-wrong-type element (a bare number/string): `(5).prop` is merely `undefined`,
+    so only null/undefined elements are the crashing case, at both nesting levels (repo entries
+    and integration entries)."""
+    result = _run_leads_computeds(leads_data)
+    assert result == {"leadsCount": 0, "leadRows": []}
+
+
+def test_leads_computeds_skip_null_siblings_but_keep_valid_entries():
+    """A null repo entry sitting alongside a well-formed one must not take down the whole list
+    — the valid entry's leads are still counted and rendered. Proves the fix SKIPS the bad
+    element rather than abandoning the entire array (a guard that empties everything on any bad
+    element would pass the two tests above but fail this one)."""
+    payload = json.dumps({"repos": [
+        None,
+        {"repo": "demo/repo", "integrations": [
+            {"vendor": "Stripe", "host": "api.stripe.com", "endpoint": "/v1/charges",
+             "file": "billing.py", "line": 42, "retired": "unknown", "note": "seen in import"},
+        ]},
+    ]})
+    result = _run_leads_computeds(payload)
+    assert result["leadsCount"] == 1
+    assert result["leadRows"] == [{
+        "repo": "demo/repo", "vendor": "Stripe", "host": "api.stripe.com",
+        "endpoint": "/v1/charges", "file": "billing.py", "line": 42,
+        "retired": "unknown", "note": "seen in import", "origin": "lead",
+    }]
+
+
 def test_leads_computeds_still_work_on_a_wellformed_blob():
     """Guard rails on the malformed cases must not break the happy path."""
     payload = json.dumps({"repos": [{"repo": "demo/repo", "integrations": [
