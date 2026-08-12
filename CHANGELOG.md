@@ -2,6 +2,28 @@
 
 All notable changes to the Drift Detector plugin. Dates are YYYY-MM-DD.
 
+## v0.18.0-beta — 2026-08-12
+
+**Coverage follow-ups — SDK-mediated detection, batch 2, and a freshness loop.**
+
+### Added
+
+- **SDK-client detection — surface SDK-mediated vendors from the manifest.** Closes the
+  `sdk-only-no-callsite` blind spot for the *deterministic* scan: a repo that reaches an API through
+  an SDK (`twilio/sdk`, `@sendgrid/mail` — method chains, config-injected URLs) has no scannable host
+  literal. New `sdk_clients.yaml` maps API-client packages → vendor+host; a dependency injects a
+  synthetic endpoint (attribution `sdk-client`, evidenced at `composer.json`). Proven: promoteplus-crm
+  now surfaces **Twilio + SendGrid** — vendors the deterministic scan missed entirely before.
+- **Batch 2 — 9 more vendors pre-audited.** Etsy, BigCommerce, WooCommerce, Magento, Kogan, Trade Me,
+  Tradevine, Marketplacer, **Firebase FCM** tracked-current. 4 refused as honest "unverified" (Rakuten,
+  Amazon Ads, UPS, Twitter/X — JS-only or login-gated; no guessing). **50 vendors attested total.**
+  (Firebase FCM's legacy HTTP/XMPP shutdown, 2024-06-20, is real and sourced but held from the sunset
+  catalog: its `/fcm/send` path is version-less so the endpoint model captures no `apiPath` to scope
+  on, and a host-scoped entry would over-flag the healthy v1 API — awaits version-less path capture.)
+- **Stale-attestation loop.** `catalog-check` now lists every attestation past its 90-day TTL as
+  re-research work and prints the `research --vendors "…"` re-run command — so the pre-audit doesn't
+  silently rot.
+
 ## v0.17.0-beta — 2026-08-11
 
 **Pre-audited mainstream vendors — demos stop hitting "unaudited" blanks.**
