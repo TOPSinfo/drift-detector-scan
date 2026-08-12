@@ -84,6 +84,42 @@ def test_bare_multi_part_suffix_yields_no_domain():
     assert sig["domains"] == set()
 
 
+def test_two_label_public_suffix_general_rule_not_hardcoded():
+    """Any {generic-second-level}.{cctld} pair is a public suffix (not an organisation) even
+    when it isn't on an explicit list — com.cn, co.kr, gov.uk, etc. Previously only a ~20-entry
+    hardcoded `_MULTI_PART_SUFFIXES` list was checked, so an unlisted suffix silently became the
+    "registrable domain" and suppressed every unrelated vendor parked under it."""
+    cases = {
+        "https://git.example.com.cn/g/r.git": "example.com.cn",
+        "https://git.example.co.kr/g/r.git": "example.co.kr",
+        "https://git.example.gov.uk/g/r.git": "example.gov.uk",
+    }
+    for repo_id, expected_domain in cases.items():
+        sig = own_infra.signals(repo_id=repo_id)
+        assert sig["domains"] == {expected_domain}, (repo_id, sig)
+
+    # the bug as verified live: an unrelated vendor parked under the same bare suffix must never
+    # be claimed as this repo's own infra.
+    sig = own_infra.signals(repo_id="https://git.example.com.cn/g/r.git")
+    assert not own_infra.is_own("vendor.com.cn", sig)
+
+
+def test_bare_two_label_public_suffix_remote_yields_no_domain():
+    """A remote host that IS a general-rule public suffix (e.g. `com.cn`, `co.kr`, `gov.uk`),
+    with no organisation label above it, must not become own-infra — same failure-toward-SHOWN
+    as the hardcoded `co.uk` case below."""
+    for host in ("com.cn", "co.kr", "gov.uk"):
+        sig = own_infra.signals(repo_id=f"https://{host}/root/example.git")
+        assert sig["domains"] == set(), host
+
+
+def test_genuine_org_domains_still_resolve_correctly():
+    """The general rule must not swallow real organisation domains — only the public-suffix
+    label pair is special-cased, the label above it still comes through."""
+    assert own_infra.signals(repo_id="https://git.topsdemo.in/root/x.git")["domains"] == {"topsdemo.in"}
+    assert own_infra.signals(repo_id="https://git.acme.co.uk/root/x.git")["domains"] == {"acme.co.uk"}
+
+
 def test_dev_azure_com_remote_is_not_own_infra():
     """`dev.azure.com`'s registrable form (`azure.com`) is not itself in `_PUBLIC_FORGES`, so the
     full remote host must also be checked or an Azure DevOps remote makes `azure.com` — and
