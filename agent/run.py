@@ -76,8 +76,9 @@ def run_pipeline(roots, state_dir, now, *, pull=False,
         try:
             with open(path, encoding="utf-8") as fh:
                 return json.load(fh)
-        except (OSError, json.JSONDecodeError):
-            return None          # an unreadable AI blob hides its tier; it never fails the scan
+        except (OSError, ValueError):
+            return None          # OSError: file I/O; ValueError: json.JSONDecodeError + UnicodeDecodeError;
+                                 # an unreadable AI blob hides its tier; it never fails the scan
 
     _write(os.path.join(state_dir, "dashboard.html"),
            render_payload(payload, now, bundle=build_bundle(doc, audit, now),
