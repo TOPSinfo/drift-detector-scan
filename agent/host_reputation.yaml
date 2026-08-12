@@ -32,6 +32,11 @@ social-widget:      # share / embed / follow / messaging destinations
   - linkedin.com
   - youtube.com
   - youtu.be
+  - fb.me                 # Facebook's short-link host — a share/profile link, never an API
+  - snapchat.com
+  - threads.net
+  - soundcloud.com        # embedded player/profile links; SoundCloud's real API is api.soundcloud.com,
+                          # which the `api.` host-label rule still catches as a lead
 
 # ── Non-integration classes: EXCLUDED from the integration total (shown under "assets & libraries") ─
 asset-cdn:          # fonts, icons, images, generic static-asset CDNs — not a service the app calls
@@ -55,6 +60,7 @@ asset-cdn:          # fonts, icons, images, generic static-asset CDNs — not a 
   - via.placeholder.com
   - picsum.photos
   - flagcdn.com
+  - get.adobe.com         # the "Get Acrobat Reader" download badge — an outbound link, not a service
 vendored-lib:       # front-end libraries / UI kits the app bundles or links its own copy of
   - quilljs.com
   - leafletjs.com
@@ -114,3 +120,15 @@ boilerplate:        # schema / namespace / doc / code hosts — links & namespac
   - python.org
   - macromedia.com
   - ebaystatic.com
+  # ── spec / documentation hosts. These reached the QUEUE on a real scan and were described as
+  # "an API service we haven't researched yet"; rfc-editor.org was already excluded elsewhere,
+  # so the tool disagreed with itself about the same domain.
+  - spdx.org              # SPDX licence identifiers, cited in SBOM/licence headers
+  - spec.openapis.org     # OpenAPI spec URLs in swagger annotations
+  - rfc-editor.org        # RFC citations, same family as the already-listed ietf.org
+  - reactjs.org           # framework docs linked from scaffolding comments
+  - redux.js.org
+  - vladimirgorej.com     # author homepage in a vendored swagger-client's headers
+  - acme.com              # placeholder org name in generated docs/fixtures. NOT dropped via
+                          # classify_url._PLACEHOLDER: it is a REAL registrable domain, so a
+                          # genuine call to it must stay visible rather than silently vanish.
