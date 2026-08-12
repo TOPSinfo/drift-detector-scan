@@ -56,3 +56,39 @@ def test_no_signals_means_no_claims():
     sig = own_infra.signals()
     assert sig == {"tokens": set(), "domains": set()}
     assert not own_infra.is_own("crm.promoteplus.ai", sig)
+
+
+def test_vendor_named_repo_does_not_suppress_that_vendors_host():
+    """A repo literally named after its vendor (`acme-mailgun-sync`) must not swallow that
+    vendor's host once the caller supplies the vendor-name tokens."""
+    sig = own_infra.signals(repo_path="/srv/acme-mailgun-sync",
+                            repo_id="https://git.topsdemo.in/root/acme-mailgun-sync.git",
+                            vendor_tokens=frozenset({"mailgun"}))
+    assert "mailgun" not in sig["tokens"]
+    assert not own_infra.is_own("api.mailgun.net", sig)
+
+
+def test_registrable_handles_multi_part_public_suffix():
+    """`co.uk` (and friends) are public suffixes, not organisations — the org label sits one
+    level above them, so `git.example.co.uk` must register as `example.co.uk`, not `co.uk`."""
+    sig = own_infra.signals(repo_id="https://git.example.co.uk/root/example.git")
+    assert sig["domains"] == {"example.co.uk"}
+    assert own_infra.is_own("anything.example.co.uk", sig)
+    assert not own_infra.is_own("othervendor.co.uk", sig)
+
+
+def test_bare_multi_part_suffix_yields_no_domain():
+    """A host that IS the public suffix, with no organisation label above it, must not become
+    own-infra — a public suffix is not an organisation."""
+    sig = own_infra.signals(repo_id="https://co.uk/root/example.git")
+    assert sig["domains"] == set()
+
+
+def test_dev_azure_com_remote_is_not_own_infra():
+    """`dev.azure.com`'s registrable form (`azure.com`) is not itself in `_PUBLIC_FORGES`, so the
+    full remote host must also be checked or an Azure DevOps remote makes `azure.com` — and
+    hence `management.azure.com` — falsely own-infra."""
+    sig = own_infra.signals(repo_path="/srv/example",
+                            repo_id="https://dev.azure.com/org/example/_git/example")
+    assert sig["domains"] == set()
+    assert not own_infra.is_own("management.azure.com", sig)
