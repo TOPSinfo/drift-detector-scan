@@ -1479,3 +1479,53 @@ defined in Task 3 and consumed in Task 4 with those exact names. `host_class.cla
 matches between Tasks 4's test and its implementation. `leads.json`'s `drift-leads/v1` shape is
 defined in Task 6 and consumed by Task 7 (`_optional("leads.json")`) and Task 8 (`LEADS.repos[].integrations[]`).
 `verify.check_ai_firewall(payload)` and `Violation.check == "ai-firewall"` agree across Task 10.
+
+---
+
+## Result
+
+End-to-end run on the reference repo (`promoteplus-crm`), 2026-08-12, executed per Task 12 from a
+neutral `/tmp` cwd with `PYTHONSAFEPATH=1` and the persistent local catalog
+(`DRIFT_CATALOG_DIR=$HOME/.drift/catalog`). State dir: `/tmp/drift-e2e`.
+
+**1. Queue collapse — `drift-scan research`**
+Before this branch: 27 hosts. After: **1 host** — `idximages.directaxess.com`, exactly the one
+vendor the plan named as deliberately still queued (genuine third party, no catalog match yet).
+Meets expectation (≤ 2, with that host present).
+
+**2. `drift-scan verify` + the `ai-firewall` invariant**
+Clean run: exit 0, `report is self-consistent — 0 sunsets, 0 eol, 12 unaudited-vendor(s)`.
+Injected `"origin": "ai"` into `endpoints[0]` of `drift.json`, re-ran verify: exit 3, failed with
+`[ai-firewall] endpoints[] record carries origin='ai' — AI-derived data must stay in its own blob
+...` (plus two expected knock-on `[blob-parity]` violations, since only `drift.json` was edited,
+not the HTML projections). Restored the file from a backup, re-ran verify: exit 0, green again.
+Meets expectation.
+
+**3. Exactly one dashboard**
+`/tmp/drift-e2e` contains `dashboard.html`; no `probabilistic.html`, no `adhoc.html` (also present:
+`chart.html`, which is a separate, still-current artifact — not one of the retired side-cars).
+Leads pass: `drift-scan leads --ai-results <fixture> --now <date>` → `0 agree · 1 AI-only ·
+19 tool-only`, written to `leads.json`. `drift-scan render` → `dashboard.html rewritten (certified
++ leads)`. `grep -c 'id="leads-data"' dashboard.html` → **1**. Meets expectation.
+
+**4. Catalog counts, from `drift.json.counts.coverage` / `counts.unaudited`**
+
+| metric     | before (plan) | after (measured) |
+|------------|---------------|-------------------|
+| queued     | 27            | **1**             |
+| tracked    | 11            | **27**            |
+| unaudited  | 2             | **12**            |
+
+`tracked` and `unaudited` both moved *up*, not down — this is the expected shape of the fix, not a
+regression: the 27 previously-`queued` hosts were sitting unclassified because host classification
+couldn't place them. With the reputation catalog, reserved-TLD handling, and own-infra derivation
+from Tasks 1-5, almost all of them now resolve to a definite bucket — most become `tracked`
+(real third-party APIs now recognized and catalogued, most still `unaudited` pending a live check)
+or fall into `na`/excluded classes (own-infra, boilerplate, social-widget, vendored-lib, asset-cdn:
+44 hosts). Only one host — the one named above — remains genuinely ambiguous and stays queued for
+research. Full catalog for this run: 21 vendors, 12 UNAUDITED, 9 CURRENT (Mailgun, Mailchimp,
+Google OAuth2, OpenAI, Anthropic, Microsoft Graph, OpenStreetMap, SendGrid, Twilio).
+
+**Overall:** all five Task 12 measurements met their stated expectations. Nothing was adjusted to
+make a number look better; the `tracked`/`unaudited` increase is reported as measured, with the
+reasoning above for why it is the correct direction given what those buckets mean.
