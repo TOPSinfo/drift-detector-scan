@@ -120,6 +120,20 @@ def test_genuine_org_domains_still_resolve_correctly():
     assert own_infra.signals(repo_id="https://git.acme.co.uk/root/x.git")["domains"] == {"acme.co.uk"}
 
 
+def test_repo_token_that_contains_a_vendor_token_is_also_dropped():
+    """Critical bug: the original guard only dropped a derived token on EXACT equality with a
+    vendor token. A repo token that CONTAINS a vendor token (`globalpaymentsapi` contains
+    `globalpayments`) never compares equal, so it survived and silently claimed the vendor's
+    own host as own-infra. A repo token that contains a vendor's name is still that vendor's
+    name; over-dropping is the SAFE direction, since a dropped token just leaves the host
+    visible in the queue, whereas a kept one deletes a real vendor from the backlog."""
+    sig = own_infra.signals(repo_path="/srv/acme-globalpaymentsapi-bridge",
+                            repo_id="https://git.topsdemo.in/root/acme-globalpaymentsapi-bridge.git",
+                            vendor_tokens=frozenset({"globalpayments"}))
+    assert "globalpaymentsapi" not in sig["tokens"]
+    assert not own_infra.is_own("api.globalpayments.com", sig)
+
+
 def test_dev_azure_com_remote_is_not_own_infra():
     """`dev.azure.com`'s registrable form (`azure.com`) is not itself in `_PUBLIC_FORGES`, so the
     full remote host must also be checked or an Azure DevOps remote makes `azure.com` — and
