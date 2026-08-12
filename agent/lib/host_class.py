@@ -15,6 +15,8 @@ import os
 import re
 import yaml
 
+from agent.lib import own_infra
+
 # The closed vocabulary — one shared set across endpoints.py (write), dashboard_render.py
 # (project+count), verify.py (check) and the cockpit (group). No name drift.
 VOCAB = {"api", "api-lead", "social-widget", "asset-cdn", "analytics",
@@ -80,15 +82,22 @@ def _reputation(host: str) -> str | None:
 
 
 def classify(host: str, *, url: str | None = None, in_call: bool = False,
-             file_ext: str | None = None) -> str:
+             file_ext: str | None = None, own: dict | None = None) -> str:
     """Return the hostClass for an UNCATALOGUED host (always a member of VOCAB).
 
     `in_call` — the URL was matched inside an HTTP-client call (vs. an href/src/CSS url()).
     `file_ext` — the source file's extension (a `.css`/`.scss` origin biases toward a static asset).
+    `own` — this repo's own-infrastructure signals (agent.lib.own_infra.signals). Optional; absent
+    means no host is claimed as own-infra, which is exactly the pre-existing behaviour.
     """
     host = host or ""
     if _OWN_CLOUD.search(host):
         return "own-infra"                 # your own cloud backend (Cognito, API GW, serverless…)
+    # BEFORE the api-label rule on purpose: `api.<client>.com` is the client's OWN API, not a
+    # third-party lead. A catalogued vendor never reaches here (endpoints.py sets `api` upstream),
+    # so a client whose name collides with a vendor cannot suppress that vendor.
+    if own and own_infra.is_own(host, own):
+        return "own-infra"
     # an api. / -api. / api- host is a real API even UNDER a reputationed parent domain — so
     # business-api.tiktok.com is the TikTok API, not "social"; api.cloudflare.com is a lead, not a CDN.
     # (This also enforces the no-pre-bury rule: an api. tracker never sinks into the analytics panel.)
