@@ -121,9 +121,11 @@ def test_plugin_scaffolding_present_and_wired():
     assert 'DRIFT_CATALOG_DIR="${DRIFT_CATALOG_DIR:-$HOME/.drift/catalog}"' in main
     assert 'SCAN="${CLAUDE_PLUGIN_ROOT:-}/bin/drift-scan"' in main
     assert "uvx --from" not in main, "the PyPI/uvx runner must never come back — it causes engine/verify skew"
-    # the firewall, enforced in the promptfile: AI output is leads in a SEPARATE artifact, and a
-    # lead's `retired` is a tri-state — never a date (a date is a certified-tier claim only).
-    assert "AI · unverified" in main and "probabilistic.html" in main
+    # the firewall, enforced in the promptfile: AI output is leads in its OWN BLOB inside the one
+    # dashboard (there is no second dashboard any more), and a lead's `retired` is a tri-state —
+    # never a date (a date is a certified-tier claim only).
+    assert "AI Frontier" in main and "leads.json" in main
+    assert "probabilistic.html" not in main, "the side-car dashboard is gone; the promptfile must not send users to it"
     assert '"yes"|"no"|"unknown"' in main and "NEVER a date" in main
     assert not (_ROOT / "skills").exists()                       # command-based plugin, no skills/ dir
 

@@ -108,9 +108,10 @@ the certified state dir, `R` the repo name, `ABS` its absolute path.
    DRIFT_CATALOG_DIR="$A/catalog" "$SCAN" run --root "$ABS" --state "$A/state" --now "$(date +%F)"
    ```
 5. **Report.** `"$SCAN" adhoc-report --state "$S" --adhoc-state "$A/state" --staged "$A/staged"
-   --gate-delta "$A/staged/gate-delta.json" --repo <R> --now "$(date +%F)"` → writes `"$S/adhoc.html"`
-   (amber, **AI-shaped · gate-validated (this run)**). Show its tally and point to it. It exits 3 if
-   the shape was over-broad — then do NOT present it as validated.
+   --gate-delta "$A/staged/gate-delta.json" --repo <R> --now "$(date +%F)"` → writes `"$S/adhoc.json"`.
+   Then re-run `"$SCAN" render --state "$S" --now "$(date +%F)"` so the dashboard picks it up: these rows appear in the
+   **AI Frontier** tab badged `GATE-VALIDATED` (amber, this run only). Show its tally and point to
+   the tab. It exits 3 if the shape was over-broad — then do NOT present it as validated.
 6. **Offer to persist** (never act): *"N call-sites are now attributed. Absorb these shapes into
    `~/.drift/catalog` so every future run sees them?"* Only on explicit yes: `"$SCAN" absorb
    --staged "$A/staged" --repo "$ABS"` (with `DRIFT_CATALOG_DIR="$HOME/.drift/catalog"`).
@@ -124,9 +125,9 @@ certified `drift.json`/`dashboard.html` are read-only here) · never auto-persis
 The probabilistic cross-check is the **third plane**, and it runs **automatically alongside** the
 deterministic integration + CVE/EOL scan — **do NOT ask first, do NOT wait for the deterministic
 report.** All three planes start from the one `/drift-detector` command: minimal input, day-one
-results. Its output is **leads, not findings**, written to a SEPARATE report (`probabilistic.html`)
-that never touches the certified `drift.json`/`dashboard.html`. (You already warned the user, up
-front, that this AI pass costs tokens — so just run it.)
+results. Its output is **leads, not findings** — kept in their own blob inside the one dashboard,
+never mixed into the certified `drift.json`. (You already warned the user, up front, that this AI
+pass costs tokens — so just run it.)
 
 Run these right after kicking off the deterministic scan — no gate between:
 
@@ -137,10 +138,17 @@ Run these right after kicking off the deterministic scan — no gate between:
    may only say *whether*, corroborated by what the agent read this session).
    A repo an agent cannot read is reported, never dropped — OMIT it from `ai_results.json`'s `repos[]` entirely; the compare step then marks it "not cross-checked" automatically. Do NOT add a placeholder entry for it, which would read as a checked-and-clean repo.
 2. Assemble the results into `<state>/ai_results.json` (`{meta:{reposRead,tokens}, repos:[...]}`).
-3. Render the separate artifact — NEVER touch `dashboard.html`. Use `$SCAN probabilistic` to render:
-   `"$SCAN" probabilistic --state <state> --ai-results <state>/ai_results.json --now $(date +%F)`
-   This writes `<state>/probabilistic.html` (labelled **AI · unverified**, outside `verify`).
-4. Show the tally (agree / AI-only / tool-only) and point to `probabilistic.html`.
+3. Record the leads — they ride in the ONE dashboard, not a second page:
+   `"$SCAN" leads --state <state> --ai-results <state>/ai_results.json --now $(date +%F)`
+   This validates the pass (refusing any date in a lead — `retired` is the tri-state
+   `"yes"|"no"|"unknown"`, NEVER a date) and writes `<state>/leads.json`. Then re-run
+   `"$SCAN" render --state <state> --now $(date +%F)` so the dashboard picks it up. The leads appear in the
+   **AI Frontier** tab badged `UNVERIFIED LEAD`, alongside gate-validated shapes
+   (`GATE-VALIDATED`) and sourced research verdicts (`SOURCED`) — one surface, three
+   clearly-separated tiers. The certified `drift.json` is untouched, and `verify`'s
+   `ai-firewall` invariant proves it.
+4. Show the tally (agree / AI-only / tool-only) and point the user at the dashboard's AI
+   Frontier tab.
 5. For any AI-only lead worth keeping, OFFER to promote it via `/drift-absorb` — the absorb gate
    verifies it (sourced date, no false attribution, residue shrinks) before it can ever become a
    certified finding. Never present a lead as certified; never merge one without the gate.
