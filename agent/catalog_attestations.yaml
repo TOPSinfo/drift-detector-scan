@@ -27,6 +27,13 @@
   by: ai-research
   note: General n-2 / 18-month deprecation policy only; no specific AvaTax API version
     announced for retirement on a calendar date.
+- vendor: BigCommerce
+  checked: '2026-08-11'
+  source: https://docs.bigcommerce.com/docs/start/best-practices/sunsets
+  by: ai-research
+  note: V3 is the active API; V2 endpoints (/v2/products, /v2/brands, etc.) are listed
+    as deprecated with V3 replacements, but the live page publishes NO sunset date
+    for them this session.
 - vendor: BlueCart API
   checked: '2026-08-10'
   source: https://trajectdata.com/ecommerce/blue-cart-api/
@@ -52,11 +59,23 @@
   by: ai-research
   note: Actively maintained changelog; no announced retirement/sunset of the EasyPost
     API itself.
+- vendor: Etsy
+  checked: '2026-08-11'
+  source: https://github.com/etsy/open-api/releases
+  by: ai-research
+  note: Open API v3 active and actively maintained (latest release 2026-03-24); only
+    field-level removals (processing-time fields, Q1 2026) — no version/API sunset,
+    and Q1 2026 is not a cl
 - vendor: FedEx
   checked: '2026-08-11'
   source: https://developer.fedex.com/api/en-us/announcements/Migrate_to_FedEx_APIs_Act_Now.html
   by: ai-research
   note: retirement found (2026-06-01)
+- vendor: Firebase FCM
+  checked: '2026-08-11'
+  source: https://groups.google.com/g/firebase-talk/c/LgY3wx6ehS4
+  by: ai-research
+  note: retirement found (2024-06-20)
 - vendor: GitHub
   checked: '2026-08-11'
   source: https://docs.github.com/en/rest/about-the-rest-api/breaking-changes
@@ -94,12 +113,25 @@
   by: ai-research
   note: ISO-date revision versioning; 1yr stable + 1yr deprecated then 410. No specific
     revision retirement date on this policy page.
+- vendor: Kogan
+  checked: '2026-08-11'
+  source: https://developers.kogan.com/changelog
+  by: ai-research
+  note: Public changelog is active but uses only relative timestamps (no absolute
+    dates); API in active use (V2), one endpoint 'Categories by ID' marked Deprecated
+    with no date.
 - vendor: LinkedIn
   checked: '2026-08-11'
   source: https://learn.microsoft.com/en-us/linkedin/marketing/versioning?view=li-lms-2026-05
   by: ai-research
   note: Monthly YYYYMM versions, min 1-year support then sunset; version 202507 already
     sunset, but no future dated retirement stated on the policy page.
+- vendor: Magento
+  checked: '2026-08-11'
+  source: https://developer.adobe.com/commerce/php/development/backward-incompatible-changes/
+  by: ai-research
+  note: SOAP shipping integrations (FedEx/UPS) were migrated to REST and removed in
+    2.4.7; no dated sunset of Magento's own core REST/SOAP API was found this session.
 - vendor: Mailchimp
   checked: '2026-08-11'
   source: https://mailchimp.com/developer/release-notes/export-api-1-0-and-api-2-0-no-longer-supported/
@@ -111,6 +143,12 @@
   by: ai-research
   note: Real dated release-notes page; no API version deprecation or endpoint retirement
     with a date announced.
+- vendor: Marketplacer
+  checked: '2026-08-11'
+  source: https://api.marketplacer.com/docs/changes/deprecation_process/
+  by: ai-research
+  note: Official Marketplacer deprecation-process policy page; forward-looking policy
+    only, no specific dated retirement.
 - vendor: Meta Graph API
   checked: '2026-08-11'
   source: https://developers.facebook.com/docs/graph-api/guides/versioning/
@@ -227,6 +265,17 @@
     is the callable host for TikTok''s API for Business (Marketing API), currently
     on v1.3. The official tiktok-org SDK changelog I fetched shows only active dev'
   by: ai-research
+- vendor: Trade Me
+  checked: '2026-08-11'
+  source: https://developer.trademe.co.nz/api-overview/versioning
+  by: ai-research
+  note: Official Trade Me developer versioning page; active, no dated retirement announced.
+- vendor: Tradevine
+  checked: '2026-08-11'
+  source: https://api.tradevine.com/Help/getting-started.html
+  by: ai-research
+  note: Real Tradevine developer docs (public, not login-gated); active, no deprecation
+    date announced.
 - vendor: Twilio
   checked: '2026-08-11'
   source: https://www.twilio.com/en-us/changelog/deprecation-of-region-specific-twilio-api-domain-patterns
@@ -253,6 +302,12 @@
     a path or a parseable date: Price management (no endpoint path; sunset "2026"),
     and the Get / Confirm / Print / Cancel carrier-rate-quote operations (endpoints
     not specified in the guide). Recorded here rather than invented.'
+- vendor: WooCommerce
+  checked: '2026-08-11'
+  source: https://woocommerce.github.io/woocommerce-rest-api-docs/v3.html
+  by: ai-research
+  note: v3 is the current/recommended version; v1 and v2 are deprecated but no dated
+    removal is stated on the fetched page.
 - vendor: eBay
   checked: '2026-07-29'
   source: https://www.edp.ebay.com/rss/api-deprecation
