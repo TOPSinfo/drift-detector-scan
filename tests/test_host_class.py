@@ -4,6 +4,7 @@ Guards the taxonomy that turns the "wall of unknowns" into a ranked list: real A
 top, noise bucketed but never hidden. `hostClass` is orthogonal to vendor classification —
 nothing here may set `classified`/`vendor`/a date.
 """
+import pytest
 from agent.lib import host_class as hc
 
 
@@ -120,3 +121,33 @@ def test_empty_or_junk_host_is_unclassified_never_crashes():
     classify_url.is_nonhost; that stays Task 3's job, not this classifier's.)"""
     for junk in ("", None, "...", "sandbox."):
         assert hc.classify(junk) == "unclassified"
+
+
+# Each host below sat in `queued` on a real Laravel scan, described as "an API service we haven't
+# researched yet". None of them is an API service. rfc-editor.org is the tell: the same host was
+# ALREADY excluded as boilerplate through another path, so the queue and the exclusion list
+# disagreed with each other about the same domain.
+@pytest.mark.parametrize("host,expected", [
+    ("spdx.org", "boilerplate"),
+    ("spec.openapis.org", "boilerplate"),
+    ("www.rfc-editor.org", "boilerplate"),
+    ("reactjs.org", "boilerplate"),
+    ("redux.js.org", "boilerplate"),
+    ("vladimirgorej.com", "boilerplate"),
+    ("acme.com", "boilerplate"),
+    ("fb.me", "social-widget"),
+    ("www.snapchat.com", "social-widget"),
+    ("www.threads.net", "social-widget"),
+    ("soundcloud.com", "social-widget"),
+    ("get.adobe.com", "asset-cdn"),
+])
+def test_queue_noise_is_bucketed_not_queued(host, expected):
+    assert hc.classify(host) == expected
+
+
+@pytest.mark.parametrize("host", [
+    "spdx.org", "www.rfc-editor.org", "fb.me", "soundcloud.com", "get.adobe.com", "acme.com",
+])
+def test_bucketed_hosts_are_not_integrations(host):
+    """`is_integration` False is what keeps them out of the audit backlog — the queue count."""
+    assert not hc.is_integration(hc.classify(host))
