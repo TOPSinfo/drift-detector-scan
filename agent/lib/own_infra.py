@@ -127,7 +127,17 @@ def signals(repo_path: str = "", repo_id: str = "", vendor_tokens: frozenset = f
         reg = _registrable(host)
         if reg and reg not in _PUBLIC_FORGES and host_l not in _PUBLIC_FORGES:
             domains.add(reg)
-    tokens -= vendor_tokens
+    # A derived token is dropped when it EQUALS a vendor token (the original guard) or when it
+    # CONTAINS a vendor token of length >= _MIN_TOKEN. The equality-only check missed a repo
+    # token that concatenates onto or around a vendor's name (`globalpaymentsapi` contains
+    # `globalpayments` but never equals it) — a repo token that contains a vendor's name is
+    # still that vendor's name. Over-dropping is the SAFE direction here: a dropped token merely
+    # leaves the host visible in the queue for a human to triage, whereas a kept one silently
+    # deletes a real vendor from the audit backlog — this project's cardinal sin. The length
+    # floor keeps a short vendor token (`api`, `sp`) from vetoing on a coincidental substring.
+    tokens = {t for t in tokens
+              if t not in vendor_tokens
+              and not any(len(vt) >= _MIN_TOKEN and vt in t for vt in vendor_tokens)}
     return {"tokens": tokens, "domains": domains}
 
 

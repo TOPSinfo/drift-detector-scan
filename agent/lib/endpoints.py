@@ -113,9 +113,20 @@ def scan_endpoints(matches: list, repo_root: str, vendors: list, *, max_files: i
     # This repo's own-infrastructure signals, derived once (pure; see agent/lib/own_infra.py).
     # vendor_tokens: the catalog's own vendor names, tokenised the way own_infra expects — so a
     # repo named after the vendor it integrates with (acme-mailgun-sync) cannot suppress that
-    # vendor's uncatalogued hosts (its status page, a second domain) as own-infra.
-    vendor_tokens = frozenset(
-        t for name in by_name for t in re.split(r"[^a-z0-9]+", name.lower()) if t)
+    # vendor's uncatalogued hosts (its status page, a second domain) as own-infra. A multi-word
+    # vendor ("Global Payments", "Amazon SP-API") also contributes its CONCATENATED form
+    # ("globalpayments", "amazonspapi") alongside the per-word tokens: own_infra._tokens()
+    # splits a repo name only on [-_.]+, so a repo literally named `acme-globalpayments-sync`
+    # yields the single token "globalpayments", which never equals either per-word vendor token
+    # ("global", "payments") and so was never dropped — the vendor's own host was silently
+    # claimed as own-infra. This was a Critical review finding: 19 of 68 vendors are multi-word.
+    vendor_tokens = set()
+    for name in by_name:
+        words = [w for w in re.split(r"[^a-z0-9]+", name.lower()) if w]
+        vendor_tokens.update(words)
+        if len(words) > 1:
+            vendor_tokens.add("".join(words))
+    vendor_tokens = frozenset(vendor_tokens)
     own_sig = own_infra.signals(repo_path=repo_root, repo_id=repo_id or "",
                                 vendor_tokens=vendor_tokens)
 
