@@ -484,6 +484,41 @@ def check_host_classes(payload: dict) -> None:
                             f"counts.coverage[{state}]={cov.get(state)} but the endpoints hold {n}")
 
 
+# Markers that mean "a model produced this". `by: ai-research` is deliberately NOT here: on a
+# catalog attestation it is an honest provenance label for a gate-validated check, and ~40 vendors
+# legitimately carry it. What must never appear is an AI-shaped ENDPOINT or FINDING.
+_AI_MARKERS = frozenset({"ai", "ai-shaped", "lead", "leads", "probabilistic", "unverified"})
+_AI_FIELDS = ("origin", "tier", "source_tier", "provenance")
+
+
+def check_ai_firewall(payload: dict) -> None:
+    """No AI-derived record may appear in the certified payload.
+
+    Until the AI tiers moved into dashboard.html, this was guaranteed structurally: leads lived in
+    probabilistic.html, shapes in adhoc.html, and `verify` covered only the certified files. Sharing
+    one document removes that guarantee, so it becomes an assertion instead. The AI blobs
+    themselves stay OUTSIDE the equality check — they are not projections of drift.json and cannot
+    be verified against it — but nothing they contain may cross into the certified data.
+    """
+    for section in ("endpoints", "findings", "catalog"):
+        for rec in payload.get(section) or ():
+            if not isinstance(rec, dict):
+                continue
+            for field in _AI_FIELDS:
+                val = str(rec.get(field) or "").strip().lower()
+                if val in _AI_MARKERS:
+                    raise Violation(
+                        "ai-firewall",
+                        f"{section}[] record carries {field}={val!r} — AI-derived data must stay "
+                        f"in its own blob (adhoc-data / leads-data / research-data), never in the "
+                        f"certified payload")
+            if section == "catalog" and str(rec.get("by") or "").lower() in ("lead", "ai"):
+                raise Violation(
+                    "ai-firewall",
+                    f"catalog[] record for {rec.get('vendor')!r} claims by={rec.get('by')!r} — a "
+                    f"catalog verdict may only come from a gate-validated attestation")
+
+
 def verify_payload(payload: dict, findings: list) -> list:
     """Run every payload invariant. Returns the violations rather than raising, so
     `drift verify` can report all of them in one pass instead of one per run."""
@@ -492,6 +527,7 @@ def verify_payload(payload: dict, findings: list) -> list:
                      (check_owner_split, (payload,)),
                      (check_row_labels_distinct, (payload,)),
                      (check_host_classes, (payload,)),
+                     (check_ai_firewall, (payload,)),
                      (check_number_formats, (payload,))):
         try:
             fn(*args)
