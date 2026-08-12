@@ -242,6 +242,13 @@ dialog .db{padding:16px 18px} dialog .x{margin-left:auto;background:none;border:
 .orig[data-origin="certified"] { border:1px solid var(--line); color:var(--ink); }
 .orig[data-origin="shaped"]    { border:1px solid var(--accent-2); color:var(--accent-2); }
 .orig[data-origin="lead"]      { border:1px dashed var(--line); color:var(--muted); }
+/* Provenance badges. Deliberately DESCENDING in visual weight — gate-validated reads strongest,
+   an unverified lead weakest — so the eye ranks the tiers the way the trust model does. */
+.orig[data-origin="sourced"] { background: var(--amber-bg, #fdf1dc); color: var(--amber-fg, #7a4b00); }
+.orig[data-origin="lead"]    { background: var(--muted-bg, #eceff3); color: var(--muted-fg, #52606d);
+                               border: 1px dashed currentColor; }
+.tri[data-tri="yes"]     { font-weight: 700; }
+.tri[data-tri="unknown"] { opacity: .7; font-style: italic; }
 td.orig { width:1%; }
 .tcount { font-size:11px; opacity:.65; }
 .op { color:var(--muted); font-size:12px; }

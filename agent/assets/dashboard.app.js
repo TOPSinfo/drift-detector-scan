@@ -13,6 +13,10 @@
   // the AI-RESEARCH tier — what the research loop found in the wild (vendors researched, sunsets
   // discovered + sourced, verdicts needing a human). Separate blob; null when no research has run.
   var RESEARCH = document.getElementById("research-data") ? blob("research-data") : null;
+  // the AI-LEADS tier (drift-leads/v1) — the rawest of the three: what an AI agent read in the
+  // repo, corroborated only by that session. `retired` is a tri-state, NEVER a date. Separate
+  // blob; null when no cross-check has run, so the tier is hidden rather than shown as 0.
+  var LEADS = document.getElementById("leads-data") ? blob("leads-data") : null;
   // generic scan methodology (Sources / Versions / Parked tiers / catalog note) is boilerplate,
   // identical every scan — it goes to its own "methodology" footer, NOT mixed into the
   // data-specific coverage warnings (unaudited vendors, unreachable sources, …).
@@ -44,6 +48,7 @@
         SBOM: Vue.markRaw(SBOM), SPDX: Vue.markRaw(SPDX), SARIF: Vue.markRaw(SARIF),
         ADHOC: ADHOC ? Vue.markRaw(ADHOC) : null,
         RESEARCH: RESEARCH ? Vue.markRaw(RESEARCH) : null,
+        LEADS: LEADS ? Vue.markRaw(LEADS) : null,
         generated: DATA.generated || "",
         scope: "",            // global repo scope ("" = all)
         plane: "drift",        // active TOP-LEVEL plane: supply | drift | ai. Opens on Vendor
@@ -132,7 +137,8 @@
             {key:"researched",label:"Researched",n:this.researchedCount},
             {key:"aisunsets",label:"Sunsets found",n:this.sunsetsFoundCount,sev:this.sunsetsFoundCount?"warn":""},
             {key:"needshuman",label:"Need review",n:this.needsHumanCount},
-            {key:"shaped",label:"Shaped",n:this.shapedCount}]}
+            {key:"shaped",label:"Shaped",n:this.shapedCount},
+            {key:"leads",label:"Leads",n:this.leadsCount}]}
         ];
       },
       tileGroups: function(){
@@ -200,6 +206,29 @@
         return out;
       },
       shapedCount: function(){ return this.shaped.length; },
+
+      // ---- the AI-LEADS tier: rawest of the three, corroborated only by the session that read
+      // it. `(LEADS.repos || [])` / `(r.integrations || [])` guard against a blob that parsed as
+      // valid JSON of the wrong shape (a bare list/number/etc from `blob()`'s {} fallback too) —
+      // leadsCount/leadRows must degrade to 0/empty, never throw. ----
+      leadsCount: function(){
+        if(!LEADS) return 0;
+        return (LEADS.repos || []).reduce(function(n, r){
+          return n + ((r.integrations || []).length);
+        }, 0);
+      },
+      leadRows: function(){
+        if(!LEADS) return [];
+        var out = [];
+        (LEADS.repos || []).forEach(function(r){
+          (r.integrations || []).forEach(function(i){
+            out.push({repo: r.repo, vendor: i.vendor, host: i.host, endpoint: i.endpoint,
+                      file: i.file, line: i.line, retired: i.retired, note: i.note,
+                      origin: "lead"});
+          });
+        });
+        return out;
+      },
 
       // ---- JSON views: drift.json / CycloneDX / SPDX / SARIF, pretty-printed for the
       // read-only "view / copy" panels. Same DATA/SBOM/SPDX/SARIF the tables above render
