@@ -48,13 +48,42 @@ _PUBLIC_FORGES = frozenset({
 # `git.example.co.uk` -> `co.uk` — which then claims every unrelated `*.co.uk` vendor as
 # own-infra. The real organisation label sits one level further up, so hosts ending in one of
 # these need three labels, not two.
+#
+# This used to be a ~20-entry hardcoded list of specific `{second-level}.{cctld}` pairs
+# (`co.uk`, `com.au`, `co.jp`, ...). That is a false-confidence surface: the world has hundreds
+# of ccTLDs, most with their own `co.`/`com.`/`gov.`/`ac.` second level, and every pair not
+# enumerated (`com.cn`, `co.kr`, `com.mx`, `co.il`, `com.sg`, `com.hk`, `gov.uk`, ...) silently
+# fell through to being treated as an organisation domain — exactly the wrong direction, since a
+# missed entry then claims an unrelated vendor as own-infra instead of leaving it queued. So the
+# check below is a RULE, not a list: a two-label result is a public suffix whenever its first
+# label is one of the well-known second-level generics and its second label is a bare 2-letter
+# ccTLD. That single rule covers the whole `{generic}.{cctld}` family without enumerating it.
+#
+# What the rule genuinely cannot express stays here: ccTLD second levels that aren't ordinary
+# English generics (`me.uk`, `ltd.uk`, `plc.uk`), and vendor-operated suffixes where every
+# customer gets a subdomain — the suffix itself is never anyone's organisation (`github.io`,
+# `gitlab.io`, `pages.dev`, `herokuapp.com`, `vercel.app`).
 _MULTI_PART_SUFFIXES = frozenset({
-    "co.uk", "org.uk", "me.uk", "ltd.uk", "plc.uk", "net.uk", "sch.uk",
-    "com.au", "net.au", "org.au", "edu.au",
-    "co.nz", "org.nz", "net.nz",
-    "co.za", "com.br", "co.jp", "co.in", "co.id",
-    "github.io", "gitlab.io",
+    "me.uk", "ltd.uk", "plc.uk",
+    "github.io", "gitlab.io", "pages.dev", "herokuapp.com", "vercel.app",
 })
+
+# Well-known second-level generic labels reused across many ccTLDs' public-suffix hierarchies
+# (`co`, `com`, `gov`, `ac`, ... under `.uk`, `.cn`, `.kr`, `.au`, ...). Paired with a bare
+# 2-letter ccTLD, this is the general public-suffix rule above.
+_SLD_GENERICS = frozenset({
+    "co", "com", "org", "net", "gov", "ac", "edu", "mil", "int", "ne", "or",
+    "gob", "gouv", "gv", "id", "sch", "nom", "art", "priv",
+})
+
+_CCTLD = re.compile(r"^[a-z]{2}$")
+
+
+def _is_public_suffix(two_labels: str) -> bool:
+    if two_labels in _MULTI_PART_SUFFIXES:
+        return True
+    first, _, second = two_labels.partition(".")
+    return first in _SLD_GENERICS and bool(_CCTLD.match(second))
 
 _REMOTE = re.compile(r"^(?:(?:https?|ssh|git)://)?(?:[^@/]+@)?([^/:]+)[/:](.+?)(?:\.git)?/?$")
 
@@ -69,7 +98,7 @@ def _registrable(host: str) -> str:
     if len(labels) < 2:
         return ""
     two = ".".join(labels[-2:])
-    if two in _MULTI_PART_SUFFIXES:
+    if _is_public_suffix(two):
         # Need an organisation label above the suffix itself; with none, the host IS the
         # suffix (or the suffix with nothing but itself) — a public suffix is not an
         # organisation, so claim nothing rather than risk a false own-infra match.
