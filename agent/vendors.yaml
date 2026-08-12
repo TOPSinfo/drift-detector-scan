@@ -96,3 +96,23 @@
 - { vendor: TikTok Business API, techKey: api:tiktok-business, domains: [business-api.tiktok.com] }
 - { vendor: OpenStreetMap, techKey: api:openstreetmap, domains: [osm.org] }
 - { vendor: Vimeo Player, techKey: api:vimeo, domains: [player.vimeo.com] }
+
+# ── Communications / automation ────────────────────────────────────────────
+# DETECTION ONLY — each host was observed in real code; no retirement list has been checked, so
+# these are deliberately UNAUDITED (see agent/catalog_attestations.yaml). Naming the integration
+# is the value; implying its versions are current would be the false-clean this tool refuses.
+- { vendor: JustCall,           techKey: api:justcall,           domains: [justcall.io] }
+- { vendor: Zapier,             techKey: api:zapier,             domains: [zapier.com] }
+- { vendor: Microsoft Identity, techKey: api:microsoft-identity, domains: [login.microsoftonline.com, login.microsoft.com] }
+
+# ── AI / LLM providers ─────────────────────────────────────────────────────
+# Enumerated by a dependency's PUBLISHED config (a Laravel app ships the package's config file),
+# so the code references them whether or not a code path selects one. Classified so they are named
+# and countable; UNAUDITED because nobody has read their deprecation pages.
+- { vendor: DeepSeek,           techKey: api:deepseek,           domains: [deepseek.com] }
+- { vendor: Groq,               techKey: api:groq,               domains: [groq.com] }
+- { vendor: Mistral AI,         techKey: api:mistral,            domains: [mistral.ai] }
+- { vendor: xAI,                techKey: api:xai,                domains: [x.ai] }
+- { vendor: OpenRouter,         techKey: api:openrouter,         domains: [openrouter.ai] }
+- { vendor: ElevenLabs,         techKey: api:elevenlabs,         domains: [elevenlabs.io] }
+- { vendor: Voyage AI,          techKey: api:voyageai,           domains: [voyageai.com] }
