@@ -16,8 +16,13 @@ def _runtimes(repo) -> dict:
 
 
 def _fmt_eps(tuples) -> list:
+    # Every column here is nullable: SDK-client endpoints are derived from the manifest
+    # rather than an AST match, so they carry techKey=None (and often version=None).
+    # Sort on a total order — comparing None to str raises, which killed `run` outright
+    # the first time such an endpoint entered a delta alongside a normal one.
     return [{"techKey": tk, "domain": d, "version": v}
-            for tk, d, v in sorted(tuples, key=lambda x: (x[0], x[1], str(x[2])))]
+            for tk, d, v in sorted(tuples, key=lambda x: (str(x[0] or ""), str(x[1] or ""),
+                                                          str(x[2] or "")))]
 
 
 def _diff_repo(path, pr, cr) -> dict:

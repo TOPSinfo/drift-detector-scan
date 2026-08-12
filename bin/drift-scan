@@ -8,6 +8,12 @@
 # package-relative, and relative --root/--out paths still resolve against the
 # caller's cwd because we do NOT chdir.
 #
+# PYTHONSAFEPATH=1 is what makes that first claim TRUE. `python -m` prepends the
+# caller's cwd to sys.path AHEAD of PYTHONPATH, so running from any directory that
+# happens to contain an `agent/` package silently executed THAT engine and its
+# catalogs — a green, deterministic, wrong report that `verify` cannot catch,
+# because the hijacking engine verifies its own output. Do not remove it.
+#
 # Usage:
 #   drift-scan doctor              # check prerequisites, print exact fixes
 #   drift-scan [inventory-scan flags]   # e.g. --root --state --out-json --now
@@ -58,7 +64,7 @@ if [ "${1:-}" = "doctor" ]; then
   fi
   if [ -f "$MARKER" ]; then
     # report the engine the scanner will ACTUALLY resolve, not just what pip installed
-    eng="$(env PYTHONPATH="$ROOT${PYTHONPATH:+:$PYTHONPATH}" "$VENV/bin/python" -c \
+    eng="$(env PYTHONSAFEPATH=1 PYTHONPATH="$ROOT${PYTHONPATH:+:$PYTHONPATH}" "$VENV/bin/python" -c \
           'from agent.lib.scan_util import resolve_engine; print(resolve_engine())' 2>/dev/null)"
     if [ -n "$eng" ]; then
       case "$(basename "$eng")" in
@@ -77,9 +83,9 @@ if [ "${1:-}" = "doctor" ]; then
     # optional scan-readiness pre-flight for a folder (private-source packages needing access)
     if [ -n "${2:-}" ] && [ -f "$MARKER" ]; then
       echo
-      env PYTHONPATH="$ROOT${PYTHONPATH:+:$PYTHONPATH}" "$VENV/bin/python" -m agent.cli preflight --root "$2" || true
+      env PYTHONSAFEPATH=1 PYTHONPATH="$ROOT${PYTHONPATH:+:$PYTHONPATH}" "$VENV/bin/python" -m agent.cli preflight --root "$2" || true
       echo
-      env PYTHONPATH="$ROOT${PYTHONPATH:+:$PYTHONPATH}" "$VENV/bin/python" -m agent.cli recommend --root "$2" || true
+      env PYTHONSAFEPATH=1 PYTHONPATH="$ROOT${PYTHONPATH:+:$PYTHONPATH}" "$VENV/bin/python" -m agent.cli recommend --root "$2" || true
     fi
     exit 0
   fi
@@ -90,7 +96,12 @@ fi
 # Subcommand: default inventory-scan; others: audit / run / schedule / unschedule / doctor.
 SUB="inventory-scan"
 case "${1:-}" in
-  audit|run|deliver|notify|sbom|sarif|brief|precedents|config-preflight|schedule|unschedule|mute|preflight|recommend|absorb|verify|catalog-refresh|catalog-check|plan|probe|freshness|probabilistic|adhoc-report|render) SUB="$1"; shift ;;
+  audit|run|deliver|notify|sbom|sarif|brief|precedents|config-preflight|schedule|unschedule|mute|preflight|recommend|absorb|verify|catalog-refresh|catalog-check|plan|probe|freshness|probabilistic|adhoc-report|render|clean|research) SUB="$1"; shift ;;
+  # A bare word we do not dispatch is a TYPO or an unwired subcommand — never the default
+  # scan. Falling through silently made `drift-scan clean` die as `inventory-scan` with an
+  # unrelated "--root is required", which reads as a broken scan rather than a bad verb.
+  -*|"") : ;;                                   # flags / no args → the default scan
+  *) echo "drift-detector: unknown subcommand '$1'. Run 'drift-scan doctor' or pass scan flags (--root/--state)." >&2; exit 2 ;;
 esac
 
 # ---------- provision the venv once (idempotent via the marker file) ----------
@@ -158,5 +169,5 @@ fi
 # Run from the caller's cwd (so relative paths resolve), with the agent package on the
 # import path. The venv's python finds ast-grep next to it
 # (agent.lib.scan_util.resolve_engine checks dirname(sys.executable)).
-exec env PYTHONPATH="$ROOT${PYTHONPATH:+:$PYTHONPATH}" \
+exec env PYTHONSAFEPATH=1 PYTHONPATH="$ROOT${PYTHONPATH:+:$PYTHONPATH}" \
   "$VENV/bin/python" -m agent.cli "$SUB" "$@"
