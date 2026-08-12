@@ -25,14 +25,38 @@ def test_runner_has_doctor_with_actionable_hint():
     assert "astral.sh/uv/install.sh" in body                    # exact uv install remediation
 
 
-def test_runner_dispatches_every_subcommand():
+def _runner_case_line() -> str:
     runner = (_ROOT / "bin" / "drift-scan").read_text()
-    case_line = next(l for l in runner.splitlines() if l.strip().startswith("audit|run|"))
+    return next(l for l in runner.splitlines() if l.strip().startswith("audit|run|"))
+
+
+def test_runner_dispatches_every_subcommand():
+    case_line = _runner_case_line()
     for sub in ("audit", "run", "deliver", "schedule", "unschedule", "mute", "preflight", "absorb", "verify"):
         assert sub in case_line                                  # runner dispatches every subcommand
     assert "gitlab-sync" not in case_line                        # connector stripped on hybrid (see master)
     from agent import cli
     assert all(hasattr(cli, n) for n in ("_cmd_audit", "_cmd_run", "_cmd_schedule", "_cmd_unschedule"))
+
+
+def test_runner_allowlist_covers_the_whole_cli():
+    """Derived from agent/cli.py, NOT a hand-kept list — that is the whole point.
+
+    Shipped bug: the check above whitelisted 9 names by hand, so `clean` and `research`
+    were added to the CLI and never wired into the runner's case statement. An unlisted
+    subcommand does not error; it falls through to the DEFAULT (`inventory-scan`), so
+    `drift-scan clean --report` died with a confusing "--root/--state are required"
+    instead of running, and the plugin skill's cleanup + /drift-research paths were dead
+    on arrival. Any future subcommand is caught here the moment it is added.
+    """
+    import re
+    cli_src = (_ROOT / "agent" / "cli.py").read_text()
+    declared = set(re.findall(r'add_parser\("([a-z-]+)"', cli_src))
+    dispatched = set(re.findall(r"[a-z-]+", _runner_case_line().split(")")[0]))
+    # `inventory-scan` is the runner's default when nothing matches, so it is reachable
+    # without appearing in the case list.
+    missing = sorted(declared - dispatched - {"inventory-scan"})
+    assert not missing, f"CLI subcommands unreachable via bin/drift-scan: {missing}"
 
 
 def test_referenced_cli_subcommand_exists():
@@ -102,3 +126,24 @@ def test_plugin_scaffolding_present_and_wired():
     assert "AI · unverified" in main and "probabilistic.html" in main
     assert '"yes"|"no"|"unknown"' in main and "NEVER a date" in main
     assert not (_ROOT / "skills").exists()                       # command-based plugin, no skills/ dir
+
+
+def test_runner_ignores_a_foreign_agent_package_in_the_callers_cwd(tmp_path):
+    """The runner pins the engine via PYTHONPATH, but `python -m` puts the caller's CWD at
+    sys.path[0] — AHEAD of PYTHONPATH — so any directory containing an `agent/` package
+    silently hijacked the scan.
+
+    This shipped. Running `drift-scan` from the older sibling checkout (which has its own
+    `agent/` + catalogs) executed THAT engine's code and attestations while reporting itself
+    as a normal run: promoteplus-crm graded 7 vendors UNAUDITED instead of 2, deterministic
+    and green and wrong. `verify` cannot catch it — the wrong engine verifies its own output.
+    """
+    import subprocess
+    decoy = tmp_path / "agent"
+    decoy.mkdir()
+    (decoy / "__init__.py").write_text("")
+    (decoy / "cli.py").write_text("print('DECOY ENGINE RAN')\n")
+    proc = subprocess.run([str(_ROOT / "bin" / "drift-scan"), "verify", "--state", str(tmp_path / "nope")],
+                          cwd=tmp_path, capture_output=True, text=True, timeout=180)
+    assert "DECOY ENGINE RAN" not in (proc.stdout + proc.stderr), \
+        "the caller's cwd shadowed the pinned engine"
