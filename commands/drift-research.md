@@ -46,12 +46,16 @@ For **each host** in the work-list (do them concurrently where you can — one f
 
 1. Identify the vendor/product behind the host.
 2. **WebSearch** for its OFFICIAL API deprecation policy / changelog / release notes / API-version lifecycle. Try 2–4 query variations.
-3. **WebFetch** the most authoritative pages — prefer the vendor's *own* developer docs over blogs. Read them **semantically**, not by keyword.
+3. **Fetch the vendor's own page — structured source FIRST, in this order** (cheapest + most reliable first; the date must come from the VENDOR'S page, never a blog or a search snippet):
+   - a **feed / machine-readable source** — an RSS/Atom deprecation feed (eBay), a `changelog.md` / `deprecations.md`, a `/…/deprecations.json`, or a **GitHub docs mirror** (Etsy publishes releases at `github.com/etsy/open-api`). Cleanest, never needs rendering.
+   - the **`.md`/`.txt` variant** of a docs URL if the site serves one.
+   - the **HTML page** via `WebFetch`, read **semantically**, not by keyword.
+   - **only if the page is a JS-only SPA that returns an empty/shell body**, retry through a hosted render-to-markdown reader by prefixing the URL: `WebFetch https://r.jina.ai/<the-full-url>`. It renders the JS server-side and returns clean markdown (this recovered Amazon Ads' deprecations SPA that a plain fetch could not). It sends only the PUBLIC docs URL to a third party — fine for vendor docs, **never for anything private**. No local dependency, no browser.
 4. Decide the verdict:
    - **`retiring`** — a specific API version/endpoint has an announced retirement/sunset **with a date**. Capture the ISO `date`, the `source_url` you fetched, **and the `excerpt`** — the exact sentence *from the fetched page* that states the date. The gate checks the date actually appears in that excerpt (the verbatim-date check), so this must be text you copied from the page, not a paraphrase.
    - **`current`** — active API, no announced retirement (you checked a real source).
    - **`not-an-api`** — the host is a marketing / storefront / link / docs host, not a callable API.
-   - **`unverified`** — you could not fetch an authoritative source. Do **not** guess.
+   - **`unverified`** — none of the sources in step 3 yielded the vendor's own dated page (a login-gated developer portal, a SPA even the reader can't render, all URLs 404). Do **not** guess — a blog or a search summary is **not** a source. (UPS's June-2024 access-key cutoff is all over third-party blogs, but its own developer portal won't render even through the reader, so the honest verdict is `unverified`, not a borrowed date.)
 
 Write the results to `$D/verdicts.json` as a JSON array of objects:
 `{ "host", "vendor", "status", "date", "source_url", "excerpt", "evidence", "confidence" }`
