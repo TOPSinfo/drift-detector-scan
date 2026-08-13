@@ -177,6 +177,29 @@ def test_null_node_with_no_note_still_shows_its_label():
     assert "integrations" in body
 
 
+def test_endpoint_with_null_hostclass_does_not_crash_the_renderer():
+    """The schema does not REQUIRE `hostClass` — a real endpoint row can carry
+    `hostClass: null`, or omit the field entirely (`.get` returns None either way). Before
+    the fix, that None became a node `key`, and `_li` calls `html.escape(node["key"])` —
+    `html.escape(None)` raises AttributeError, crashing the whole render instead of showing
+    an honest 'we don't know its class' row."""
+    p = _payload()
+    p["endpoints"] += [{"domain": "h0.mystery.test", "hostClass": None, "coverage": "na"}]
+    p["counts"]["coverage"]["na"] += 1
+    p["counts"]["excluded"] += 1
+    p["counts"]["detected"] += 1
+
+    nodes = tree.build(p)                 # must not raise
+    html = tree.html_tree(nodes)          # must not raise (the AttributeError site)
+    body = "\n".join(tree.md_tree(nodes))  # must not raise
+
+    f = _flat(nodes)
+    kids = {c["key"]: c["n"] for c in f["assets"]["children"]}
+    assert sum(kids.values()) == f["assets"]["n"]     # the null row is still counted, not lost
+    assert None not in kids                            # never a raw None key
+    assert "None" not in html and "None" not in body    # an honest label, not Python's str(None)
+
+
 def test_md_tree_includes_the_roots_own_note():
     """`_li` (the HTML renderer) always emits a node's `.tnote` span, root included; `md_tree`
     only ever calls `_fmt(root)`, which has no note wording at all — the root's own note is

@@ -575,14 +575,20 @@ _TREE_ATTR = re.compile(r'data-(?P<k>node|n|unit)="(?P<v>[^"]*)"')
 
 
 def _tree_nodes(html: str) -> list:
-    """[(key, n|None, unit)] in document order, from the emitted <li> attributes."""
+    """[(key, n|None, unit)] in document order, from the emitted <li> attributes.
+
+    `_li` HTML-escapes `node["key"]` before writing the `data-node` attribute (a hostClass
+    like `weird&<class>` renders as `data-node="weird&amp;&lt;class&gt;"`), so the raw regex
+    capture must be unescaped back to the payload's own key here — otherwise every key
+    containing `&`/`<`/`>`/`"` would never equal its `expected` counterpart and every check
+    keyed on this list would either false-flag an honest render or (worse) silently skip it."""
     out = []
     for m in _TREE_LI.finditer(html):
         a = {mm.group("k"): mm.group("v") for mm in _TREE_ATTR.finditer(m.group("attrs"))}
         if "node" not in a:
             continue                      # an <li> outside the tree (the page has others)
         n = None if a.get("n") in (None, "null") else int(a["n"])
-        out.append((a["node"], n, a.get("unit")))
+        out.append((_html.unescape(a["node"]), n, a.get("unit")))
     return out
 
 
@@ -596,10 +602,19 @@ def _tree_region(html: str) -> str:
     by counting nested `<ul>` open/close tags to its matching close. Scoping to this substring
     is what lets the structural parse below trust that EVERY `<li>` inside it belongs to the
     tree (each carries `data-node` — see `_li`) — the rest of the page has `<li>`s of its own
-    (nav, tables, …) that a naive open/close stack could mismatch against."""
+    (nav, tables, …) that a naive open/close stack could mismatch against.
+
+    Raises rather than returning "" when the wrapper is absent: silently returning "" used to
+    make `_parse_rendered_tree` see zero roots and `_check_rendered_sums` walk nothing at all,
+    disabling the rendered-arithmetic check with no complaint — on a page whose individual
+    `<li data-node=...>` rows can still be intact enough to pass every other guard. 'cannot
+    see' must not render as 'clean' here either."""
     m = _TREE_ROOT_OPEN.search(html)
     if not m:
-        return ""
+        raise Violation("tree-missing",
+                        'no <ul class="tree"> found in the rendered page — the coverage tree '
+                        "wrapper is missing or was altered; silently skipping the rendered-sums "
+                        "check over it would let a hollowed-out tree still verify")
     depth = 1
     for tm in _TREE_UL_TAG.finditer(html, m.end()):
         depth += 1 if tm.group(0).startswith("<ul") else -1
@@ -632,7 +647,7 @@ def _parse_rendered_tree(html: str) -> list:
             continue
         a = {mm.group("k"): mm.group("v") for mm in _TREE_ATTR.finditer(m.group("attrs"))}
         n = None if a.get("n") in (None, "null") else int(a["n"])
-        node = {"key": a.get("node", ""), "n": n, "children": []}
+        node = {"key": _html.unescape(a.get("node", "")), "n": n, "children": []}
         (stack[-1]["children"] if stack else roots).append(node)
         stack.append(node)
     return roots
@@ -666,11 +681,25 @@ def check_tree_matches_payload(html: str, payload: dict) -> None:
     anything without eyes, and nobody on this project has them. Server-rendering the tree moves
     its numbers to a layer that CAN be checked, and this is the check.
 
-    Four failures, each a real class:
+    Six failures, each a real class:
       • tree-units        — a node with no declared unit (how the original bug hid);
+      • tree-missing      — the tree's own `<ul class="tree">` wrapper is absent or altered,
+                            which used to silently disable the rendered-sums check instead of
+                            failing (see `_tree_region`);
       • tree-sums         — RENDERED children that do not sum to their RENDERED parent, at any
                             depth (Finding 1 — a trailing run of deleted <li>s used to escape
                             this entirely; see `_check_rendered_sums`);
+      • tree-node-set     — the rendered `data-node` SEQUENCE (order and length) disagrees with
+                            drift.json's own pre-order key sequence: a key present in the
+                            payload but missing from the markup, a fabricated key present in
+                            the markup but absent from the payload, or the same keys simply
+                            reordered. This is the Important finding from review round 2: every
+                            check above and below this one either walks RENDERED keys and skips
+                            any not `in expected` (the per-node loop just below), or sums
+                            RENDERED children against their RENDERED parent — a parent with its
+                            children deleted wholesale has nothing left to sum, so a symmetric
+                            deletion (or insertion) across dashboard.html AND drift.md verified
+                            clean against a real report until this check existed;
       • tree-payload      — a node that disagrees with drift.json, i.e. self-consistent but false;
       • tree-text-mismatch — the VISIBLE text a reader sees disagrees with the node's own
                             `data-n` + known label (Finding 2 — editing the displayed digits in
@@ -717,6 +746,33 @@ def check_tree_matches_payload(html: str, payload: dict) -> None:
     # shortened run of hostClass <li>s (Finding 1) escaped every check.
     _check_rendered_sums(html)
 
+    # Important finding (review round 2): compare the rendered `data-node` SEQUENCE to
+    # drift.json's own pre-order key sequence — order AND length, not just per-key values.
+    # `expected` is a plain dict built by `_walk` above in the same parent-then-children order
+    # `tree.build`/`html_tree`/`md_tree` all walk, so `list(expected)` IS that pre-order
+    # sequence; `nodes` (from `_tree_nodes`, a linear scan of `<li>` open-tags) is the rendered
+    # markup's actual document order, which — because a parent's own `<li>` always opens before
+    # its children's, the same nesting `_li` builds — is the rendered tree's pre-order sequence
+    # too. Run BEFORE the per-key loop below: that loop's `if key in expected` silently skips
+    # any rendered key drift.json never produced, and skips comparing anything for a payload
+    # key the markup dropped entirely, which is exactly how both tampers below shipped green.
+    expected_order = list(expected)
+    rendered_order = [key for key, _n, _u in nodes]
+    if rendered_order != expected_order:
+        rset, eset = set(rendered_order), set(expected_order)
+        extra = [k for k in rendered_order if k not in eset]
+        missing = [k for k in expected_order if k not in rset]
+        if extra or missing:
+            raise Violation("tree-node-set",
+                            f"the rendered tree's nodes disagree with drift.json's: missing "
+                            f"{missing} (in the payload, absent from the markup), extra "
+                            f"{extra} (in the markup, not produced by tree.build) — a row was "
+                            f"deleted or fabricated in a way no sum or per-node check can see")
+        raise Violation("tree-node-set",
+                        f"the rendered tree has exactly drift.json's nodes but in a different "
+                        f"order — rendered {rendered_order} vs drift.json's {expected_order} — "
+                        f"a reordering changes nothing any sum or per-key check compares")
+
     for key, n, _u in nodes:
         if key in expected and expected[key] != n:
             raise Violation("tree-payload",
@@ -731,7 +787,7 @@ def check_tree_matches_payload(html: str, payload: dict) -> None:
     # label `tree.build` assigned that key — and comparing to what the markup actually shows is
     # not a second guess at the wording, it's the same formatter.
     for m in _TREE_LI_TEXT.finditer(html):
-        key = m.group("node")
+        key = _html.unescape(m.group("node"))
         exp_node = expected_full.get(key)
         if exp_node is None:
             continue                      # already reported above (tree-payload / unknown node)
@@ -775,7 +831,7 @@ def _tree_text_nodes(html: str) -> list:
         tc = _html.unescape(m.group("tc"))
         note = m.group("note")
         text = f"{tc}   ({_html.unescape(note)})" if note else tc
-        out.append((m.group("node"), text))
+        out.append((_html.unescape(m.group("node")), text))
     return out
 
 

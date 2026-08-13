@@ -219,3 +219,172 @@ def test_visible_text_disagreeing_with_data_n_is_a_violation():
     with pytest.raises(verify.Violation) as e:
         verify.check_tree_matches_payload(tampered, p)
     assert e.value.check == "tree-text-mismatch"
+
+
+# ---------------------------------------------------------------------------------------
+# Fix round 2 — the Important finding: the rendered node SET was never compared to the
+# payload's node set. Every existing check above either (a) walks the RENDERED nodes and
+# skips any key not in `expected` (the per-node value loop `continue`s), or (b) sums
+# RENDERED children against their RENDERED parent (nothing to sum if the children are simply
+# ABSENT, not merely wrong). Both tampers below were verified against a real report and
+# BOTH exited 0, "all agree", before this fix. The reproductions here call
+# check_tree_matches_payload ALONE (no check_tree_parity, no drift.md at all) because the
+# fix must make that one check stand on its own — a caller of only this function must not
+# be able to be fooled the way it could before.
+# ---------------------------------------------------------------------------------------
+
+def test_symmetric_deletion_of_all_asset_children_is_caught_by_matches_payload_alone():
+    """Tamper #1 from the finding: delete all five asset hostClass <li>s. `assets` keeps its
+    own data-n="43" with no children left, so the sums check has nothing to sum, and the
+    per-node loop below only ever visits RENDERED keys — the five deleted keys are simply
+    never looked at by anything. This used to pass check_tree_matches_payload outright; the
+    node-set/order comparison must catch it without needing check_tree_parity's help."""
+    p = _payload_with_assets()
+    nodes = tree.build(p)
+    html = tree.html_tree(nodes)
+    for hc in ("boilerplate", "social-widget", "vendored-lib", "asset-cdn", "own-infra"):
+        html, n = re.subn(rf'<li data-node="{hc}"[^>]*><span class="tc">[^<]*</span></li>',
+                          "", html, count=1)
+        assert n == 1, f"the test's own regex did not remove the {hc!r} <li>"
+    with pytest.raises(verify.Violation) as e:
+        verify.check_tree_matches_payload(html, p)
+    assert e.value.check == "tree-node-set"
+
+
+def test_symmetric_insertion_of_a_phantom_node_is_caught_by_matches_payload_alone():
+    """Tamper #2 from the finding: add a fabricated <li data-node="phantom" data-n="3" ...>
+    under the own-infra leaf. own-infra's own data-n stays 3 (now the sum of its one child,
+    so the sums check balances), and 'phantom' is not a key in `expected`, so the per-node
+    value loop skips it — nothing in the old code ever asked 'does every RENDERED key exist
+    in the payload?'. A fabricated row must not ship green."""
+    p = _payload_with_assets()
+    nodes = tree.build(p)
+    html = tree.html_tree(nodes)
+    own_infra_li = ('<li data-node="own-infra" data-n="3" data-unit="rows">'
+                    '<span class="tc">3 own-infra</span></li>')
+    assert own_infra_li in html, "fixture drifted from the renderer's actual own-infra markup"
+    phantom = ('<li data-node="phantom" data-n="3" data-unit="rows">'
+              '<span class="tc">3 phantom</span></li>')
+    tampered = own_infra_li.replace(
+        "<span class=\"tc\">3 own-infra</span></li>",
+        f'<span class="tc">3 own-infra</span><ul>{phantom}</ul></li>')
+    html = html.replace(own_infra_li, tampered, 1)
+    assert html != tree.html_tree(nodes)
+    with pytest.raises(verify.Violation) as e:
+        verify.check_tree_matches_payload(html, p)
+    assert e.value.check == "tree-node-set"
+
+
+def _swap_li(html: str, key_a: str, key_b: str) -> str:
+    """Swap two SIBLING leaf <li>...</li> blocks (no nested children of their own) by
+    document position, leaving every attribute and every other byte untouched."""
+    pat = lambda k: re.search(rf'<li data-node="{k}"[^>]*>.*?</li>', html, re.S)
+    ma, mb = pat(key_a), pat(key_b)
+    assert ma and mb, f"could not locate both {key_a!r} and {key_b!r} in the markup"
+    assert ma.start() < mb.start(), "test assumes key_a renders before key_b"
+    a, b = ma.group(0), mb.group(0)
+    return html[:ma.start()] + b + html[ma.end():mb.start()] + a + html[mb.end():]
+
+
+def test_reordering_two_sibling_nodes_is_a_violation():
+    """Neither a sum check nor a per-key value check cares about ORDER — a dict lookup by key
+    finds `tracked` and `queued` wherever they sit, and children summing to their parent does
+    not depend on which one comes first. Swapping two siblings, individually correct values
+    and all, is invisible to every check except one that compares the rendered SEQUENCE to
+    the payload's own pre-order sequence."""
+    p = _payload_with_assets()
+    nodes = tree.build(p)
+    html = tree.html_tree(nodes)
+    swapped = _swap_li(html, "tracked", "queued")
+    assert swapped != html
+    with pytest.raises(verify.Violation) as e:
+        verify.check_tree_matches_payload(swapped, p)
+    assert e.value.check == "tree-node-set"
+
+
+def test_reordering_asset_hostclass_children_is_a_violation():
+    """Same reorder class, one level deeper — two asset hostClass leaves swapped."""
+    p = _payload_with_assets()
+    nodes = tree.build(p)
+    html = tree.html_tree(nodes)
+    swapped = _swap_li(html, "boilerplate", "social-widget")
+    assert swapped != html
+    with pytest.raises(verify.Violation) as e:
+        verify.check_tree_matches_payload(swapped, p)
+    assert e.value.check == "tree-node-set"
+
+
+# ---------------------------------------------------------------------------------------
+# Fix round 2 — smaller finding: `_tree_region` failed SILENTLY (returned "") when
+# `<ul class="tree">` was not found, which disabled `_check_rendered_sums` with no complaint.
+# ---------------------------------------------------------------------------------------
+
+def test_missing_tree_wrapper_fails_loudly_not_silently():
+    """Mangling only the tree's own wrapper (leaving every <li data-node=...> row intact, so
+    the earlier 'no coverage tree found' guard does not fire — _tree_nodes scans the whole
+    document, not just this wrapper) used to make `_tree_region` return "" and silently skip
+    `_check_rendered_sums`. A missing/altered tree wrapper on a page that should have one must
+    be a violation, not a quiet no-op."""
+    p = _payload_with_assets()
+    html = tree.html_tree(tree.build(p)).replace('<ul class="tree">', '<ul class="tree-x">', 1)
+    with pytest.raises(verify.Violation) as e:
+        verify.check_tree_matches_payload(html, p)
+    assert e.value.check == "tree-missing"
+
+
+# ---------------------------------------------------------------------------------------
+# Fix round 2 — smaller finding: `tree._li` crashed on a null/absent `hostClass` — the
+# schema does not require the field. Reproduced end-to-end here (crash-level repro lives in
+# test_tree.py); this proves the whole certified pipeline stays green for such a row too.
+# ---------------------------------------------------------------------------------------
+
+def test_null_hostclass_row_renders_and_verifies_cleanly():
+    p = _payload_with_assets()
+    p["endpoints"].append({"hostClass": None, "coverage": "na"})
+    p["counts"]["coverage"]["na"] += 1
+    p["counts"]["excluded"] += 1
+    p["counts"]["detected"] += 1
+    nodes = tree.build(p)                       # must not raise (AttributeError, pre-fix)
+    html = tree.html_tree(nodes)                # must not raise
+    md = "\n".join(tree.md_tree(nodes))
+    verify.check_tree_matches_payload(html, p)
+    verify.check_tree_parity(html, md)
+
+
+# ---------------------------------------------------------------------------------------
+# Fix round 2 — the false-RED sweep required by the brief: every one of these honest shapes
+# must stay green after the node-set/order check, the _tree_region fix, and the null-hostClass
+# fix. Re-run of the sweep the previous review already did, against the new code.
+# ---------------------------------------------------------------------------------------
+
+def test_false_red_sweep_honest_reports_stay_green():
+    cases = {
+        "childless assets (no endpoints)": _payload(),
+        "empty payload": {},
+    }
+    p = _payload(); del p["counts"]["coverage"]
+    cases["legacy payload, no coverage key"] = p
+    cases["all-zero counts"] = {"counts": {
+        "detected": 0, "integrations": 0, "excluded": 0, "apis": 0,
+        "coverage": {"tracked": 0, "queued": 0, "needs-human": 0, "blocked": 0, "na": 0}}}
+    cases["all-null counts"] = {"counts": {
+        "detected": None, "integrations": None, "excluded": None, "coverage": None}}
+    def _plus_one_na(p, hc):
+        p["endpoints"].append({"hostClass": hc, "coverage": "na"})
+        p["counts"]["coverage"]["na"] += 1
+        p["counts"]["excluded"] += 1
+        p["counts"]["detected"] += 1
+        return p
+
+    cases["'&'/'<' in a hostClass label"] = _plus_one_na(_payload_with_assets(), "weird&<class>")
+    cases["unknown hostClass"] = _plus_one_na(_payload_with_assets(), "mystery-class")
+
+    for name, payload in cases.items():
+        nodes = tree.build(payload)
+        html = tree.html_tree(nodes)
+        md = "\n".join(tree.md_tree(nodes))
+        try:
+            verify.check_tree_matches_payload(html, payload)
+            verify.check_tree_parity(html, md)
+        except verify.Violation as v:
+            pytest.fail(f"false RED on {name!r}: [{v.check}] {v.detail}")
