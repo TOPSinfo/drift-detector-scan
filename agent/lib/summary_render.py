@@ -13,7 +13,9 @@ Reuses `agent/lib/tree.py`'s `build`/`html_tree`/`html_definitions`, the SAME bu
 (and, until this page existed, dashboard.html) render from — so this page cannot disagree with
 either. `verify`'s tree checks (tree-sums, tree-payload, tree-units, tree-parity,
 tree-node-set, tree-definitions, tree-missing, tree-text-mismatch) run against this page's
-markup; see `agent/cli.py`'s verify command.
+markup, and `verify.check_summary_headline` (summary-headline) binds the four stat tiles + the
+meta line's repo count to `payload["counts"]` via their `data-count` attributes; see
+`agent/cli.py`'s verify command.
 
 Deterministic: a pure function of (payload, now). No wall-clock, no I/O beyond reading the
 static CSS asset at import time (the same pattern `dashboard_render._read_asset` uses).
@@ -54,7 +56,12 @@ def _stat(key: str, label: str, counts: dict) -> str:
     # An absent count is "not counted", never a confident 0 — the same rule tree.py enforces
     # for the tree itself (see its module docstring): "cannot see" must not render as "clean".
     shown = "—" if n is None else n
-    return f'<div class="stat"><dt>{_e(label)}</dt><dd>{_e(shown)}</dd></div>'
+    # `data-count` binds this tile's printed digit to `payload["counts"][key]` for
+    # `verify.check_summary_headline` — see that function's docstring (task-5b Finding 1:
+    # this page's four headline tiles had NOTHING binding them to the data, so hand-editing
+    # a tile left `verify` green).
+    return (f'<div class="stat"><dt>{_e(label)}</dt>'
+            f'<dd data-count="{_e(key)}">{_e(shown)}</dd></div>')
 
 
 def render_summary(payload: dict, now: str) -> str:
@@ -76,8 +83,8 @@ def render_summary(payload: dict, now: str) -> str:
         f'<style>{CSS_SRC}</style>\n'
         '</head><body>\n'
         '<header><h1>Drift Detector <span class="accent">Summary</span></h1>\n'
-        f'<p class="meta">{_e(repos_shown)} repo(s) scanned &middot; generated {_e(generated)}'
-        '</p></header>\n'
+        f'<p class="meta"><span data-count="reposScanned">{_e(repos_shown)}</span> repo(s) '
+        f'scanned &middot; generated {_e(generated)}</p></header>\n'
         f'<dl class="headline">{tiles}</dl>\n'
         f'<div id="tree">{_tree.html_tree(nodes)}{_tree.html_definitions(nodes)}</div>\n'
         '</body></html>'

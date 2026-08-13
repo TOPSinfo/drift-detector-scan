@@ -922,6 +922,46 @@ def check_tree_definitions(html: str) -> None:
                         f"tree node(s) {missing} have no definition on the page")
 
 
+_SUMMARY_COUNT = re.compile(
+    r'<(?P<tag>[a-zA-Z]+)\b[^>]*\bdata-count="(?P<key>[^"]*)"[^>]*>(?P<text>[^<]*)<')
+
+
+def check_summary_headline(html: str, payload: dict) -> None:
+    """Every `data-count`-bound number on summary.html's headline (the four stat tiles —
+    Fixes/Sunsets/Past-due/Unaudited — and the meta line's repo count) equals the value
+    `payload["counts"]` actually holds for that key.
+
+    Finding 1 (task-5b, review round 1): summary.html is the tool's new DEFAULT view, and
+    its headline tiles carried NOTHING binding the printed digit to the data — hand-editing
+    `<dd>12</dd>` to `<dd>0</dd>` for Unaudited, or `1 repo(s)` to `99 repo(s)`, left
+    `verify` green. That is precisely the failure this whole branch exists to eliminate (see
+    the tree checks' docstrings, `check_tree_matches_payload` above, for the same argument
+    one layer up): a rendered page cannot be checked by anything without eyes, so the number
+    it carries must be tied to the payload by something this function CAN read —
+    `summary_render._stat` and its meta line now emit `data-count="<key>"` on the element
+    carrying the digit, and this walks every such binding.
+
+    A count key ABSENT from `payload["counts"]` is not a violation: `summary_render`
+    renders "not counted" (an em dash) for a missing key exactly as it does for one present
+    but `None` — the same "cannot see" != "clean" rule `tree.py` enforces for the coverage
+    tree — so a legacy or partial payload that simply never populated a key is the honest
+    case this tool is built to surface, not a rendering bug to flag here.
+    """
+    counts = payload.get("counts") or {}
+    for m in _SUMMARY_COUNT.finditer(html):
+        key = m.group("key")
+        if key not in counts:
+            continue
+        text = _html.unescape(m.group("text")).strip()
+        expected = counts.get(key)
+        want = "—" if expected is None else str(expected)
+        if text != want:
+            raise Violation("summary-headline",
+                            f"summary.html shows {key}={text!r} but "
+                            f"payload['counts'][{key!r}] = {expected!r} (expected {want!r}) "
+                            f"— the headline has drifted from the data it claims to summarize")
+
+
 def verify_payload(payload: dict, findings: list) -> list:
     """Run every payload invariant. Returns the violations rather than raising, so
     `drift verify` can report all of them in one pass instead of one per run."""
