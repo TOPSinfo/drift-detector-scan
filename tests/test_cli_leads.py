@@ -62,6 +62,49 @@ def test_leads_refuses_a_date_hidden_in_another_field(tmp_path):
     assert not (tmp_path / "leads.json").exists()
 
 
+def test_leads_refuses_a_month_name_date_hidden_in_a_note(tmp_path):
+    """M2: `_DATEISH` matched only YYYY-MM-DD / YYYY/MM/DD, so a model that spells the date out
+    in prose sailed straight through as an ungated date rendered in the Evidence column."""
+    _state(tmp_path)
+    for note in ("Sunset on March 1, 2026", "Sunset on 1 March 2026",
+                 "Sunset on Mar 1, 2026", "Sunset on 1 Mar 2026"):
+        bad = tmp_path / "bad_month.json"
+        bad.write_text(json.dumps({"meta": {}, "repos": [{"repo": "r1", "integrations": [
+            {"vendor": "Kogan", "host": "api.kgn.io", "retired": "yes", "note": note}]}]}))
+        rc = cli.main(["leads", "--state", str(tmp_path), "--ai-results", str(bad),
+                       "--now", "2026-08-12"])
+        assert rc == 2, f"{note!r} was not refused"
+        assert not (tmp_path / "leads.json").exists()
+
+
+def test_leads_refuses_a_ddmm_or_mmdd_date_hidden_in_a_note(tmp_path):
+    """M2: `01/03/2026` (DD/MM/YYYY or MM/DD/YYYY) is a date just as much as `2026/01/03` is,
+    but the old pattern anchored the 4-digit year to the FRONT only."""
+    _state(tmp_path)
+    bad = tmp_path / "bad_slash.json"
+    bad.write_text(json.dumps({"meta": {}, "repos": [{"repo": "r1", "integrations": [
+        {"vendor": "Kogan", "host": "api.kgn.io", "retired": "yes",
+         "note": "Sunset 01/03/2026"}]}]}))
+    rc = cli.main(["leads", "--state", str(tmp_path), "--ai-results", str(bad),
+                   "--now", "2026-08-12"])
+    assert rc == 2
+    assert not (tmp_path / "leads.json").exists()
+
+
+def test_leads_does_not_over_refuse_ordinary_notes_with_bare_years(tmp_path):
+    """The date gate must not become so broad it rejects a legitimate lead — a bare year (no
+    day/month attached) or a spec/RFC number is not a date claim and must still pass."""
+    ai = _state(tmp_path)
+    for note in ("v3 has been current since the 2019 rewrite", "see RFC 2606"):
+        raw = json.loads(open(ai, encoding="utf-8").read())
+        raw["repos"][0]["integrations"][0]["note"] = note
+        bad = tmp_path / "ok_note.json"
+        bad.write_text(json.dumps(raw))
+        rc = cli.main(["leads", "--state", str(tmp_path), "--ai-results", str(bad),
+                       "--now", "2026-08-12"])
+        assert rc == 0, f"{note!r} was wrongly refused"
+
+
 def test_leads_refuses_a_non_tristate_retired(tmp_path):
     _state(tmp_path)
     bad = tmp_path / "bad2.json"
