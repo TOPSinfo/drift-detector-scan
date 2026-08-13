@@ -922,6 +922,81 @@ def check_tree_definitions(html: str) -> None:
                         f"tree node(s) {missing} have no definition on the page")
 
 
+_LI_TAG = re.compile(r'<(?P<slash>/)?li\b(?P<attrs>[^>]*)>')
+_ROW_HOST = re.compile(r'<div class="row" data-row="(?P<host>[^"]*)"')
+
+
+def _leaf_row_spans(html: str) -> dict:
+    """{node key: the exact substring between that <li data-node=...>'s own open and close
+    tags} for every rendered tree <li>, found by counting nested <li>/</li> the same way
+    `_tree_region` counts nested <ul>/</ul> for the tree's outer wrapper.
+
+    Rows are deliberately emitted as `<div data-row=...>`, never `<li>` (tree.py's `_row_html` —
+    the whole reason being Requirement 1: a row must never be countable as a tree node by
+    `_tree_nodes`/`_parse_rendered_tree`). That means a LEAF node's own span here can never
+    contain a nested `<li>`, so its captured substring is exactly, and only, its own rows. A
+    non-leaf node's span DOES include its descendants' markup — but every caller below only
+    ever looks up a key that `tree.build` itself marked `has_rows`, which is never a non-leaf
+    key, so that imprecision is never read.
+    """
+    region = _tree_region(html)
+    spans: dict = {}
+    stack: list = []
+    for m in _LI_TAG.finditer(region):
+        if m.group("slash"):
+            if stack:
+                key, start = stack.pop()
+                spans[key] = region[start:m.start()]
+            continue
+        a = {mm.group("k"): mm.group("v") for mm in _TREE_ATTR.finditer(m.group("attrs"))}
+        stack.append((_html.unescape(a.get("node", "")), m.end()))
+    return spans
+
+
+def check_tree_rows(html: str, payload: dict) -> None:
+    """Every tree leaf that renders rows — `tracked`/`queued`/`needs-human`/`blocked`, and each
+    asset hostClass under `assets` — renders EXACTLY as many rows as its own `data-n`, and every
+    rendered host is a real endpoint from `drift.json` in that leaf's own bucket.
+
+    Before this, a leaf's honesty stopped at the COUNT: "20 boilerplate" was a claim nobody
+    could check without re-running the scan. Rows expand that count to the twenty hosts that
+    produced it, which turns the count into its own unchecked claim unless something proves the
+    expansion is faithful — a dropped row (undercounting what the scan found) and a fabricated
+    one (a host that never appeared in drift.json) are both a `tree-rows` violation, the same way
+    a tampered `data-n` is `tree-sums`/`tree-payload` one level up.
+
+    Recomputes the expected (n, hosts) per leaf from `tree.build(payload)` itself — the SAME
+    source `html_tree` rendered from — rather than trusting the rendered `data-n`, so a page
+    whose count AND its rows were tampered together in a mutually-consistent way still gets
+    checked against the real payload, not against itself.
+    """
+    from agent.lib import tree as _tree
+    expected: dict = {}
+
+    def walk(nodes):
+        for node in nodes:
+            if node.get("has_rows"):
+                expected[node["key"]] = (node["n"] or 0, {r["host"] for r in node["rows"]})
+            walk(node["children"])
+    walk(_tree.build(payload))
+    if not expected:
+        return                        # nothing in this payload claims rows — nothing to check
+
+    spans = _leaf_row_spans(html)
+    for key, (n, hosts) in expected.items():
+        rendered = [_html.unescape(m.group("host"))
+                   for m in _ROW_HOST.finditer(spans.get(key, ""))]
+        if len(rendered) != n:
+            raise Violation("tree-rows",
+                            f"tree node {key!r} has data-n={n} but renders {len(rendered)} "
+                            f"row(s) — a row was dropped or fabricated")
+        for h in rendered:
+            if h not in hosts:
+                raise Violation("tree-rows",
+                                f"tree node {key!r} renders a row for host {h!r}, which is not "
+                                f"among drift.json's endpoints for this bucket — an invented row")
+
+
 _SUMMARY_COUNT = re.compile(
     r'<(?P<tag>[a-zA-Z]+)\b[^>]*\bdata-count="(?P<key>[^"]*)"[^>]*>(?P<text>[^<]*)<')
 

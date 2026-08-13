@@ -45,3 +45,20 @@ details.defs summary{cursor:pointer;font-weight:600;color:var(--accent-2)}
 details.defs dl{margin:10px 0 0;display:grid;grid-template-columns:max-content 1fr;gap:4px 14px}
 details.defs dt{font-family:var(--mono);color:var(--ink);font-weight:600}
 details.defs dd{margin:0;color:var(--muted)}
+
+/* A leaf's own rows — the hosts backing its count, and each host's file:line locations.
+   Native <details>, no JS: the whole tree still renders (and expands) with scripting off. */
+details.rows{margin:.3em 0 .2em 1.6em}
+details.rows>summary{cursor:pointer;color:var(--accent-2);font-size:.9em}
+.row{padding:.25em 0 .25em 1em;border-left:2px solid var(--line);margin:.15em 0 .15em .2em;
+  font-size:.92em}
+.rhost{font-family:var(--mono)}
+.rcount{color:var(--muted);font-variant-numeric:tabular-nums}
+.rvendor{color:var(--muted)}
+.verdict{font-family:var(--mono);font-size:.85em;padding:0 .4em;border-radius:4px;
+  border:1px solid var(--line)}
+.rreason{color:var(--muted);font-style:italic}
+details.locs{margin:.2em 0 .2em 1.4em}
+details.locs>summary{cursor:pointer;color:var(--muted);font-size:.88em}
+details.locs>div{font-family:var(--mono);font-size:.85em;color:var(--ink);padding:.1em 0 .1em .4em}
+.rtrunc{color:var(--accent);font-style:italic;padding:.1em 0 .1em .4em}
