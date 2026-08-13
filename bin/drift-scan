@@ -96,7 +96,7 @@ fi
 # Subcommand: default inventory-scan; others: audit / run / schedule / unschedule / doctor.
 SUB="inventory-scan"
 case "${1:-}" in
-  audit|run|deliver|notify|sbom|sarif|brief|precedents|config-preflight|schedule|unschedule|mute|preflight|recommend|absorb|verify|catalog-refresh|catalog-check|plan|probe|freshness|leads|adhoc-report|render|clean|research) SUB="$1"; shift ;;
+  audit|run|deliver|notify|sbom|sarif|brief|precedents|config-preflight|schedule|unschedule|mute|preflight|recommend|absorb|verify|catalog-refresh|catalog-check|plan|probe|freshness|leads|adhoc-report|render|clean|research|resolve) SUB="$1"; shift ;;
   # A bare word we do not dispatch is a TYPO or an unwired subcommand — never the default
   # scan. Falling through silently made `drift-scan clean` die as `inventory-scan` with an
   # unrelated "--root is required", which reads as a broken scan rather than a bad verb.
