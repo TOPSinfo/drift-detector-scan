@@ -500,7 +500,9 @@ def _cmd_verify(args) -> int:
     checks = [(_verify.check_blob_matches_payload, (html, _json.dumps(payload))),
               (_verify.check_md_matches_payload, (drift_md, payload)),
               (_verify.check_unscannable_surfaced, (drift_md, payload)),
-              (_verify.check_mermaid_wellformed, (drift_md,))]
+              (_verify.check_mermaid_wellformed, (drift_md,)),
+              (_verify.check_tree_matches_payload, (html, payload)),
+              (_verify.check_tree_parity, (html, drift_md))]
     # chart.html is the OPTIONAL online view: absent is fine, but if present its embedded
     # payload must equal drift.json exactly — the charts must draw from the real data.
     try:
