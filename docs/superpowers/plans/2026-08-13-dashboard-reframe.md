@@ -47,6 +47,18 @@ nobody on this project can observe."""
 from agent.lib import tree
 
 
+def _eps():
+    """Endpoint rows mirroring a real scan. The asset breakdown MUST be derived from these,
+    not from counts.hostClasses — see test_assets_break_down_by_hostclass for why."""
+    def rows(n, hc, cov):
+        return [{"domain": f"h{i}.{hc}.test", "hostClass": hc, "coverage": cov} for i in range(n)]
+    return (rows(27, "api", "tracked")
+            + rows(2, "own-infra", "queued") + rows(1, "unclassified", "queued")
+            + rows(20, "boilerplate", "na") + rows(12, "social-widget", "na")
+            + rows(5, "vendored-lib", "na") + rows(3, "asset-cdn", "na")
+            + rows(3, "own-infra", "na"))
+
+
 def _payload():
     # mirrors a real scan: 73 detected = 30 integrations + 43 assets; 30 = 27 tracked + 3 queued
     return {"counts": {
@@ -54,7 +66,7 @@ def _payload():
         "coverage": {"tracked": 27, "queued": 3, "needs-human": 0, "blocked": 0, "na": 43},
         "hostClasses": {"api": 27, "boilerplate": 20, "social-widget": 12, "vendored-lib": 5,
                         "asset-cdn": 3, "own-infra": 5, "unclassified": 1},
-    }}
+    }, "endpoints": _eps()}
 
 
 def _flat(nodes, out=None):
@@ -98,11 +110,26 @@ def test_the_vendor_count_survives_as_an_annotation_not_a_node():
 
 
 def test_assets_break_down_by_hostclass():
+    """The children MUST come from the endpoint rows, not from `counts.hostClasses`.
+
+    hostClasses is a tally over ALL 73 endpoints, so its asset-class entries sum to 45 while the
+    assets total is 43: the 2 token-claimed `own-infra` rows are kept QUEUED (they might be a real
+    third party), which makes them integrations, not assets. Deriving from hostClasses would break
+    the tree's arithmetic by exactly that 2 — the bug this whole tree exists to make impossible.
+    """
     f = _flat(tree.build(_payload()))
     assert f["assets"]["n"] == 43
     kids = {c["key"]: c["n"] for c in f["assets"]["children"]}
     assert kids["boilerplate"] == 20 and kids["social-widget"] == 12
+    assert kids["own-infra"] == 3          # 3, not the 5 that hostClasses reports
     assert sum(kids.values()) == 43
+
+
+def test_assets_render_childless_rather_than_wrong_without_endpoints():
+    """No endpoints to derive from means no breakdown — never a guessed one."""
+    p = _payload(); del p["endpoints"]
+    f = _flat(tree.build(p))
+    assert f["assets"]["n"] == 43 and f["assets"]["children"] == []
 
 
 def test_an_unknowable_count_is_null_with_a_reason_never_zero():
@@ -148,6 +175,8 @@ Pure: a dict in, a list out. No I/O, no clock.
 """
 from __future__ import annotations
 
+from collections import Counter
+
 # Assets are grouped by hostClass. Ordered loudest-first so the biggest bucket leads, and
 # fixed (not sorted by count) so two runs of the same payload render identically.
 _ASSET_CLASSES = ("boilerplate", "social-widget", "vendored-lib", "asset-cdn", "own-infra",
@@ -172,7 +201,14 @@ def build(payload: dict) -> list:
     """
     counts = payload.get("counts") or {}
     cov = counts.get("coverage")
-    hcs = counts.get("hostClasses") or {}
+    # The asset breakdown comes from the ENDPOINT ROWS, never from counts.hostClasses.
+    # hostClasses tallies all 73 endpoints, so its asset-class entries sum to 45 against an
+    # assets total of 43: a token-claimed `own-infra` row is kept QUEUED (it might be a real
+    # third party), which makes it an integration, not an asset. Deriving from hostClasses
+    # would put the tree out by exactly that difference — the arithmetic failure this tree
+    # exists to make impossible.
+    na_by_class = Counter(e.get("hostClass") for e in (payload.get("endpoints") or ())
+                          if e.get("coverage") == "na")
 
     if cov is None:
         integrations = _node("integrations", None,
@@ -189,7 +225,7 @@ def build(payload: dict) -> list:
         for k in ("needs-human", "blocked"):
             life.append(_node(k, cov.get(k, 0)))
         integrations = _node("integrations", counts.get("integrations"), children=life)
-        kids = [_node(c, hcs[c]) for c in _ASSET_CLASSES if hcs.get(c)]
+        kids = [_node(c, na_by_class[c]) for c in _ASSET_CLASSES if na_by_class.get(c)]
         assets = _node("assets", cov.get("na", counts.get("excluded")), children=kids)
 
     return [_node("detected", counts.get("detected"), children=[integrations, assets])]
