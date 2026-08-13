@@ -49,14 +49,32 @@ unchanged; CVE/EOL work is genuinely isolable from vendor drift and has a differ
 `adhoc-data` and `research-data` stay separate blobs; `verify.check_ai_firewall` keeps asserting no
 AI record reaches the certified payload. Visual merge, data firewall intact.
 
-### 2. The tree is the header, and it is machine-checked
+### 2. The tree is the header, server-rendered, and it is machine-checked
 
 The ASCII breakdown becomes the literal header of the Vendor Drift section, built from
 `counts.coverage` — the structure that already sums.
 
-It renders as a real nested `<ul class="tree">` with `data-node`, `data-n` and `data-unit`
-attributes, **not** a `<pre>`. That is the point: `verify` parses the DOM source and asserts every
-node's children sum to their parent.
+**It is rendered SERVER-SIDE, in Python, as plain HTML — not computed by Vue.** The owner's
+call, and it is the load-bearing decision in this spec: *"I can afford UI basicness as long as
+results are verifiable, consistent and make sense."*
+
+That constraint buys more than simplicity. A Vue-computed tree can only be checked by grepping the
+template for bindings — the numbers themselves are produced in a browser nobody on this project can
+observe. A server-rendered tree is a **verified projection of `drift.json`**, exactly the contract
+CLAUDE.md already states for every other surface: `verify` re-parses the emitted string and asserts
+it against the canonical payload, the way `check_md_matches_payload` already does for the markdown
+tables. The numbers are proven at the same layer they are written.
+
+**One builder, two projections.** A single `agent/lib/tree.py` computes the node structure from the
+payload; two thin renderers emit it as ASCII (into `drift.md`) and as a nested
+`<ul class="tree">` with `data-node`, `data-n` and `data-unit` attributes (into `dashboard.html`).
+Because both come from one function over one payload, they cannot disagree — and `verify` checks
+both against `drift.json` rather than against each other.
+
+Interactivity is deliberately minimal: nodes are plain anchors that set the existing row filter. No
+reactive state, no computed properties, nothing that can diverge from what was rendered. If the
+tree needs to become interactive later, it can — but the static structure is what carries the
+guarantee, and it must stay renderable without JavaScript at all.
 
 This matters more than it reads. Nobody involved in this project can see rendered HTML — not the
 owner, not the implementing agent, not the reviewer — and that blind spot has shipped real bugs
@@ -112,6 +130,11 @@ Per CLAUDE.md principle 5, every guard is shown to FAIL on its bug before the fi
 invariants, each with a proving test:
 
 - **tree-sums** — children sum to parent for every `data-n`; fails on a hand-edited node.
+- **tree-matches-payload** — the emitted tree is re-parsed and checked against `drift.json`, not
+  merely internally consistent. This is what makes it a *verified projection* rather than a
+  self-consistent fiction; it mirrors `check_md_matches_payload`.
+- **tree-parity** — the ASCII tree in `drift.md` and the `<ul>` tree in `dashboard.html` carry
+  identical node keys and counts, since both come from one builder.
 - **tree-units** — every `data-node` declares a `data-unit`.
 - **tree-definitions** — every node key has a `<dt data-def>` entry.
 - **tree-certified-only** — no `data-n` exceeds what `counts` supports, so an AI number can never be
