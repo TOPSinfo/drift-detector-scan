@@ -6,6 +6,8 @@ The signals were chosen against a real repo, after the obvious ones were measure
 its .env.example had APP_URL=http://localhost and its composer.json name was the framework default
 `laravel/laravel`. Config-derived inference produced nothing at all.
 """
+import pytest
+
 from agent.lib import own_infra
 
 
@@ -42,6 +44,28 @@ def test_real_vendor_hosts_are_never_claimed():
     for host in ("api.justcall.io", "hooks.zapier.com", "api.mailgun.net",
                  "graph.microsoft.com", "api.openai.com"):
         assert not own_infra.is_own(host, sig), host
+
+
+def test_descriptive_integration_words_are_generic_not_a_claim():
+    """F3: `shipping-tracker-app` describes what the repo DOES ('tracker'), not who it belongs
+    to, and must not claim a real vendor host that happens to share that generic word.
+    Measured: shipping-tracker-app -> tracker.aftership.com was falsely own-infra."""
+    sig = own_infra.signals(repo_path="/srv/shipping-tracker-app")
+    assert sig["tokens"] == set()
+    assert not own_infra.is_own("tracker.aftership.com", sig)
+
+
+@pytest.mark.parametrize("repo_path,host", [
+    ("/srv/acme-hubspot-connector", "connector.example.io"),
+    ("/srv/acme-payments-gateway", "gateway.stripe.com"),
+    ("/srv/acme-invoice-manager", "manager.xero.com"),
+    ("/srv/order-bridge-service", "bridge.shopify.com"),
+])
+def test_generic_integration_nouns_never_become_a_token(repo_path, host):
+    """Each of these >=6-char descriptive words (F3's stop-list additions) names the repo's
+    SHAPE, never an organisation, so a host sharing the word must stay unclaimed."""
+    sig = own_infra.signals(repo_path=repo_path)
+    assert not own_infra.is_own(host, sig)
 
 
 def test_short_and_generic_names_yield_no_token():

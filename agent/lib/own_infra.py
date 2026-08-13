@@ -40,6 +40,17 @@ _GENERIC = frozenset({
     "laravel", "symfony", "django", "rails", "express", "nextjs", "spring", "dotnet",
     "project", "website", "webapp", "portal", "platform", "system", "master", "public",
     "private", "internal", "staging", "production", "develop", "monorepo", "template",
+    # Descriptive nouns for what a repo DOES, not who it belongs to — a repo named
+    # `shipping-tracker-app` describes an integration SHAPE, not an organisation, and its
+    # generic half ("tracker") must not claim the very vendor host ("tracker.aftership.com")
+    # it exists to call. Measured: shipping-tracker-app -> tracker.aftership.com falsely
+    # own-infra before these were added.
+    "connector", "connectors", "bridge", "bridges", "tracker", "trackers", "shipping",
+    "payments", "payment", "gateway", "gateways", "invoice", "invoices", "manager", "managers",
+    "wrapper", "wrappers", "adapter", "adapters", "handler", "handlers", "processor",
+    "processors", "importer", "exporter", "scheduler", "middleware", "billing", "checkout",
+    "fulfillment", "logistics", "notification", "notifications", "messaging", "consumer",
+    "producer", "pipeline", "integration", "integrations",
 })
 
 # Shorter tokens collide with ordinary substrings of real vendor hosts (`api`, `crm`, `shop`).
