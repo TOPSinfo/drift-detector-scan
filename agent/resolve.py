@@ -42,7 +42,9 @@ and `absorb`).
 """
 from __future__ import annotations
 
+import datetime
 import os
+import re
 from pathlib import Path
 from urllib.parse import urlparse
 
@@ -53,6 +55,29 @@ from agent.lib import catalog_overlay, classify_url
 from agent.lib import vendors as vendors_mod
 
 _STATUSES = ("own-domain", "vendor-identity", "retiring", "unknown")
+_DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
+
+
+def _valid_now(now) -> bool:
+    """`now` must be a real YYYY-MM-DD calendar date — the only date source this gate has, and
+    the value every landed entry's `checked:` carries. '--now yesterday' or a malformed digit
+    string must never be recorded as if it were a real date."""
+    if not isinstance(now, str) or not _DATE_RE.match(now):
+        return False
+    try:
+        datetime.date.fromisoformat(now)
+    except ValueError:
+        return False
+    return True
+
+
+def _is_substantive_reason(reason) -> bool:
+    """A truthiness check lets 'x' through. Require something that reads as an actual reason,
+    not just a non-empty string: at least a few words of real content."""
+    if not isinstance(reason, str):
+        return False
+    words = reason.strip().split()
+    return len(words) >= 3 and len(reason.strip()) >= 10
 
 
 def _looks_like_a_source_url(url) -> bool:
@@ -118,6 +143,10 @@ def check_verdicts(verdicts: list, *, vendors_path=None) -> list:
         if status == "own-domain":
             if not v.get("reason"):
                 problems.append(f"{where}: 'own-domain' needs a non-empty reason")
+            elif not _is_substantive_reason(v.get("reason")):
+                problems.append(
+                    f"{where}: 'own-domain' reason {v.get('reason')!r} is not substantive — "
+                    f"needs a few words of real justification, not a placeholder")
             if not v.get("repo"):
                 problems.append(f"{where}: 'own-domain' needs a `repo` to scope the claim to")
             match = _catalogued_vendor_for(host, vendors_path)
@@ -252,6 +281,8 @@ def apply(verdicts: list, *, now: str, vendors_path=None, overlay_dir: str | Non
              "needs_human": [{"host", "repo", "note"}, ...]}.
     """
     problems = check_verdicts(verdicts, vendors_path=vendors_path)
+    if not _valid_now(now):
+        problems.append(f"--now must be a real YYYY-MM-DD date, got {now!r}")
     if problems:
         raise ResolveRejected(problems)
 

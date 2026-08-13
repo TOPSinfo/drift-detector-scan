@@ -238,6 +238,29 @@ def test_applying_over_a_mapping_shaped_vendors_overlay_is_refused_not_silently_
 
 
 # --------------------------------------------------------------------- IMPORTANT 5: idempotent re-apply
+# --------------------------------------------------------------------- MINOR 6: reason must be substantive
+def test_own_domain_with_a_trivial_reason_is_refused():
+    """A truthiness check lets 'x' through — a one-word non-reason is a guess dressed as a
+    verdict, exactly what the `reason` requirement exists to stop."""
+    v = _own_domain_verdict(reason="x")
+    problems = resolve.check_verdicts([v])
+    assert problems
+    assert any("reason" in p for p in problems)
+
+
+def test_own_domain_with_a_substantive_reason_still_passes():
+    v = _own_domain_verdict()
+    assert resolve.check_verdicts([v]) == []
+
+
+# --------------------------------------------------------------------- MINOR 6: --now must be YYYY-MM-DD
+@pytest.mark.parametrize("bad_now", ["yesterday", "2026/08/13", "13-08-2026", "", "2026-13-40"])
+def test_apply_rejects_a_malformed_now(monkeypatch, tmp_path, bad_now):
+    _overlay_dir(monkeypatch, tmp_path)
+    with pytest.raises(resolve.ResolveRejected):
+        resolve.apply([_own_domain_verdict()], now=bad_now)
+
+
 def test_applying_an_identical_batch_twice_is_a_no_op_not_a_duplicate(monkeypatch, tmp_path):
     d = _overlay_dir(monkeypatch, tmp_path)
     verdicts = [_own_domain_verdict(), _vendor_identity_verdict(), _retiring_verdict()]
