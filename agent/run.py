@@ -19,6 +19,8 @@ from agent.lib.summary_render import render_summary
 from agent.lib.findings_state import apply_lifecycle
 from agent.lib.repo_discovery import discover_repos
 from agent.lib.http_util import default_http
+from agent.lib import ir_store
+from agent.lib.inventory_diff import diff_inventories
 
 
 def _write(path, text):
@@ -67,6 +69,13 @@ def run_pipeline(roots, state_dir, now, *, pull=False,
     if pull:
         _pull_repos(roots, pull_run)
 
+    # Captured BEFORE scan 1 — the state dir's last CERTIFIED run (or None on a first-ever scan),
+    # exactly what scan 1 itself diffs against internally. A re-scan (below) must diff against
+    # this SAME value, never against scan 1's own just-saved IR, or the resolved host shows up as
+    # spurious drift (removed in its pre-resolution form, added in its post-resolution form) purely
+    # because THIS run scanned twice — an artifact of the run, not real change between runs.
+    prior_ir = ir_store.load_ir(state_dir)
+
     scan = scan_folder(roots, state_dir, now, engine=engine, run=run, git=git, progress=progress)
     doc, diff = scan["doc"], scan["diff"]
 
@@ -84,9 +93,24 @@ def run_pipeline(roots, state_dir, now, *, pull=False,
             # Same roots/state_dir/now/engine/run/git/progress — the ONLY thing that changed
             # underfoot is the overlay catalog `apply` just wrote. This must be the identical
             # deterministic scan, not a different kind of scan.
-            scan = scan_folder(roots, state_dir, now, engine=engine, run=run, git=git,
-                               progress=progress)
-            doc, diff = scan["doc"], scan["diff"]
+            #
+            # The overlay write ALREADY happened and cannot be undone, but the re-scan is a
+            # second ordinary scan and can fail for any reason a scan can (engine crash, I/O). The
+            # deterministic report must never be withheld waiting on it: on failure, fall back to
+            # scan 1's perfectly good document and report the run as degraded rather than raise —
+            # never a stale drift.json left over from some earlier run, never a traceback.
+            try:
+                rescan = scan_folder(roots, state_dir, now, engine=engine, run=run, git=git,
+                                     progress=progress)
+            except Exception as exc:   # noqa: BLE001 — any re-scan failure degrades, never blocks
+                resolve_result = {"status": "degraded", "detail": str(exc),
+                                  "written": resolve_result["written"],
+                                  "needs_human": resolve_result["needs_human"]}
+            else:
+                doc = rescan["doc"]
+                # Diff against the TRUE prior (captured above), not against scan 1's IR — see the
+                # comment on `prior_ir`.
+                diff = diff_inventories(prior_ir or {}, doc)
 
     _write_json(os.path.join(state_dir, "inventory.json"), doc)
 
@@ -133,6 +157,10 @@ def run_pipeline(roots, state_dir, now, *, pull=False,
             "coverage": audit.get("coverage", {}),
             # from the SCAN, not the audit — why any root yielded no repo
             "rootsUnscannable": (doc.get("coverage", {}) or {}).get("rootsUnscannable", []),
-            # None when --resolve wasn't passed; otherwise {"status": "applied"|"rejected"|"error", ...}
-            # — see _apply_resolution. "applied" means drift.json above came from the RE-scan.
+            # None when --resolve wasn't passed; otherwise {"status": "applied"|"rejected"|"error"
+            # |"degraded", ...} — see _apply_resolution (applied/rejected/error) and the re-scan
+            # try/except above ("degraded": the gate passed and the overlay write landed, but the
+            # re-scan itself then failed). "applied" means drift.json above came from the RE-scan;
+            # "degraded" means it came from scan 1 (the overlay was still written and will be
+            # picked up by the next ordinary run).
             "resolve": resolve_result}
