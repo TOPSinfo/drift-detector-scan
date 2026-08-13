@@ -39,7 +39,13 @@
   // surfacing as a blank row — and it does NOT discard the array's valid siblings the way
   // bailing out to [] on the first bad element would.
   function objArr(x){
-    return arrOr(x).filter(function(el){ return el !== null && typeof el === "object"; });
+    // `typeof [] === "object"` too, so a stray array ELEMENT (a hand-edited/half-written state
+    // dir: {"repos":[{"integrations":[[]]}]}) passed the old check and flowed through as a
+    // "record" with every property undefined — one garbage all-undefined row instead of being
+    // dropped like any other malformed element. Array.isArray excludes it explicitly.
+    return arrOr(x).filter(function(el){
+      return el !== null && typeof el === "object" && !Array.isArray(el);
+    });
   }
 
   // Deterministic "YYYY-MM-DD" -> a comparable day-ordinal, used ONLY to place the Retirement

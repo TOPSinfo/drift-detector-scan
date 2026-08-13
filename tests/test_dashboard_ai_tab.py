@@ -150,6 +150,16 @@ def test_leads_computeds_skip_null_siblings_but_keep_valid_entries():
     }]
 
 
+def test_leads_computeds_skip_array_elements_not_just_null():
+    """Minor carried forward: `typeof [] === "object"` too, so objArr's old
+    `typeof el === "object"` check let an ARRAY element through as if it were a record.
+    {"repos":[{"integrations":[[]]}]} produced one garbage row with every field undefined
+    instead of being dropped like any other malformed element (null, a bare number/string)."""
+    payload = json.dumps({"repos": [{"repo": "x", "integrations": [[]]}]})
+    result = _run_leads_computeds(payload)
+    assert result == {"leadsCount": 0, "leadRows": []}
+
+
 def test_leads_computeds_still_work_on_a_wellformed_blob():
     """Guard rails on the malformed cases must not break the happy path."""
     payload = json.dumps({"repos": [{"repo": "demo/repo", "integrations": [

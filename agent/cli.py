@@ -1243,7 +1243,7 @@ def _cmd_adhoc_report(args) -> int:
     SHAPED tier. It no longer writes a side-car HTML page: there is one dashboard.
     Assembles the MIDDLE-tier artifact from a validated ad-hoc pass — the certified `drift.json`,
     the ad-hoc re-scan's `drift.json`, the staged idioms + claims, and the gate's DELTA. `drift.json`
-    is NEVER touched (sibling document, exactly like the probabilistic artifact)."""
+    is NEVER touched (sibling document, exactly like `leads.json`, the AI Frontier tab's other tier)."""
     import json as _json
     from agent import absorb as _absorb
     from agent.lib import adhoc
