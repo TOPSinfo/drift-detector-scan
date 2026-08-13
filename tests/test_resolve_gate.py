@@ -193,3 +193,27 @@ def test_catalog_writes_are_refused_without_an_overlay_dir(monkeypatch, tmp_path
     monkeypatch.delenv("DRIFT_CATALOG_DIR", raising=False)
     with pytest.raises(resolve.ResolveRejected):
         resolve.apply([_own_domain_verdict()], now="2026-08-13")
+
+
+# --------------------------------------------------------------------- IMPORTANT 3: source_url is shape-checked
+@pytest.mark.parametrize("bad_url", ["x", "   ", "file:///etc/passwd", "not-a-url-at-all"])
+def test_vendor_identity_source_url_must_be_an_http_url_with_a_host(bad_url):
+    """Presence alone isn't enough — 'x', whitespace, a file:// URL, and a bare word all
+    used to sail through because the gate only checked truthiness."""
+    v = _vendor_identity_verdict(source_url=bad_url)
+    problems = resolve.check_verdicts([v])
+    assert problems
+    assert any("source_url" in p or "source" in p.lower() for p in problems)
+
+
+@pytest.mark.parametrize("bad_url", ["x", "file:///etc/passwd", "ftp://example.com/x"])
+def test_retiring_source_url_must_be_an_http_url_with_a_host(bad_url):
+    v = _retiring_verdict(source_url=bad_url)
+    problems = resolve.check_verdicts([v])
+    assert problems
+    assert any("source_url" in p or "source" in p.lower() for p in problems)
+
+
+def test_vendor_identity_with_a_real_http_url_still_passes():
+    v = _vendor_identity_verdict(source_url="https://geo-mapper.io/docs/api-hosts")
+    assert resolve.check_verdicts([v]) == []
