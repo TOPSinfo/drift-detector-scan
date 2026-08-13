@@ -11,7 +11,7 @@ import os
 import re
 from pathlib import Path
 
-from agent.lib import classify_url, host_class, own_infra, scope_edges
+from agent.lib import classify_url, host_class, own_domains, own_infra, scope_edges
 
 UNKNOWN = "Unknown"
 
@@ -127,8 +127,18 @@ def scan_endpoints(matches: list, repo_root: str, vendors: list, *, max_files: i
         if len(words) > 1:
             vendor_tokens.add("".join(words))
     vendor_tokens = frozenset(vendor_tokens)
+    # own-domains overlay: confirmations an AI resolution pass landed for THIS repo (a later
+    # task writes them; this only reads and scopes). {} when $DRIFT_CATALOG_DIR is unset/absent
+    # (own_domains.load()) — changes nothing, exactly today's behaviour. Scoped with the same
+    # host-independent repo-identity match _repo_in_scope already uses for instance binding, so
+    # an entry recorded for `bags-fba/sebago-foods` never leaks into an unrelated repo.
+    confirmed = frozenset(
+        domain
+        for repo_key, domains in own_domains.load().items()
+        if _repo_in_scope(repo_id or repo_root, repo_key)
+        for domain in domains)
     own_sig = own_infra.signals(repo_path=repo_root, repo_id=repo_id or "",
-                                vendor_tokens=vendor_tokens)
+                                vendor_tokens=vendor_tokens, confirmed=confirmed)
 
     def add(vendor, techKey, host, version, example, rel, lineno, operation=None,
             inferred=False, line=""):

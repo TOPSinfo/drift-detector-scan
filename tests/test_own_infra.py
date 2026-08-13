@@ -78,7 +78,7 @@ def test_short_and_generic_names_yield_no_token():
 
 def test_no_signals_means_no_claims():
     sig = own_infra.signals()
-    assert sig == {"tokens": set(), "domains": set()}
+    assert sig == {"tokens": set(), "domains": set(), "confirmed": set()}
     assert not own_infra.is_own("crm.promoteplus.ai", sig)
 
 
