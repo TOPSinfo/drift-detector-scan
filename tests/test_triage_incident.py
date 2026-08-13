@@ -1,4 +1,4 @@
-"""The mls-mapper incident, as a regression (principle 5: prove a guard against its bug).
+"""The geo-mapper incident, as a regression (principle 5: prove a guard against its bug).
 
 A real-estate SPA scanned as a built copy produced a WALL of ~20 "unclassified" egress hosts. A
 viewer read *found* integrations as *undetected* and concluded the tool doesn't work. This fixture

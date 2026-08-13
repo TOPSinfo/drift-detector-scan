@@ -214,8 +214,8 @@ def test_md_tree_includes_the_roots_own_note():
 
 
 # ---------------------------------------------------------------------------------------
-# Task 5d — the tree splits by repo. Origin: the first multi-repo scan (mls-mapper +
-# promoteplus-crm + sebago-foods, 142 endpoints) melted three repos into one set of numbers;
+# Task 5d — the tree splits by repo. Origin: the first multi-repo scan (geo-mapper +
+# zenithapp-crm + acmegrocer-foods, 142 endpoints) melted three repos into one set of numbers;
 # the owner called that out as "one confusion point is repo mixing". Repo becomes level 1 —
 # but ONLY when the scan covered more than one repo, so a single-repo tree still renders
 # exactly what it renders today.
@@ -224,7 +224,7 @@ def test_md_tree_includes_the_roots_own_note():
 def _multi_repo_payload():
     """A small stand-in for the real three-repo scan (8/73/61 = 142), shaped the same way:
     each repo gets its own tracked/queued/na rows, scaled down so the sums are checkable by
-    eye. `sebago-foods` has the most endpoints but must still render LAST — alphabetical
+    eye. `zenithapp-crm` has the most endpoints but must still render LAST — alphabetical
     order, never by count."""
     def eps(repo, n_tracked, n_queued, n_na):
         out = []
@@ -239,9 +239,9 @@ def _multi_repo_payload():
                         "coverage": "na"})
         return out
 
-    endpoints = (eps("mls-mapper", 3, 0, 5)
-                + eps("promoteplus-crm", 27, 3, 43)
-                + eps("sebago-foods", 20, 1, 40))
+    endpoints = (eps("geo-mapper", 3, 0, 5)
+                + eps("zenithapp-crm", 27, 3, 43)
+                + eps("acmegrocer-foods", 20, 1, 40))
     return {"counts": {"detected": len(endpoints)}, "endpoints": endpoints}
 
 
@@ -250,7 +250,7 @@ def test_repo_level_appears_only_when_more_than_one_repo():
     root = nodes[0]
     kids = root["children"]
     assert {c["key"] for c in kids} == {"repo"}          # data-node is the SEMANTIC key "repo"
-    assert [c["label"] for c in kids] == ["mls-mapper", "promoteplus-crm", "sebago-foods"]
+    assert [c["label"] for c in kids] == ["acmegrocer-foods", "geo-mapper", "zenithapp-crm"]
 
 
 def test_single_repo_payload_has_no_repo_level():
@@ -283,10 +283,10 @@ def test_each_repo_subtree_sums_to_its_own_total_and_repos_sum_to_root():
 
 def test_repo_node_carries_data_repo_and_a_unique_data_path():
     html = tree.html_tree(tree.build(_multi_repo_payload()))
-    assert 'data-repo="mls-mapper"' in html
-    assert 'data-path="detected/mls-mapper"' in html
-    assert 'data-path="detected/mls-mapper/integrations/tracked"' in html
-    assert 'data-path="detected/promoteplus-crm/integrations/tracked"' in html
+    assert 'data-repo="geo-mapper"' in html
+    assert 'data-path="detected/geo-mapper"' in html
+    assert 'data-path="detected/geo-mapper/integrations/tracked"' in html
+    assert 'data-path="detected/zenithapp-crm/integrations/tracked"' in html
     # the SAME semantic data-node repeats once per repo — that is the whole point of
     # separating identity (data-path) from the glossary key (data-node).
     assert html.count('data-node="tracked"') == 3
@@ -305,20 +305,20 @@ def test_single_repo_paths_match_todays_implicit_shape():
 
 
 def test_repos_render_in_a_fixed_alphabetical_order_never_by_count():
-    """sebago-foods (61) outnumbers mls-mapper (8) — order must stay alphabetical, not
+    """zenithapp-crm (73) has the most endpoints yet renders LAST — alphabetical order, not
     largest/smallest first."""
     html = tree.html_tree(tree.build(_multi_repo_payload()))
-    assert (html.index('data-repo="mls-mapper"') < html.index('data-repo="promoteplus-crm"')
-           < html.index('data-repo="sebago-foods"'))
+    assert (html.index('data-repo="acmegrocer-foods"') < html.index('data-repo="geo-mapper"')
+           < html.index('data-repo="zenithapp-crm"'))
 
 
 def test_a_repo_with_zero_integrations_still_sums():
     p = _multi_repo_payload()
     p["endpoints"] = [e for e in p["endpoints"]
-                      if not (e["repo"] == "mls-mapper" and e["coverage"] != "na")]
+                      if not (e["repo"] == "geo-mapper" and e["coverage"] != "na")]
     p["counts"]["detected"] = len(p["endpoints"])
     nodes = tree.build(p)
-    mls = next(c for c in nodes[0]["children"] if c["label"] == "mls-mapper")
+    mls = next(c for c in nodes[0]["children"] if c["label"] == "geo-mapper")
     integ = next(c for c in mls["children"] if c["key"] == "integrations")
     assert integ["n"] == 0
     assert sum(c["n"] for c in mls["children"]) == mls["n"]
@@ -326,9 +326,9 @@ def test_a_repo_with_zero_integrations_still_sums():
 
 def test_md_tree_renders_the_repo_level():
     body = "\n".join(tree.md_tree(tree.build(_multi_repo_payload())))
-    assert "8 mls-mapper" in body
-    assert "73 promoteplus-crm" in body
-    assert "61 sebago-foods" in body
+    assert "8 geo-mapper" in body
+    assert "73 zenithapp-crm" in body
+    assert "61 acmegrocer-foods" in body
 
 
 def test_repo_is_defined_in_the_glossary():
@@ -350,7 +350,7 @@ def test_false_red_sweep_for_the_repo_split():
     cases["empty payload"] = {}
     p = _multi_repo_payload()
     p["endpoints"] = [e for e in p["endpoints"]
-                      if not (e["repo"] == "mls-mapper" and e["coverage"] != "na")]
+                      if not (e["repo"] == "geo-mapper" and e["coverage"] != "na")]
     p["counts"]["detected"] = len(p["endpoints"])
     cases["a repo with zero integrations"] = p
     cases["multi-repo payload"] = _multi_repo_payload()

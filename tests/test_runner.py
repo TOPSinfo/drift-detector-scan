@@ -137,7 +137,7 @@ def test_runner_ignores_a_foreign_agent_package_in_the_callers_cwd(tmp_path):
 
     This shipped. Running `drift-scan` from the older sibling checkout (which has its own
     `agent/` + catalogs) executed THAT engine's code and attestations while reporting itself
-    as a normal run: promoteplus-crm graded 7 vendors UNAUDITED instead of 2, deterministic
+    as a normal run: zenithapp-crm graded 7 vendors UNAUDITED instead of 2, deterministic
     and green and wrong. `verify` cannot catch it — the wrong engine verifies its own output.
     """
     import subprocess

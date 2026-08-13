@@ -242,7 +242,7 @@ Then confirm the sums hold on REAL data, not just the fixture:
 cd /tmp && .venv/bin/python -c "
 import json,sys; sys.path.insert(0,'/home/tops/Projects/tops/drift/drift-detector-scan')
 from agent.lib import tree
-p=json.load(open('/home/tops/Projects/sandbox/promoteplus-crm/.drift-detector/drift.json'))
+p=json.load(open('/home/tops/Projects/sandbox/zenithapp-crm/.drift-detector/drift.json'))
 r=tree.build(p)[0]
 print(r['n'], '==', sum(c['n'] for c in r['children']))
 "
@@ -731,7 +731,7 @@ Then prove it end-to-end from a NEUTRAL cwd:
 ```bash
 cd /tmp && DRIFT_CATALOG_DIR=$HOME/.drift/catalog \
   /home/tops/Projects/tops/drift/drift-detector-scan/bin/drift-scan run \
-  --root /home/tops/Projects/sandbox/promoteplus-crm --state /tmp/tree-e2e --now 2026-08-13
+  --root /home/tops/Projects/sandbox/zenithapp-crm --state /tmp/tree-e2e --now 2026-08-13
 cd /tmp && /home/tops/Projects/tops/drift/drift-detector-scan/bin/drift-scan verify --state /tmp/tree-e2e
 ```
 Expected: exit 0. Then hand-edit one `data-n` in `/tmp/tree-e2e/dashboard.html`, re-run `verify`,
@@ -1289,7 +1289,7 @@ git commit -m "feat(tree): the queued node states when research last ran, or tha
 ```bash
 cd /tmp && DRIFT_CATALOG_DIR=$HOME/.drift/catalog \
   /home/tops/Projects/tops/drift/drift-detector-scan/bin/drift-scan run \
-  --root /home/tops/Projects/sandbox/promoteplus-crm --state /tmp/reframe-e2e --now 2026-08-13
+  --root /home/tops/Projects/sandbox/zenithapp-crm --state /tmp/reframe-e2e --now 2026-08-13
 ```
 
 - [ ] **Step 2: Record the measurements**
@@ -1431,7 +1431,7 @@ self-evidencing — and it puts the product's actual claim, *down to `file:line`
 
 ## Task 5d: the tree splits by repo (inserted after 5c)
 
-**Origin:** the first multi-repo scan (mls-mapper + promoteplus-crm + sebago-foods, 142 endpoints)
+**Origin:** the first multi-repo scan (geo-mapper + zenithapp-crm + acmegrocer-foods, 142 endpoints)
 melted three repos into one set of numbers. The owner: *"one confusion point is repo mixing."*
 That is the same illegibility the old tile strip had, reintroduced by aggregation.
 
@@ -1439,13 +1439,13 @@ That is the same illegibility the old tile strip had, reintroduced by aggregatio
 
 ```
 142 detected
-├─ 8 mls-mapper
+├─ 8 geo-mapper
 │  ├─ 3 integrations
 │  │  ├─ 3 tracked
 │  │  └─ 0 queued
 │  └─ 5 assets
-├─ 73 promoteplus-crm
-└─ 61 sebago-foods
+├─ 73 zenithapp-crm
+└─ 61 acmegrocer-foods
 ```
 
 **The repo level appears ONLY when the scan covered more than one repo.** A single-repo scan renders
@@ -1461,7 +1461,7 @@ identity and glossary key must separate:
 - **`data-node` stays SEMANTIC and non-unique** — `tracked`, `queued`, `boilerplate`, plus a new
   `repo` for the repo level. The glossary keeps working unchanged, and one new entry covers `repo`.
 - **`data-path` is added and IS unique** — the node's full path, e.g.
-  `detected/sebago-foods/integrations/tracked`. Every identity-based check keys on this.
+  `detected/acmegrocer-foods/integrations/tracked`. Every identity-based check keys on this.
 - A repo node also carries **`data-repo="<repo>"`**.
 
 `check_tree_matches_payload` and `check_tree_node_set` must switch from `data-node` to `data-path`
@@ -1475,7 +1475,7 @@ that coverage is not to be re-earned.
    parent still sums to its children at every depth.
 2. `md_tree` renders the same structure — `drift.md` gains the repo level too.
 3. **Rows (Task 5c) become per-repo automatically** and must stay correct: a row under
-   `sebago-foods/tracked` must be an endpoint of THAT repo, not merely of that bucket.
+   `acmegrocer-foods/tracked` must be an endpoint of THAT repo, not merely of that bucket.
    `check_tree_rows` must assert the repo as well, or it would accept a row from the wrong repo —
    exactly the mixing this task removes.
 4. `tree-parity` still compares the ASCII and HTML trees; both now carry the repo level.

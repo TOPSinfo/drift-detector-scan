@@ -7,7 +7,7 @@ this tool exists to refuse. So they are DERIVED, per scan, from what the repo al
 
 Three signals:
 
-  token      the repo's name contributes a distinctive token (`promoteplus-crm` -> `promoteplus`),
+  token      the repo's name contributes a distinctive token (`zenithapp-crm` -> `zenithapp`),
              and a host containing it is that project's own box.
   domain     a SELF-HOSTED forge remote (git.acme.internal/...) names the organisation's own
              domain. Public forges are excluded — a github.com remote says nothing about who owns
@@ -216,8 +216,8 @@ _REASON_LABEL = {"domain": "git remote org domain", "token": "repo token",
 
 def reason(host: str, sig: dict) -> str | None:
     """A human-readable description of WHY `host` was claimed as own-infra, naming the exact
-    signal and the value that matched it — e.g. "repo token 'promoteplus'" or "git remote org
-    domain 'topsdemo.in'". None when no signal claims the host. This is what lets a caller (and a
+    signal and the value that matched it — e.g. "repo token 'zenithapp'" or "git remote org
+    domain 'devhost.io'". None when no signal claims the host. This is what lets a caller (and a
     report reader) see the claim instead of a silent disappearance — recorded on the endpoint
     record as `ownInfraReason` (see agent/lib/endpoints.py)."""
     claim = _claim(host, sig)

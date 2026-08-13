@@ -121,11 +121,11 @@ def test_token_claimed_own_infra_host_stays_queued_not_na():
 def test_domain_claimed_own_infra_host_stays_na():
     """A git-remote org-domain claim keeps the pre-existing behaviour: out of the backlog
     entirely (unlike the weaker token claim above)."""
-    eps = [{"domain": "anything.topsdemo.in", "vendor": "Unknown", "version": None,
+    eps = [{"domain": "anything.devhost.io", "vendor": "Unknown", "version": None,
             "classified": False, "file_count": 1, "files": ["a.php:1"],
-            "hostClass": "own-infra", "ownInfraReason": "git remote org domain 'topsdemo.in'"}]
+            "hostClass": "own-infra", "ownInfraReason": "git remote org domain 'devhost.io'"}]
     data = _blob(render_dashboard(_inv(eps), _audit([]), "2026-07-15"))
-    rec = next(e for e in data["endpoints"] if e["domain"] == "anything.topsdemo.in")
+    rec = next(e for e in data["endpoints"] if e["domain"] == "anything.devhost.io")
     assert rec["coverage"] == "na"
     assert rec["hostClass"] == "own-infra"                 # still marked own-infra for display
     # M1: the STRONG domain claim keeps the original behaviour — excluded, not unknown — so
@@ -134,20 +134,20 @@ def test_domain_claimed_own_infra_host_stays_na():
     assert c["integrations"] == 0 and c["excluded"] == 1 and c["unknown"] == 0
 
 
-def test_reference_case_promoteplus_crm_still_marked_own_infra():
-    """The reference case (promoteplus-crm -> crm.promoteplus.ai): own_infra derives a TOKEN
-    ("promoteplus") for this repo, so it is displayed as own-infra AND, per F1, stays queued —
+def test_reference_case_zenithapp_crm_still_marked_own_infra():
+    """The reference case (zenithapp-crm -> crm.zenithapp.io): own_infra derives a TOKEN
+    ("zenithapp") for this repo, so it is displayed as own-infra AND, per F1, stays queued —
     the token claim alone must not silently retire it from the backlog either."""
     from agent.lib import own_infra
-    sig = own_infra.signals(repo_path="/srv/promoteplus-crm",
-                            repo_id="https://git.topsdemo.in/root/promoteplus-crm.git")
-    reason = own_infra.reason("crm.promoteplus.ai", sig)
-    assert reason == "repo token 'promoteplus'"
-    eps = [{"domain": "crm.promoteplus.ai", "vendor": "Unknown", "version": None,
+    sig = own_infra.signals(repo_path="/srv/zenithapp-crm",
+                            repo_id="https://git.devhost.io/root/zenithapp-crm.git")
+    reason = own_infra.reason("crm.zenithapp.io", sig)
+    assert reason == "repo token 'zenithapp'"
+    eps = [{"domain": "crm.zenithapp.io", "vendor": "Unknown", "version": None,
             "classified": False, "file_count": 1, "files": ["a.php:1"],
             "hostClass": "own-infra", "ownInfraReason": reason}]
     data = _blob(render_dashboard(_inv(eps), _audit([]), "2026-07-15"))
-    rec = next(e for e in data["endpoints"] if e["domain"] == "crm.promoteplus.ai")
+    rec = next(e for e in data["endpoints"] if e["domain"] == "crm.zenithapp.io")
     assert rec["hostClass"] == "own-infra"
 
 

@@ -585,7 +585,7 @@ def _tree_nodes(html: str) -> list:
 
     Task 5d: `path` (from `data-path`) is the node's UNIQUE identity — `key` (from `data-node`)
     is only its SEMANTIC/glossary key, and with a repo level it repeats once per repo
-    (`tracked` under `sebago-foods` and `tracked` under `promoteplus-crm` are both
+    (`tracked` under `acmegrocer-foods` and `tracked` under `zenithapp-crm` are both
     `data-node="tracked"`). Identity-sensitive checks below key on `path`, never `key`; a
     fabricated `<li>` missing `data-path` entirely still gets a slot here (`path=None`), which
     reliably fails to match any real payload path rather than silently dropping the node.

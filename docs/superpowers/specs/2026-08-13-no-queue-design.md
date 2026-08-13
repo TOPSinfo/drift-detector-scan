@@ -9,14 +9,14 @@
 The first multi-repo scan queued ten hosts. Broken down:
 
 ```
-9  own-infra token guesses      sebagofoods.com, neptunes.sebagofoods.com,
-                                sebagodistribution.com, sebagoit.mooo.com,
-                                crm.promoteplus.ai, promotepluscdn.com, …
-1  genuinely uncatalogued       idximages.directaxess.com
+9  own-infra token guesses      acmegrocer.com, orders.acmegrocer.com,
+                                acmedistribution.com, acmeit.mooo.com,
+                                crm.zenithapp.io, zenithappcdn.com, …
+1  genuinely uncatalogued       listingimages.thirdparty.io
 ```
 
 **Ninety percent of the queue was the tool hedging on a guess it had already got right.**
-`sebagofoods.com` inside the `sebago-foods` repo is not a research question. That hedge was
+`acmegrocer.com` inside the `acmegrocer-foods` repo is not a research question. That hedge was
 introduced deliberately — a review found that a repo named after its vendor (`acme-mailgun-sync`)
 could swallow that vendor, so token-derived claims were kept queued rather than acted on. Seeing the
 real output, the owner judged the trade wrong: nine obviously-owned hosts parked in a backlog is

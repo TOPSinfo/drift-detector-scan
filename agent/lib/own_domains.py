@@ -19,8 +19,8 @@ absent, not empty-and-therefore-clean.
 Entry shape (each field required — a wrong entry silently removes a real third party from the
 audit backlog, so an unevidenced entry is an error, never a silent skip):
 
-    - repo: bags-fba/sebago-foods
-      domain: sebagofoods.com
+    - repo: acme-org/acmegrocer-foods
+      domain: acmegrocer.com
       by: ai-resolution
       checked: '2026-08-13'
       reason: "the project's own product domain; APP_URL and the repo name both name it"
