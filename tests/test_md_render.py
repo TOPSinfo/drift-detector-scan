@@ -26,6 +26,27 @@ def _payload(**over):
     return base
 
 
+def test_own_infra_claims_are_named_not_silent():
+    """F1: drift.md must say how many hosts were claimed as own-infra and by which signal — never
+    a silent subtraction. Token and domain claims are counted separately since only the domain
+    claim removed the host from the audit backlog."""
+    p = _payload(endpoints=[
+        {"domain": "api.hubspot.com", "hostClass": "own-infra", "classified": False,
+         "ownInfraReason": "repo token 'hubspot'"},
+        {"domain": "anything.topsdemo.in", "hostClass": "own-infra", "classified": False,
+         "ownInfraReason": "git remote org domain 'topsdemo.in'"},
+    ])
+    out = md.render_markdown(p, "2026-07-21")
+    assert "2 host(s) claimed as a repo's own infrastructure" in out
+    assert "1 by git-remote org domain" in out
+    assert "1 by repo-name token" in out
+
+
+def test_no_own_infra_line_when_nothing_claimed():
+    out = md.render_markdown(_payload(), "2026-07-21")
+    assert "own infrastructure" not in out
+
+
 def test_headline_names_the_past_due_alarm():
     out = md.render_markdown(_payload(), "2026-07-21")
     assert "1 of 2 retiring API surface(s) are already past" in out

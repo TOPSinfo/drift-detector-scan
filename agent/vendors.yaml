@@ -96,3 +96,35 @@
 - { vendor: TikTok Business API, techKey: api:tiktok-business, domains: [business-api.tiktok.com] }
 - { vendor: OpenStreetMap, techKey: api:openstreetmap, domains: [osm.org] }
 - { vendor: Vimeo Player, techKey: api:vimeo, domains: [player.vimeo.com] }
+
+# ── Communications / automation ────────────────────────────────────────────
+# DETECTION ONLY — each host was observed in real code; no retirement list has been checked, so
+# these are deliberately UNAUDITED (see agent/catalog_attestations.yaml). Naming the integration
+# is the value; implying its versions are current would be the false-clean this tool refuses.
+#
+# F6 (product-owner decision): the SPECIFIC API host, not the bare marketing domain — a bare
+# `justcall.io`/`zapier.com` would count a README link to the vendor's homepage as a tracked
+# integration. api.justcall.io confirmed at developer.justcall.io; hooks.zapier.com is Zapier's
+# webhook-trigger host and api.zapier.com is its separate, real, resolving REST API host
+# (zapier.com itself is the marketing site) — both kept as two narrow entries, not widened
+# back to the bare domain.
+- { vendor: JustCall,           techKey: api:justcall,           domains: [api.justcall.io] }
+- { vendor: Zapier,             techKey: api:zapier,             domains: [hooks.zapier.com, api.zapier.com] }
+- { vendor: Microsoft Identity, techKey: api:microsoft-identity, domains: [login.microsoftonline.com, login.microsoft.com] }
+
+# ── AI / LLM providers ─────────────────────────────────────────────────────
+# Enumerated by a dependency's PUBLISHED config (a Laravel app ships the package's config file),
+# so the code references them whether or not a code path selects one. Classified so they are named
+# and countable; UNAUDITED because nobody has read their deprecation pages.
+#
+# F6: narrowed to each provider's actual API host, not its bare marketing domain — same reasoning
+# as JustCall/Zapier above. OpenRouter is the one exception: openrouter.ai IS the API host (base
+# URL https://openrouter.ai/api/v1 — there is no api.openrouter.ai), so it stays as-is rather
+# than guessing a subdomain that doesn't exist.
+- { vendor: DeepSeek,           techKey: api:deepseek,           domains: [api.deepseek.com] }
+- { vendor: Groq,               techKey: api:groq,               domains: [api.groq.com] }
+- { vendor: Mistral AI,         techKey: api:mistral,            domains: [api.mistral.ai] }
+- { vendor: xAI,                techKey: api:xai,                domains: [api.x.ai] }
+- { vendor: OpenRouter,         techKey: api:openrouter,         domains: [openrouter.ai] }
+- { vendor: ElevenLabs,         techKey: api:elevenlabs,         domains: [api.elevenlabs.io] }
+- { vendor: Voyage AI,          techKey: api:voyageai,           domains: [api.voyageai.com] }

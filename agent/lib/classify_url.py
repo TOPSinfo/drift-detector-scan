@@ -66,6 +66,16 @@ def is_ignored(host: str) -> bool:
 
 
 # Test/placeholder domains that are never a real third-party integration.
+#
+# F4: the bare RFC 2606 / RFC 6761 reserved TLDs (.test, .example, .invalid) used to live here
+# too, on the theory that "nothing resolves behind them" makes dropping honest. The product
+# owner overruled that: dropping still makes the host DISAPPEAR from the inventory, and a
+# reserved-TLD host found in real code (`cdn.example.test`) is still evidence the scan should
+# show, not silently subtract. They now live in agent/host_reputation.yaml's `boilerplate` list
+# instead — VISIBLE in the inventory, excluded from the audit backlog, same as any other
+# boilerplate host (github.com, w3.org, ...). Only these five stay here: they are real,
+# resolvable-looking registrable domains that happen to be placeholder CONVENTIONS, not reserved
+# names, so honest dropping is still the right call for them.
 _PLACEHOLDER = ("example.com", "example.org", "example.net", "test.com", "localhost")
 
 

@@ -462,12 +462,18 @@ def check_host_classes(payload: dict) -> None:
     if recount != (counts.get("hostClasses") or {}):
         raise Violation("hostclass-count",
                         f"counts.hostClasses={counts.get('hostClasses')} but the endpoints recount to {recount}")
-    integrations = sum(1 for e in endpoints if host_class.is_integration(e.get("hostClass")))
+    # M1: pass ownInfraReason through so a token-claimed own-infra host (kept `queued` by
+    # dashboard_render._coverage) recomputes as an integration here too — otherwise this
+    # recount would agree with a wrong counts.integrations/unknown for the exact same reason
+    # the renderer got it wrong, and the derived-count check below would never fire.
+    integrations = sum(1 for e in endpoints
+                       if host_class.is_integration(e.get("hostClass"), e.get("ownInfraReason")))
     derived = {"detected": len(endpoints),          # the headline: EVERY endpoint the engine read
                "integrations": integrations,
                "excluded": len(endpoints) - integrations,
                "unknown": sum(1 for e in endpoints
-                              if host_class.is_integration(e.get("hostClass")) and not e.get("classified"))}
+                              if host_class.is_integration(e.get("hostClass"), e.get("ownInfraReason"))
+                              and not e.get("classified"))}
     for name, expect in derived.items():
         if counts.get(name) != expect:
             raise Violation("hostclass-derived-count",
@@ -482,6 +488,85 @@ def check_host_classes(payload: dict) -> None:
         if cov.get(state) != n:
             raise Violation("coverage-partition",
                             f"counts.coverage[{state}]={cov.get(state)} but the endpoints hold {n}")
+    # M1: `research`'s work-list is every endpoint at coverage=queued — every one of those is,
+    # by construction, an integration not yet classified (an api-lead/unclassified host, or an
+    # own-infra host claimed only by the weak repo-name TOKEN signal — see dashboard_render._coverage).
+    # So `unknown` (integration AND not classified) can never be SMALLER than `queued`: if it were,
+    # the headline tile would undercount hosts the work-list is actively handing the user. This
+    # is deliberately NOT a recompute-and-compare like the checks above — it held even while
+    # counts.integrations/unknown were computed the OLD (hostClass-only) way, because verify
+    # recomputed them the SAME wrong way (see M1 in .superpowers/sdd/final-fixes-2-report.md);
+    # only a check that cross-references a DIFFERENT field (coverage.queued) catches that shape
+    # of bug.
+    queued = cov.get("queued", 0)
+    unknown = counts.get("unknown", 0)
+    if unknown < queued:
+        raise Violation("unknown-lt-queued",
+                        f"counts.unknown={unknown} is less than counts.coverage.queued={queued} — "
+                        f"research's work-list hands out more queued hosts than the headline "
+                        f"claims are even unknown")
+
+
+# Markers that mean "a model produced this". `by: ai-research` is deliberately NOT here: on a
+# catalog attestation it is an honest provenance label for a gate-validated check, and ~40 vendors
+# legitimately carry it. What must never appear is an AI-shaped ENDPOINT or FINDING.
+_AI_MARKERS = frozenset({"ai", "ai-shaped", "lead", "leads", "probabilistic", "unverified"})
+_AI_FIELDS = ("origin", "tier", "source_tier", "provenance")
+
+
+def check_ai_firewall(payload: dict) -> None:
+    """No AI-derived record may appear in the certified payload.
+
+    Until the AI tiers moved into dashboard.html, this was guaranteed structurally: leads lived in
+    probabilistic.html, shapes in adhoc.html, and `verify` covered only the certified files. Sharing
+    one document removes that guarantee, so it becomes an assertion instead. The AI blobs
+    themselves stay OUTSIDE the equality check — they are not projections of drift.json and cannot
+    be verified against it — but nothing they contain may cross into the certified data.
+
+    The section set used to be a hardcoded ("endpoints", "findings", "catalog") tuple, and that
+    tuple was WRONG in exactly the way this invariant exists to prevent: "findings" is not a real
+    drift.json key — build_payload() never emits one, only a hand-written test fixture invented it
+    — while "actions", the array that actually carries the per-repo remediation records, was
+    missing from the tuple entirely. Injecting an AI marker into actions[0] of a real drift.json
+    and running `drift-scan verify` produced a false GREEN. A hand-picked list of names can always
+    fall out of sync with what build_payload actually produces; walking every top-level value that
+    IS a list of dicts instead means a future section (or a renamed one) is swept in automatically,
+    the moment build_payload starts emitting it, with nobody having to remember to add its name
+    here. ("findings" is left harmless if it ever does appear — it costs nothing to also check.)
+
+    THE BOUNDARY (read this before trusting a green run as total coverage): this walks only
+    TOP-LEVEL payload values that are a list of dicts, one level deep into each dict's OWN
+    fields. It does not recurse. Two shapes it therefore cannot see: (1) a top-level value that
+    is itself a dict rather than a list — `counts`, named in the spec as a place an AI marker
+    could hide, is exactly this shape, and a marker nested inside one of ITS values is invisible
+    here; (2) an AI marker nested a level deeper inside a list record (e.g. inside a sub-dict or
+    list-of-dicts field of a `rec`) rather than sitting directly on `rec`. Both are structural
+    blind spots, not oversights papered over by the marker list below. Separately, `_AI_MARKERS`
+    is an EXACT-STRING match against `_AI_FIELDS` values only — a marker spelled `llm`, `gpt`,
+    `model`, or `ai_lead`, or one hiding in a field this function doesn't inspect at all, walks
+    straight through. This function is a real guard against the bug it was written for (a
+    hardcoded, incomplete section list), not a guarantee that no AI-shaped data can ever reach
+    the certified payload by some other route.
+    """
+    for section, section_val in payload.items():
+        if not isinstance(section_val, list):
+            continue
+        for rec in section_val:
+            if not isinstance(rec, dict):
+                continue
+            for field in _AI_FIELDS:
+                val = str(rec.get(field) or "").strip().lower()
+                if val in _AI_MARKERS:
+                    raise Violation(
+                        "ai-firewall",
+                        f"{section}[] record carries {field}={val!r} — AI-derived data must stay "
+                        f"in its own blob (adhoc-data / leads-data / research-data), never in the "
+                        f"certified payload")
+            if section == "catalog" and str(rec.get("by") or "").lower() in ("lead", "ai"):
+                raise Violation(
+                    "ai-firewall",
+                    f"catalog[] record for {rec.get('vendor')!r} claims by={rec.get('by')!r} — a "
+                    f"catalog verdict may only come from a gate-validated attestation")
 
 
 def verify_payload(payload: dict, findings: list) -> list:
@@ -492,6 +577,7 @@ def verify_payload(payload: dict, findings: list) -> list:
                      (check_owner_split, (payload,)),
                      (check_row_labels_distinct, (payload,)),
                      (check_host_classes, (payload,)),
+                     (check_ai_firewall, (payload,)),
                      (check_number_formats, (payload,))):
         try:
             fn(*args)

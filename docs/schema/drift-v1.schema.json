@@ -106,7 +106,28 @@
         }
       }
     },
-    "endpoints": {"type": "array"},
+    "endpoints": {
+      "type": "array",
+      "description": "Every outbound call the engine read, triaged by hostClass (agent/lib/host_class.py) and coverage lifecycle (agent/lib/dashboard_render.py) — not just catalogued vendors. Deliberately loosely typed below (properties only, none required) rather than not typed at all, matching the rest of this array's actual shape.",
+      "items": {
+        "type": "object",
+        "properties": {
+          "repo": {"type": "string"},
+          "domain": {"type": ["string", "null"]},
+          "vendor": {"type": ["string", "null"]},
+          "version": {"type": ["string", "null"]},
+          "classified": {"type": "boolean", "description": "True for a catalogued vendor — always hostClass 'api'."},
+          "hostClass": {"enum": ["api", "api-lead", "social-widget", "asset-cdn", "analytics", "vendored-lib", "boilerplate", "own-infra", "unclassified"]},
+          "coverage": {"enum": ["tracked", "queued", "needs-human", "blocked", "na"]},
+          "ownInfraReason": {
+            "type": "string",
+            "description": "Present only when hostClass is 'own-infra': WHY the host was claimed as this repo's OWN infrastructure, naming the exact signal and the matched value (agent/lib/own_infra.py). Two possible signals, deliberately different weight: a repo-name TOKEN guess (e.g. \"repo token 'promoteplus'\") is a heuristic, not certain, so the endpoint's coverage stays 'queued' — it can still surface as a real third party through drift-scan research. A git-remote-org DOMAIN claim (e.g. \"git remote org domain 'topsdemo.in'\") is the organisation's own identity, strong enough that coverage becomes 'na' — dropped from the research backlog. Absent when no signal claims the host, including when the unrelated multi-host own-infra heuristic (endpoints.py's _tag_own_infra) retagged it instead — that path carries no reason at all."
+          },
+          "file_count": {"type": "integer", "minimum": 0},
+          "files": {"type": "array", "items": {"type": "string"}}
+        }
+      }
+    },
     "shapes": {"type": "array"},
     "private": {"type": "array"},
     "residueSamples": {"type": "array"},

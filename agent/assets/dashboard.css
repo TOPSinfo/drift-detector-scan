@@ -9,6 +9,11 @@
   --ink:light-dark(#191b1f,#e8ebf1); --muted:light-dark(#6a7180,#98a1b1);
   --crit:#e0533d; --high:#e08a3d; --med:#cdb63a; --low:#5f9e6a; --info:#3d7de0; --sun:#b06ee0;
   --track:light-dark(#ecece7,#20242c);
+  /* SOURCED / lead provenance-badge fill+text pairs — same light-dark() convention as the
+     bg/ink tokens above, so the badges theme with the rest of the page instead of staying
+     stuck in their light-mode fallback colours under dark mode. */
+  --amber-bg:light-dark(#fdf1dc,#3a2c12); --amber-fg:light-dark(#7a4b00,#e0a83d);
+  --muted-bg:light-dark(#eceff3,#1b1f26); --muted-fg:light-dark(#52606d,#98a1b1);
   --mono:ui-monospace,"SF Mono",Menlo,Consolas,monospace; --sans:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif; --r:12px;
 }
 [v-cloak]{display:none}   /* hides the un-hydrated in-DOM template on first paint */
@@ -241,7 +246,13 @@ dialog .db{padding:16px 18px} dialog .x{margin-left:auto;background:none;border:
         border-radius:4px; white-space:nowrap; border:1px solid var(--line); color:var(--muted); }
 .orig[data-origin="certified"] { border:1px solid var(--line); color:var(--ink); }
 .orig[data-origin="shaped"]    { border:1px solid var(--accent-2); color:var(--accent-2); }
-.orig[data-origin="lead"]      { border:1px dashed var(--line); color:var(--muted); }
+/* Provenance badges. Deliberately DESCENDING in visual weight — gate-validated reads strongest,
+   an unverified lead weakest — so the eye ranks the tiers the way the trust model does. */
+.orig[data-origin="sourced"] { background: var(--amber-bg, #fdf1dc); color: var(--amber-fg, #7a4b00); }
+.orig[data-origin="lead"]    { border: 1px dashed currentColor; background: var(--muted-bg, #eceff3);
+                               color: var(--muted-fg, #52606d); }
+.tri[data-tri="yes"]     { font-weight: 700; }
+.tri[data-tri="unknown"] { opacity: .7; font-style: italic; }
 td.orig { width:1%; }
 .tcount { font-size:11px; opacity:.65; }
 .op { color:var(--muted); font-size:12px; }

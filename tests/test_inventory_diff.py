@@ -55,3 +55,36 @@ def test_empty_baseline_yields_no_changes():
     curr = {"repos": [_repo("web", endpoints=[_ep("api:stripe", "api.stripe.com", "v1")])]}
     d = diff_inventories({}, curr)
     assert d["reposAdded"] == ["web"] and d["changes"] == []      # first run: baseline, not "added" endpoints
+
+
+def test_endpoint_with_null_techkey_sorts_instead_of_crashing():
+    """SDK-client endpoints (agent/sdk_clients.py) carry techKey=None — they are derived
+    from the manifest, not from an AST match, so there is no rule key to name them by.
+
+    Shipped bug: _fmt_eps sorted raw tuples, so the FIRST scan in which such an endpoint
+    entered or left the delta died with
+        TypeError: '<' not supported between instances of 'NoneType' and 'str'
+    killing `run` outright (agent/run.py -> inventory_scan.scan_folder -> diff_inventories).
+    It survived earlier scans only because an UNCHANGED endpoint set is never sorted, and it
+    needs a MIXED delta to fire: two None techKeys compare equal and fall through to the
+    domain, so the delta must carry a None techKey ALONGSIDE a string one.
+    """
+    prev = {"repos": [_repo("crm", endpoints=[_ep("api:mailgun", "api.mailgun.net", "v3")])]}
+    curr = {"repos": [_repo("crm", endpoints=[_ep("api:mailgun", "api.mailgun.net", "v3"),
+                                              _ep(None, "api.twilio.com", None),
+                                              _ep(None, "api.sendgrid.com", None),
+                                              _ep("api:ebay", "api.ebay.com", "v1")])]}
+    d = diff_inventories(prev, curr)
+    added = d["changes"][0]["endpointsAdded"]
+    assert {"techKey": None, "domain": "api.sendgrid.com", "version": None} in added
+    assert {"techKey": None, "domain": "api.twilio.com", "version": None} in added
+    # deterministic order (principle 3): None sorts as "", so the SDK-derived pair leads
+    assert [e["domain"] for e in added] == ["api.sendgrid.com", "api.twilio.com", "api.ebay.com"]
+
+
+def test_endpoint_with_null_domain_also_sorts():
+    """Same crash via the other nullable column — guard both, not just the one that bit us."""
+    prev = {"repos": [_repo("crm", endpoints=[])]}
+    curr = {"repos": [_repo("crm", endpoints=[_ep("api:x", None, None)])]}
+    d = diff_inventories(prev, curr)
+    assert d["changes"][0]["endpointsAdded"] == [{"techKey": "api:x", "domain": None, "version": None}]

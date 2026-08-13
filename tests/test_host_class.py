@@ -4,7 +4,9 @@ Guards the taxonomy that turns the "wall of unknowns" into a ranked list: real A
 top, noise bucketed but never hidden. `hostClass` is orthogonal to vendor classification —
 nothing here may set `classified`/`vendor`/a date.
 """
+import pytest
 from agent.lib import host_class as hc
+from agent.lib import own_infra
 
 
 def test_reputation_beats_heuristics():
@@ -48,7 +50,19 @@ def test_asset_by_extension_or_path():
 
 def test_unknown_with_no_signal_is_unclassified_not_hidden():
     assert hc.classify("api-gateway.internal.acme.io") in ("api-lead", "unclassified")
-    assert hc.classify("weird-host.example") == "unclassified"
+    # NOT "weird-host.example" — since F4, `.example` is a reserved-TLD entry in
+    # host_reputation.yaml's `boilerplate` list (see test_reserved_tld_hosts_classify_boilerplate
+    # below), so a host under it is no longer the "nothing matches" case this test wants.
+    assert hc.classify("weird-host.zzqux-nonexistent-tld") == "unclassified"
+
+
+def test_reserved_tld_hosts_classify_boilerplate():
+    """F4 (product-owner decision): RFC 2606/6761 reserved TLDs (.test/.example/.invalid) are no
+    longer hard-dropped by classify_url — they reach here and must classify `boilerplate`
+    (visible, excluded from the audit backlog), never `unclassified` (which would misread as an
+    unaudited lead) and never silently disappear."""
+    for host in ("cdn.example.test", "svc.example", "thing.foo.invalid"):
+        assert hc.classify(host) == "boilerplate", host
 
 
 def test_reputation_matches_on_registrable_suffix():
@@ -120,3 +134,57 @@ def test_empty_or_junk_host_is_unclassified_never_crashes():
     classify_url.is_nonhost; that stays Task 3's job, not this classifier's.)"""
     for junk in ("", None, "...", "sandbox."):
         assert hc.classify(junk) == "unclassified"
+
+
+# Each host below sat in `queued` on a real Laravel scan, described as "an API service we haven't
+# researched yet". None of them is an API service. rfc-editor.org is the tell: the same host was
+# ALREADY excluded as boilerplate through another path, so the queue and the exclusion list
+# disagreed with each other about the same domain.
+@pytest.mark.parametrize("host,expected", [
+    ("spdx.org", "boilerplate"),
+    ("spec.openapis.org", "boilerplate"),
+    ("www.rfc-editor.org", "boilerplate"),
+    ("reactjs.org", "boilerplate"),
+    ("redux.js.org", "boilerplate"),
+    ("vladimirgorej.com", "boilerplate"),
+    ("acme.com", "boilerplate"),
+    ("fb.me", "social-widget"),
+    ("www.snapchat.com", "social-widget"),
+    ("www.threads.net", "social-widget"),
+    ("soundcloud.com", "social-widget"),
+    ("get.adobe.com", "asset-cdn"),
+])
+def test_queue_noise_is_bucketed_not_queued(host, expected):
+    assert hc.classify(host) == expected
+
+
+@pytest.mark.parametrize("host", [
+    "spdx.org", "www.rfc-editor.org", "fb.me", "soundcloud.com", "get.adobe.com", "acme.com",
+])
+def test_bucketed_hosts_are_not_integrations(host):
+    """`is_integration` False is what keeps them out of the audit backlog — the queue count."""
+    assert not hc.is_integration(hc.classify(host))
+
+
+def _sig():
+    return own_infra.signals(repo_path="/srv/promoteplus-crm",
+                             repo_id="https://git.topsdemo.in/root/promoteplus-crm.git")
+
+
+def test_own_infra_wins_over_the_api_label_rule():
+    """Ordering matters and is the whole point: `api.<client>.com` is the client's OWN API, not a
+    third-party lead. The `api.` label rule runs early, so own-infra must run before it."""
+    assert hc.classify("api.promoteplus.ai", own=_sig()) == "own-infra"
+    assert hc.classify("crm.promoteplus.ai", own=_sig()) == "own-infra"
+    assert hc.classify("qa-promoteplus-idx.topsdemo.in", own=_sig()) == "own-infra"
+
+
+def test_own_infra_never_claims_a_third_party():
+    for host in ("api.justcall.io", "hooks.zapier.com", "graph.microsoft.com"):
+        assert hc.classify(host, own=_sig()) != "own-infra", host
+
+
+def test_classify_without_signals_is_unchanged():
+    """The `own` keyword is optional; every existing caller must behave identically without it."""
+    assert hc.classify("crm.promoteplus.ai") == "unclassified"
+    assert hc.classify("api.justcall.io") == "api-lead"
