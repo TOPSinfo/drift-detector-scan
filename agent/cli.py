@@ -1289,12 +1289,19 @@ def _cmd_adhoc_report(args) -> int:
 
 
 def _cmd_render(args) -> int:
-    """Re-render dashboard.html from the state dir: the certified drift.json + optional AI-tier docs
-    (adhoc.json / leads.json). The certified `drift-data` blob is byte-identical to run.py's render,
-    so `verify` stays green — the AI tiers are strictly additive, never a change to the certified one.
-    This is the seam that lets the ad-hoc pass (a second scan) fold its tier into the ONE cockpit."""
+    """Re-render dashboard.html AND summary.html from the state dir: the certified drift.json +
+    optional AI-tier docs (adhoc.json / leads.json) for the cockpit. The certified `drift-data`
+    blob is byte-identical to run.py's render, so `verify` stays green — the AI tiers are
+    strictly additive, never a change to the certified one. This is the seam that lets the
+    ad-hoc pass (a second scan) fold its tier into the ONE cockpit.
+
+    summary.html is included because `verify` now REQUIRES it (task-5b Finding 2): a state dir
+    predating that change, or one hand-staged with just drift.json, used to leave `render` unable
+    to produce the one file `verify` was naming as missing — the obvious repair did not repair.
+    """
     import json as _json
     from agent.lib.dashboard_render import build_bundle, render_payload
+    from agent.lib.summary_render import render_summary
 
     def _load(name, required=True):
         try:
@@ -1317,9 +1324,11 @@ def _cmd_render(args) -> int:
                           adhoc=adhoc, leads=leads, research=research)
     with open(os.path.join(args.state, "dashboard.html"), "w", encoding="utf-8") as fh:
         fh.write(html)
+    with open(os.path.join(args.state, "summary.html"), "w", encoding="utf-8") as fh:
+        fh.write(render_summary(payload, args.now))
     tiers = "certified" + (" + shaped" if adhoc else "") + (" + leads" if leads else "") \
             + (" + research" if research else "")
-    print(f"render: dashboard.html rewritten ({tiers})")
+    print(f"render: dashboard.html + summary.html rewritten ({tiers})")
     return 0
 
 
