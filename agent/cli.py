@@ -105,6 +105,15 @@ def _cmd_run(args) -> int:
         # (exactly the shape `resolve --apply` writes to resolution.json)
         resolve_verdicts = (resolve_payload.get("verdicts", resolve_payload)
                             if isinstance(resolve_payload, dict) else resolve_payload)
+        # A JSON *string* (or number/bool) unwraps to itself above, and `resolve.check_verdicts`
+        # happily iterates it — a string iterates its CHARACTERS, so a plain-text --resolve file
+        # used to fail deep inside the gate with a baffling `verdict #1 ('e'): not a mapping`
+        # instead of a clear, immediate refusal naming the actual problem.
+        if not isinstance(resolve_verdicts, list):
+            print(f"run: --resolve {args.resolve!r} must contain a list of verdicts (or "
+                  f"{{'verdicts': [...]}}), got {type(resolve_verdicts).__name__}",
+                  file=sys.stderr)
+            return 2
     progress = None
     if getattr(args, "progress", False):
         print("drift-detector · scan → audit → deliver (deterministic · 0 LLM tokens)",
@@ -135,6 +144,11 @@ def _cmd_run(args) -> int:
     for u in (out.get("rootsUnscannable") or []):
         print(f"⚠ skipped: {u['reason']}", file=sys.stderr)
 
+    # Distinct, non-zero exit codes for the non-clean `--resolve` outcomes: without these an
+    # automated caller had no way to tell "resolved" from "refused" short of scraping stderr —
+    # `run` exited 0 either way. Separate from (and checked before) the --fail-on-deprecated
+    # gate below, which can still tighten this further (exit 3/4) but never loosens it back to 0.
+    resolve_rc = 0
     rr = out.get("resolve")
     if rr and rr["status"] == "applied":
         w = rr["written"]
@@ -146,6 +160,14 @@ def _cmd_run(args) -> int:
               "BEFORE resolution:", file=sys.stderr)
         for p in rr["problems"]:
             print("  •", p, file=sys.stderr)
+        resolve_rc = 5                     # 'refused' must be distinguishable from 'resolved'
+    elif rr and rr["status"] == "degraded":
+        w = rr["written"]
+        print(f"⚠ resolve: applied ({w['own_domain']} own-domain, {w['vendor_identity']} "
+              f"vendor-identity, {w['retiring']} retiring) but the RE-SCAN failed "
+              f"({rr['detail']}) — drift.json reflects the scan BEFORE resolution; the catalog "
+              f"overlay was still updated, so a plain re-run will pick it up", file=sys.stderr)
+        resolve_rc = 6                     # 'partially applied, re-scan blew up' — its own code
     elif rr and rr["status"] == "error":
         print(f"⚠ resolve: could not apply the verdicts ({rr['detail']}) — drift.json reflects "
               f"the scan BEFORE resolution", file=sys.stderr)
@@ -180,7 +202,7 @@ def _cmd_run(args) -> int:
             print(f"✗ gate: {c['DEPRECATED']} DEPRECATED finding(s) (excluding muted) — failing (exit 3)",
                   file=sys.stderr)
             return 3
-    return 0
+    return resolve_rc
 
 
 def _cmd_clean(args) -> int:

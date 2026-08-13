@@ -375,3 +375,63 @@ def test_apply_succeeds_but_rescan_fails_falls_back_to_scan1s_document(tmp_path,
     assert drift["counts"]["coverage"]["queued"] == 1
 
     verify_mod.check_ai_firewall(drift)   # the central claim must still hold after this fix
+
+
+# --------------------------------------------------------------------- MINOR: exit codes + malformed --resolve
+def test_cli_run_resolve_rejected_exits_distinct_nonzero_but_still_writes_report(tmp_path, monkeypatch, capsys):
+    """A rejected gate degrades correctly (drift.json still reflects the first scan) but the CLI
+    exit code was 0 either way — an automated caller could not distinguish 'resolved' from
+    'refused' without scraping stderr. Rejection must exit non-zero, and distinctly from the
+    other non-zero exits `run` already uses (2 bad args, 3/4 the --fail-on-deprecated gate)."""
+    import agent.run as run_mod
+
+    def fake_run_pipeline(*a, **k):
+        return {"scope": {"reposScanned": 1}, "auditCounts": {"DEPRECATED": 0, "REVIEW": 0},
+               "counts": {}, "coverage": {}, "rootsUnscannable": [],
+               "resolve": {"status": "rejected", "problems": ["missing source_url"]}}
+
+    monkeypatch.setattr(run_mod, "run_pipeline", fake_run_pipeline)
+    root = tmp_path / "root"
+    root.mkdir()
+    rc = cli.main(["run", "--root", str(root), "--state", str(tmp_path / "state"),
+                  "--now", "2026-08-13"])
+    assert rc not in (0, 2, 3, 4)
+    err = capsys.readouterr().err
+    assert "rejected" in err.lower()
+
+
+def test_cli_run_resolve_degraded_after_apply_exits_distinct_nonzero(tmp_path, monkeypatch, capsys):
+    """Mirrors the rejected case for the new post-apply-rescan-failure status: distinct, non-zero,
+    and distinct from `rejected` too, so a caller can tell 'refused outright' apart from 'partially
+    applied, then the re-scan blew up'."""
+    import agent.run as run_mod
+
+    def fake_run_pipeline(*a, **k):
+        return {"scope": {"reposScanned": 1}, "auditCounts": {"DEPRECATED": 0, "REVIEW": 0},
+               "counts": {}, "coverage": {}, "rootsUnscannable": [],
+               "resolve": {"status": "degraded", "detail": "engine exploded on the re-scan",
+                          "written": {"own_domain": 0, "vendor_identity": 1, "retiring": 0,
+                                     "needs_human": 0},
+                          "needs_human": []}}
+
+    monkeypatch.setattr(run_mod, "run_pipeline", fake_run_pipeline)
+    root = tmp_path / "root"
+    root.mkdir()
+    rc = cli.main(["run", "--root", str(root), "--state", str(tmp_path / "state"),
+                  "--now", "2026-08-13"])
+    assert rc not in (0, 2, 3, 4)
+    err = capsys.readouterr().err
+    assert "re-scan" in err.lower() or "rescan" in err.lower()
+
+
+def test_cli_run_resolve_non_list_payload_rejected_cleanly(tmp_path, capsys):
+    """`--resolve` pointed at a JSON *string* previously iterated its characters
+    (`verdict #1 ('e'): not a mapping`) instead of being refused outright with a clear message."""
+    bad = tmp_path / "bad.json"
+    bad.write_text(json.dumps("just a string, not a list of verdicts"))
+    rc = cli.main(["run", "--root", str(tmp_path), "--state", str(tmp_path / "state"),
+                  "--now", "2026-08-13", "--resolve", str(bad)])
+    assert rc == 2
+    err = capsys.readouterr().err
+    assert "resolve" in err.lower()
+    assert "list" in err.lower()
