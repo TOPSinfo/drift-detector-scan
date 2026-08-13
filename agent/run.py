@@ -124,7 +124,15 @@ def run_pipeline(roots, state_dir, now, *, pull=False,
     #                  no JavaScript — readable in seconds, unlike the cockpit below
     #   dashboard.html a self-contained viewer (embeds the same payload, offline/CDN-free)
     #   chart.html     an ONLINE chart view — same embedded payload, Chart.js from a CDN
-    payload = build_payload(doc, audit, diff=diff, gitlab_hosts=gitlab_hosts)
+    #
+    # No-queue design: `resolved` is True only when `resolve_result["status"] == "applied"` —
+    # the ONE case where `doc` above actually came from the post-resolution re-scan. Rejected /
+    # errored / degraded all leave `doc` as scan 1's, exactly as unresolved as a plain run with
+    # no `--resolve` at all, so they must read the same way on the tree: not resolved. This is
+    # the single record of "did a resolution pass run" — `agent/lib/tree.py`'s `unresolved` node
+    # reads it via `payload["resolutionRan"]`, nothing else computes or stores this fact twice.
+    resolved = resolve_result is not None and resolve_result.get("status") == "applied"
+    payload = build_payload(doc, audit, diff=diff, gitlab_hosts=gitlab_hosts, resolved=resolved)
     _write_json(os.path.join(state_dir, "drift.json"), payload)
     _write(os.path.join(state_dir, "drift.md"), render_markdown(payload, now))
     _write(os.path.join(state_dir, "summary.html"), render_summary(payload, now))

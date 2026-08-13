@@ -46,7 +46,7 @@ def test_integrations_splits_into_the_coverage_lifecycle():
     f = _flat(tree.build(_payload()))
     assert f["integrations"]["n"] == 30
     assert sum(c["n"] for c in f["integrations"]["children"]) == 30
-    assert f["tracked"]["n"] == 27 and f["queued"]["n"] == 3
+    assert f["tracked"]["n"] == 27 and f["unresolved"]["n"] == 3
 
 
 def test_every_node_declares_a_unit():
@@ -151,7 +151,7 @@ def test_md_tree_renders_the_shape_the_owner_could_read():
     body = "\n".join(lines)
     assert "73 detected" in body
     assert "30 integrations" in body
-    assert "27 tracked" in body and "3 queued" in body
+    assert "27 tracked" in body and "3 unresolved" in body
     assert "43 assets" in body
     assert "21 distinct vendors" in body          # the annotation, not a node
     assert "20 boilerplate" in body               # count-then-label, per the tree's own shape
