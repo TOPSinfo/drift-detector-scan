@@ -20,6 +20,7 @@ from __future__ import annotations
 from datetime import date as _date
 
 from agent.lib import owners, own_infra
+from agent.lib import tree as _tree
 
 SCHEMA_VERSION = "drift/v1"
 
@@ -182,6 +183,12 @@ def render_markdown(payload: dict, now: str) -> str:
         summary_rows.append(["Sources unscannable (not read)", counts.get("unscannable", 0)])
     L += _table(["Metric", "Count"], summary_rows)
     L.append("")
+
+    # The coverage tree: the same numbers as the tables, in the shape that actually communicates.
+    # Rendered from the payload here (not in the browser) so `verify` can check it against
+    # drift.json — a projection, like every other surface this tool emits.
+    L += ["## Coverage tree", ""]
+    L += ["```"] + _tree.md_tree(_tree.build(payload)) + ["```", ""]
 
     # --- own-infra disclosure: F1. A host tagged own-infra must never just disappear from the
     # report — this is the one place that names how many were claimed and by which signal. A

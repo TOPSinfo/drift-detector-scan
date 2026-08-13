@@ -79,3 +79,26 @@ def build(payload: dict) -> list:
         assets = _node("assets", cov.get("na", counts.get("excluded")), children=kids)
 
     return [_node("detected", counts.get("detected"), children=[integrations, assets])]
+
+
+def _line(node, prefix, is_last, out):
+    branch = "└─ " if is_last else "├─ "
+    n = "not counted" if node["n"] is None else f"{node['n']} {node['label']}"
+    note = f"   ({node['note']})" if node["note"] else ""
+    out.append(f"{prefix}{branch}{n}{note}")
+    kids = node["children"]
+    for i, k in enumerate(kids):
+        _line(k, prefix + ("   " if is_last else "│  "), i == len(kids) - 1, out)
+
+
+def md_tree(nodes: list) -> list:
+    """The tree as plain text, for drift.md and any terminal. Box-drawing characters, because
+    the shape IS the explanation — a flat list of the same numbers is what failed to communicate."""
+    out: list = []
+    for root in nodes:
+        head = "not counted" if root["n"] is None else f"{root['n']} {root['label']}"
+        out.append(head)
+        kids = root["children"]
+        for i, k in enumerate(kids):
+            _line(k, "", i == len(kids) - 1, out)
+    return out
