@@ -42,6 +42,7 @@ and `absorb`).
 """
 from __future__ import annotations
 
+import os
 from pathlib import Path
 from urllib.parse import urlparse
 
@@ -167,22 +168,85 @@ def check_verdicts(verdicts: list, *, vendors_path=None) -> list:
     return problems
 
 
-def _append_overlay(overlay_dir: str, filename: str, entries: list) -> None:
-    if not entries:
-        return
+def _own_domain_key(e: dict) -> tuple:
+    return (e.get("repo"), str(e.get("domain") or "").lower())
+
+
+def _vendor_key(e: dict) -> tuple:
+    domains = e.get("domains") or []
+    return (e.get("vendor"), str(domains[0]).lower() if domains else None)
+
+
+def _sunset_key(e: dict) -> tuple:
+    return (e.get("vendor"), str(e.get("domain") or "").lower(), e.get("retires"))
+
+
+def _dedupe_new(existing: list, candidates: list, key_fn) -> list:
+    """Drop any candidate whose natural key already exists — either on disk already, or
+    earlier in this same batch. Re-applying an identical verdict must be a no-op, never a
+    second entry (own-domain: repo+domain; vendor: vendor+domain; sunset: vendor+domain+date)."""
+    seen = {key_fn(e) for e in existing if isinstance(e, dict)}
+    out = []
+    for c in candidates:
+        k = key_fn(c)
+        if k in seen:
+            continue
+        seen.add(k)
+        out.append(c)
+    return out
+
+
+def _plan_overlay_write(overlay_dir: str, filename: str, new_entries: list, key_fn) -> tuple:
+    """Validate-only: read+parse the existing overlay via `catalog_overlay.load_list` — never
+    reimplemented here — which raises ValueError on a malformed one (e.g. a YAML mapping
+    instead of a list); and confirm the target path is a plain file or doesn't exist yet
+    (never a directory). Never writes anything.
+
+    Returns (final_entries, added_count, problem). `problem` set means the target is unsafe to
+    write to at all. `final_entries` is None when there is nothing new to write (everything
+    deduped away against what is already on disk) — the caller must leave that file untouched."""
+    if not new_entries:
+        return None, 0, None
     path = Path(overlay_dir) / filename
-    existing = []
-    if path.is_file():
-        existing = yaml.safe_load(path.read_text(encoding="utf-8")) or []
+    if path.exists() and not path.is_file():
+        return None, 0, f"{path}: exists but is not a regular file — cannot write the overlay"
+    try:
+        existing = catalog_overlay.load_list(filename)
+    except ValueError as exc:
+        return None, 0, f"{path}: {exc}"
+    deduped = _dedupe_new(existing, new_entries, key_fn)
+    if not deduped:
+        return None, 0, None
+    return existing + deduped, len(deduped), None
+
+
+def _write_overlay_atomic(path: Path, entries: list) -> None:
+    """Write `entries` to `path` via temp-file + rename, so a mid-write failure (disk full,
+    permission yanked mid-batch, ...) never leaves a half-written overlay file behind."""
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(yaml.safe_dump(list(existing) + entries, sort_keys=False, allow_unicode=True),
-                    encoding="utf-8")
+    tmp = path.with_name(f".{path.name}.tmp{os.getpid()}")
+    try:
+        tmp.write_text(yaml.safe_dump(entries, sort_keys=False, allow_unicode=True),
+                        encoding="utf-8")
+        tmp.replace(path)   # atomic rename on the same filesystem (POSIX)
+    finally:
+        tmp.unlink(missing_ok=True)
 
 
 def apply(verdicts: list, *, now: str, vendors_path=None, overlay_dir: str | None = None) -> dict:
     """Gate-validate every verdict; ONLY if every one passes, land it as reviewed overlay data
     and return a summary. Raises `ResolveRejected` (writing NOTHING) if any verdict — or the
     batch as a whole, e.g. a catalog write with no overlay directory configured — fails.
+
+    The write itself is atomic and all-or-nothing too, not just the gate: every target overlay
+    file is validated (parseable, and not e.g. a directory sitting where the file should be)
+    BEFORE the first byte is written, and each file lands via temp-file + rename. A failure at
+    any point — bad target, malformed pre-existing overlay, a write error — is a clean
+    `ResolveRejected`, never a partially-applied batch and never a raw traceback.
+
+    Re-applying an identical verdict is a no-op: each catalog is deduped on its natural key
+    (own-domain: repo+domain; vendor: vendor+domain; sunset: vendor+domain+date) against what
+    is already on disk, so a repeated batch never appends duplicates.
 
     Returns {"written": {"own_domain", "vendor_identity", "retiring", "needs_human": <counts>},
              "needs_human": [{"host", "repo", "note"}, ...]}.
@@ -214,8 +278,7 @@ def apply(verdicts: list, *, now: str, vendors_path=None, overlay_dir: str | Non
         else:   # unknown
             needs_human.append({"host": host, "repo": v.get("repo"), "note": v.get("note", "")})
 
-    written = {"own_domain": len(own_domain_entries), "vendor_identity": len(vendor_entries),
-               "retiring": len(sunset_entries), "needs_human": len(needs_human)}
+    written = {"own_domain": 0, "vendor_identity": 0, "retiring": 0, "needs_human": len(needs_human)}
 
     if own_domain_entries or vendor_entries or sunset_entries:
         d = overlay_dir or catalog_overlay.overlay_dir()
@@ -223,8 +286,29 @@ def apply(verdicts: list, *, now: str, vendors_path=None, overlay_dir: str | Non
             raise ResolveRejected([
                 "$DRIFT_CATALOG_DIR is not set — nowhere safe to write reviewed evidence "
                 "(own-domain/vendor-identity/retiring verdicts can never land in agent/*.yaml)"])
-        _append_overlay(d, catalog_overlay.OWN_DOMAINS, own_domain_entries)
-        _append_overlay(d, catalog_overlay.VENDORS, vendor_entries)
-        _append_overlay(d, catalog_overlay.SUNSETS, sunset_entries)
+
+        # Phase 1 — validate EVERY target before touching disk. A problem on any one target
+        # (an unwritable path, a malformed pre-existing overlay) fails the whole apply: nothing
+        # below has been written yet, so this refusal is genuinely all-or-nothing.
+        write_problems = []
+        plans = []   # [(path, final_entries, kind, added_count)]
+        for filename, new_entries, key_fn, kind in (
+                (catalog_overlay.OWN_DOMAINS, own_domain_entries, _own_domain_key, "own_domain"),
+                (catalog_overlay.VENDORS, vendor_entries, _vendor_key, "vendor_identity"),
+                (catalog_overlay.SUNSETS, sunset_entries, _sunset_key, "retiring")):
+            final_entries, added, problem = _plan_overlay_write(d, filename, new_entries, key_fn)
+            if problem:
+                write_problems.append(problem)
+            elif final_entries is not None:
+                plans.append((Path(d) / filename, final_entries, kind, added))
+        if write_problems:
+            raise ResolveRejected(write_problems)
+
+        # Phase 2 — commit. Validation already passed for every target, so this is not expected
+        # to fail, but each file still lands via temp-file + rename so a failure here (e.g. disk
+        # full mid-batch) can never corrupt a target file in place.
+        for path, final_entries, kind, added in plans:
+            _write_overlay_atomic(path, final_entries)
+            written[kind] = added
 
     return {"written": written, "needs_human": needs_human}

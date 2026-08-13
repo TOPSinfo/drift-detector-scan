@@ -195,6 +195,62 @@ def test_catalog_writes_are_refused_without_an_overlay_dir(monkeypatch, tmp_path
         resolve.apply([_own_domain_verdict()], now="2026-08-13")
 
 
+# --------------------------------------------------------------------- CRITICAL 1: apply is atomic on write failure
+def test_apply_with_an_unwritable_target_is_refused_cleanly_all_or_nothing(monkeypatch, tmp_path):
+    """vendors.local.yaml is a directory (a real, if unusual, pre-existing state). The old code
+    wrote own_domains.local.yaml FIRST, then blew up with a raw IsADirectoryError on the vendors
+    write — half-applying the batch and leaking a traceback instead of a clean refusal."""
+    d = _overlay_dir(monkeypatch, tmp_path)
+    (d / catalog_overlay.VENDORS).mkdir()
+    verdicts = [_own_domain_verdict(), _vendor_identity_verdict()]
+    with pytest.raises(resolve.ResolveRejected):
+        resolve.apply(verdicts, now="2026-08-13")
+    # all-or-nothing: the own-domain half (which used to land first) must NOT be written either
+    assert own_domains.load() == {}
+    assert not (d / catalog_overlay.OWN_DOMAINS).exists()
+
+
+def test_apply_refuses_the_whole_batch_when_one_target_overlay_is_pre_existing_and_malformed(
+        monkeypatch, tmp_path):
+    """A pre-existing malformed sunsets overlay must block the WHOLE apply, including the
+    own-domain and vendor entries that would otherwise have landed cleanly."""
+    d = _overlay_dir(monkeypatch, tmp_path)
+    (d / catalog_overlay.SUNSETS).write_text(yaml.safe_dump({"not": "a list"}))
+    verdicts = [_own_domain_verdict(), _vendor_identity_verdict(), _retiring_verdict()]
+    with pytest.raises(resolve.ResolveRejected):
+        resolve.apply(verdicts, now="2026-08-13")
+    assert own_domains.load() == {}
+    assert not (d / catalog_overlay.VENDORS).exists()
+
+
+# --------------------------------------------------------------------- IMPORTANT 4: reuse catalog_overlay.load_list
+def test_applying_over_a_mapping_shaped_vendors_overlay_is_refused_not_silently_corrupted(
+        monkeypatch, tmp_path):
+    """`list(a_mapping) + entries` silently turns a mapping-shaped overlay into a list of its
+    own KEYS, and every later load_vendors() call then dies with a TypeError. Must be refused,
+    and the pre-existing (if malformed) file must be left exactly as it was."""
+    d = _overlay_dir(monkeypatch, tmp_path)
+    (d / catalog_overlay.VENDORS).write_text(yaml.safe_dump({"GeoMapper": {"domains": ["x"]}}))
+    with pytest.raises(resolve.ResolveRejected):
+        resolve.apply([_vendor_identity_verdict()], now="2026-08-13")
+    raw = yaml.safe_load((d / catalog_overlay.VENDORS).read_text())
+    assert raw == {"GeoMapper": {"domains": ["x"]}}
+
+
+# --------------------------------------------------------------------- IMPORTANT 5: idempotent re-apply
+def test_applying_an_identical_batch_twice_is_a_no_op_not_a_duplicate(monkeypatch, tmp_path):
+    d = _overlay_dir(monkeypatch, tmp_path)
+    verdicts = [_own_domain_verdict(), _vendor_identity_verdict(), _retiring_verdict()]
+    resolve.apply(verdicts, now="2026-08-13")
+    result2 = resolve.apply(verdicts, now="2026-08-13")
+    assert result2["written"] == {"own_domain": 0, "vendor_identity": 0, "retiring": 0,
+                                  "needs_human": 0}
+    assert len(yaml.safe_load((d / catalog_overlay.OWN_DOMAINS).read_text())) == 1
+    assert len(yaml.safe_load((d / catalog_overlay.VENDORS).read_text())) == 1
+    assert len(yaml.safe_load((d / catalog_overlay.SUNSETS).read_text())) == 1
+    assert sum(1 for x in load_vendors() if x.vendor == "GeoMapper") == 1
+
+
 # --------------------------------------------------------------------- IMPORTANT 3: source_url is shape-checked
 @pytest.mark.parametrize("bad_url", ["x", "   ", "file:///etc/passwd", "not-a-url-at-all"])
 def test_vendor_identity_source_url_must_be_an_http_url_with_a_host(bad_url):
