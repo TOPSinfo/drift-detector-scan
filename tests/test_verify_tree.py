@@ -46,7 +46,8 @@ def test_a_node_disagreeing_with_the_payload_is_a_violation():
     """Internal consistency is not enough — a tree can be self-consistent and still be a fiction.
     This is what makes it a PROJECTION of drift.json rather than a decoration beside it."""
     html = tree.html_tree(tree.build(_payload()))
-    html = html.replace('data-node="detected" data-n="73"', 'data-node="detected" data-n="99"')
+    html = html.replace('data-node="detected" data-path="detected" data-n="73"',
+                        'data-node="detected" data-path="detected" data-n="99"')
     with pytest.raises(verify.Violation) as e:
         verify.check_tree_matches_payload(html, _payload())
     assert e.value.check in ("tree-sums", "tree-payload")
@@ -397,3 +398,98 @@ def test_false_red_sweep_honest_reports_stay_green():
             verify.check_tree_parity(html, md)
         except verify.Violation as v:
             pytest.fail(f"false RED on {name!r}: [{v.check}] {v.detail}")
+
+
+# ---------------------------------------------------------------------------------------
+# Task 5d — the tree splits by repo. `tracked`/`queued`/etc now appear once PER REPO, so
+# `data-node` (the semantic key) is no longer unique. `check_tree_matches_payload`'s
+# node-set/order comparison must key on `data-path` instead — the same coverage the
+# hardcoded pair list (Finding 1) and the node-set gap (Fix round 2) closed, now proven to
+# still hold at the new level.
+# ---------------------------------------------------------------------------------------
+
+def _multi_repo_payload():
+    eps = ([{"repo": "repoA", "hostClass": "api", "coverage": "tracked", "vendor": "vA",
+            "domain": "a.repoA.test"} for _ in range(2)]
+          + [{"repo": "repoB", "hostClass": "boilerplate", "coverage": "na",
+             "domain": f"b{i}.repoB.test"} for i in range(3)])
+    return {"counts": {"detected": len(eps)}, "endpoints": eps}
+
+
+def test_a_faithful_multi_repo_tree_passes():
+    p = _multi_repo_payload()
+    verify.check_tree_matches_payload(tree.html_tree(tree.build(p)), p)
+    good_md = "\n".join(tree.md_tree(tree.build(p)))
+    verify.check_tree_parity(tree.html_tree(tree.build(p)), good_md)
+
+
+def test_a_repo_scoped_node_disagreeing_with_the_payload_is_a_violation():
+    """The SAME semantic key `tracked` now exists once per repo — a naive data-node lookup
+    would find repoA's tracked node and compare it against whichever payload value it hashed
+    to first. Tampering repoA's own count must be caught precisely, by its own data-path."""
+    p = _multi_repo_payload()
+    html = tree.html_tree(tree.build(p))
+    tampered = html.replace(
+        'data-node="tracked" data-path="detected/repoA/integrations/tracked" data-n="2"',
+        'data-node="tracked" data-path="detected/repoA/integrations/tracked" data-n="9"')
+    assert tampered != html
+    with pytest.raises(verify.Violation) as e:
+        verify.check_tree_matches_payload(tampered, p)
+    assert e.value.check in ("tree-sums", "tree-payload")
+
+
+_UL_ANY = re.compile(r'<ul\b[^>]*>|</ul>')
+
+
+def _gut_children(html: str, path: str) -> str:
+    """Delete a node's ENTIRE `<ul>...</ul>` of children while leaving its OWN `<li ...>` tag
+    (and its own `data-n`) untouched — the repo-level replay of the original "Important
+    finding": a parent whose children are deleted wholesale keeps its own count honest with
+    nothing left to sum against, so only the rendered node-SET (not any sum) can catch it.
+    Balanced `<ul>`/`</ul>` counting, since a repo's own children wrapper nests two more
+    `<ul>`s inside it (integrations' and assets' own child lists) — a non-greedy `.*?</ul>`
+    would stop at the first of those, not the repo's own outer one."""
+    m = re.search(rf'<li data-node="[^"]*" data-path="{re.escape(path)}"[^>]*>', html)
+    assert m, f"no <li> with data-path={path!r} in the rendered tree"
+    ul_start = html.index("<ul>", m.end())
+    depth = 1
+    for tm in _UL_ANY.finditer(html, ul_start + len("<ul>")):
+        depth += 1 if tm.group(0).startswith("<ul") else -1
+        if depth == 0:
+            return html[:ul_start] + html[tm.end():]
+    raise AssertionError("unbalanced <ul> while gutting children")
+
+
+def test_deleting_a_whole_repo_subtree_is_caught_by_node_set():
+    """The repo-level version of Fix round 2's Important finding: gutting an ENTIRE repo's
+    CHILDREN (its own `data-n` left honest, nothing left to sum against) must still be caught
+    by the rendered node-set/order comparison, now keyed on data-path so the repeated
+    `data-node="repo"` never masks it."""
+    p = _multi_repo_payload()
+    html = tree.html_tree(tree.build(p))
+    gutted = _gut_children(html, "detected/repoA")
+    assert gutted != html
+    with pytest.raises(verify.Violation) as e:
+        verify.check_tree_matches_payload(gutted, p)
+    assert e.value.check == "tree-node-set"
+
+
+def test_multi_repo_parity_catches_a_repo_label_tamper():
+    p = _multi_repo_payload()
+    nodes = tree.build(p)
+    html = tree.html_tree(nodes)
+    good_md = "\n".join(tree.md_tree(nodes))
+    verify.check_tree_parity(html, good_md)
+    bad_md = good_md.replace("repoA", "repoZ")
+    assert bad_md != good_md
+    with pytest.raises(verify.Violation) as e:
+        verify.check_tree_parity(html, bad_md)
+    assert e.value.check == "tree-parity"
+
+
+def test_repo_glossary_entry_covers_every_repo_node_once():
+    p = _multi_repo_payload()
+    nodes = tree.build(p)
+    html = tree.html_tree(nodes) + tree.html_definitions(nodes)
+    verify.check_tree_definitions(html)   # no raise — one "repo" definition covers both repos
+    assert html.count('data-def="repo"') == 1
