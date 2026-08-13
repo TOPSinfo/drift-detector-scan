@@ -1426,3 +1426,62 @@ self-evidencing — and it puts the product's actual claim, *down to `file:line`
 
 7. Escape everything — file paths and hostnames both derive from scanned source. Deterministic
    ordering (never by count); same payload → byte-identical page.
+
+---
+
+## Task 5d: the tree splits by repo (inserted after 5c)
+
+**Origin:** the first multi-repo scan (mls-mapper + promoteplus-crm + sebago-foods, 142 endpoints)
+melted three repos into one set of numbers. The owner: *"one confusion point is repo mixing."*
+That is the same illegibility the old tile strip had, reintroduced by aggregation.
+
+**Shape:** repo becomes level 1, each repo carrying its own complete lifecycle breakdown.
+
+```
+142 detected
+├─ 8 mls-mapper
+│  ├─ 3 integrations
+│  │  ├─ 3 tracked
+│  │  └─ 0 queued
+│  └─ 5 assets
+├─ 73 promoteplus-crm
+└─ 61 sebago-foods
+```
+
+**The repo level appears ONLY when the scan covered more than one repo.** A single-repo scan renders
+exactly what it renders today — the extra level exists to disambiguate, and with nothing to
+disambiguate it is noise.
+
+### Node identity — the crux, get this right
+
+Today `data-node` is both the node's IDENTITY (what the invariants key on) and its GLOSSARY KEY
+(what `check_tree_definitions` looks up). With a repo level, `tracked` appears three times, so
+identity and glossary key must separate:
+
+- **`data-node` stays SEMANTIC and non-unique** — `tracked`, `queued`, `boilerplate`, plus a new
+  `repo` for the repo level. The glossary keeps working unchanged, and one new entry covers `repo`.
+- **`data-path` is added and IS unique** — the node's full path, e.g.
+  `detected/sebago-foods/integrations/tracked`. Every identity-based check keys on this.
+- A repo node also carries **`data-repo="<repo>"`**.
+
+`check_tree_matches_payload` and `check_tree_node_set` must switch from `data-node` to `data-path`
+for identity. Both closed real false greens and must keep firing on every case they already catch —
+that coverage is not to be re-earned.
+
+### Requirements
+
+1. `tree.build(payload)` inserts the repo level when the payload covers >1 repo, deriving repos from
+   the endpoint rows. Children of a repo are that repo's own lifecycle and asset breakdown; every
+   parent still sums to its children at every depth.
+2. `md_tree` renders the same structure — `drift.md` gains the repo level too.
+3. **Rows (Task 5c) become per-repo automatically** and must stay correct: a row under
+   `sebago-foods/tracked` must be an endpoint of THAT repo, not merely of that bucket.
+   `check_tree_rows` must assert the repo as well, or it would accept a row from the wrong repo —
+   exactly the mixing this task removes.
+4. `tree-parity` still compares the ASCII and HTML trees; both now carry the repo level.
+5. Deterministic: repos in a fixed order (alphabetical by repo label), never by count.
+6. No false REDs. Re-sweep: single-repo payload (no repo level), no `endpoints`, empty payload,
+   a payload whose endpoints carry no `repo` field, and a repo with zero integrations.
+
+**Verification target:** the three-repo scan must produce a tree where each repo's subtree sums to
+its own total and the three totals sum to 142.
