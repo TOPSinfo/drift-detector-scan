@@ -76,14 +76,26 @@ def test_amazon_mws_matches_every_regional_tld():
         assert v and v.vendor == "Amazon MWS", h
 
 
-# RFC 2606 / RFC 6761 reserve these names precisely so they can never resolve to a real service.
-# `cdn.example.test` reached the research queue on a real scan, where it read as a third-party CDN
-# awaiting audit. A reserved name is the one case where dropping is honest rather than hiding:
-# there is no service behind it to be blind to.
-def test_reserved_tlds_are_not_hosts():
+# F4 (product-owner decision): RFC 2606 / RFC 6761 reserve these TLDs so they can never resolve
+# to a real service, but dropping them via is_nonhost still made the host DISAPPEAR from the
+# inventory. They must instead be VISIBLE (boilerplate, excluded from the audit backlog) — see
+# agent/host_reputation.yaml's `test`/`example`/`invalid` entries and host_class.classify.
+def test_reserved_tlds_survive_is_nonhost_and_classify_as_boilerplate():
+    from agent.lib import host_class
     from agent.lib.classify_url import is_nonhost
-    for host in ("cdn.example.test", "api.foo.invalid", "svc.example", "thing.localhost",
-                 "shop.example.com", "api.test.com"):
+    # NOT an "api."-labelled host here: that label independently wins over reputation
+    # (test_api_label_beats_a_reputationed_parent_domain) and would classify api-lead instead —
+    # still visible either way, but this test pins the boilerplate path specifically.
+    for host in ("cdn.example.test", "backend.foo.invalid", "svc.example"):
+        assert not is_nonhost(host), host
+        assert host_class.classify(host) == "boilerplate", host
+
+
+# The PRE-EXISTING placeholder entries (not RFC-reserved TLDs, just placeholder conventions)
+# keep their original hard-dropped behaviour exactly as before F4.
+def test_preexisting_placeholder_domains_are_still_hard_dropped():
+    from agent.lib.classify_url import is_nonhost
+    for host in ("thing.localhost", "shop.example.com", "api.test.com"):
         assert is_nonhost(host), host
 
 
