@@ -175,3 +175,16 @@ def test_null_node_with_no_note_still_shows_its_label():
     body = "\n".join(tree.md_tree([node]))
     assert "not counted" in body
     assert "integrations" in body
+
+
+def test_md_tree_includes_the_roots_own_note():
+    """`_li` (the HTML renderer) always emits a node's `.tnote` span, root included; `md_tree`
+    only ever calls `_fmt(root)`, which has no note wording at all — the root's own note is
+    silently dropped in the Markdown while it would render in the HTML. Harmless today because
+    no root ever carries a note, but the day one does this is a latent false RED in
+    `check_tree_parity`: the HTML root's text would carry the note and the ASCII root line
+    would not, so they would never match even though nothing about the DATA disagrees. The two
+    renderers must agree on every node, root included."""
+    root = tree._node("detected", 73, note="a root note")
+    md_line = tree.md_tree([root])[0]
+    assert "a root note" in md_line

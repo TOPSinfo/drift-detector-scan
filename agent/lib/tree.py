@@ -113,12 +113,21 @@ def _line(node, prefix, is_last, out):
         _line(k, prefix + ("   " if is_last else "│  "), i == len(kids) - 1, out)
 
 
+def _root_line(root) -> str:
+    """The root's own line, in BOTH renderers' shared wording: `_fmt` plus its note, formatted
+    the same way `_line` folds a note onto every non-root line. `_li` renders a node's note
+    unconditionally regardless of depth; `md_tree` must too, or the two projections disagree on
+    the one node `check_tree_parity` anchors on."""
+    note = f"   ({_sanitize(root['note'])})" if root["note"] else ""
+    return f"{_fmt(root)}{note}"
+
+
 def md_tree(nodes: list) -> list:
     """The tree as plain text, for drift.md and any terminal. Box-drawing characters, because
     the shape IS the explanation — a flat list of the same numbers is what failed to communicate."""
     out: list = []
     for root in nodes:
-        out.append(_fmt(root))
+        out.append(_root_line(root))
         kids = root["children"]
         for i, k in enumerate(kids):
             _line(k, "", i == len(kids) - 1, out)
