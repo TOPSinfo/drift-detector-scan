@@ -142,3 +142,26 @@ def test_unmapped_hostclass_ordering_is_deterministic():
     unknown = sorted(k for k in keys if k not in tree._ASSET_CLASSES)
     assert keys == known + unknown
     assert "mystery-class" in unknown
+
+
+def test_md_tree_renders_the_shape_the_owner_could_read():
+    """This exact shape is why the tree exists — it was legible in a chat message when the
+    tile strip was not, so it becomes a real artifact in the file you can read without a browser."""
+    lines = tree.md_tree(tree.build(_payload()))
+    body = "\n".join(lines)
+    assert "73 detected" in body
+    assert "30 integrations" in body
+    assert "27 tracked" in body and "3 queued" in body
+    assert "43 assets" in body
+    assert "21 distinct vendors" in body          # the annotation, not a node
+    assert "20 boilerplate" in body               # count-then-label, per the tree's own shape
+    # box-drawing, so it reads as a tree in a terminal and on GitHub
+    assert "├─" in body and "└─" in body
+
+
+def test_md_tree_states_a_null_count_rather_than_printing_zero():
+    p = _payload()
+    del p["counts"]["coverage"]
+    body = "\n".join(tree.md_tree(tree.build(p)))
+    assert "not counted" in body
+    assert "0 integrations" not in body
