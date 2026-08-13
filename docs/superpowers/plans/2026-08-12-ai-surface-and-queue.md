@@ -231,21 +231,21 @@ from agent.lib import own_infra
 
 
 def _sig():
-    return own_infra.signals(repo_path="/srv/checkouts/promoteplus-crm",
-                             repo_id="https://git.topsdemo.in/root/promoteplus-crm.git")
+    return own_infra.signals(repo_path="/srv/checkouts/zenithapp-crm",
+                             repo_id="https://git.devhost.io/root/zenithapp-crm.git")
 
 
 def test_repo_name_token_catches_the_clients_own_hosts():
     sig = _sig()
-    assert sig["tokens"] == {"promoteplus"}          # `crm` is generic and too short
-    for host in ("crm.promoteplus.ai", "promotepluscdn.com", "qa-promoteplus-idx.topsdemo.in"):
+    assert sig["tokens"] == {"zenithapp"}          # `crm` is generic and too short
+    for host in ("crm.zenithapp.io", "zenithappcdn.com", "qa-zenithapp-idx.devhost.io"):
         assert own_infra.is_own(host, sig), host
 
 
 def test_self_hosted_forge_domain_is_own_infra():
     sig = _sig()
-    assert "topsdemo.in" in sig["domains"]
-    assert own_infra.is_own("anything.topsdemo.in", sig)
+    assert "devhost.io" in sig["domains"]
+    assert own_infra.is_own("anything.devhost.io", sig)
 
 
 def test_a_public_forge_is_never_treated_as_own_infra():
@@ -276,7 +276,7 @@ def test_short_and_generic_names_yield_no_token():
 def test_no_signals_means_no_claims():
     sig = own_infra.signals()
     assert sig == {"tokens": set(), "domains": set()}
-    assert not own_infra.is_own("crm.promoteplus.ai", sig)
+    assert not own_infra.is_own("crm.zenithapp.io", sig)
 ```
 
 - [ ] **Step 2: Run the test and watch it fail**
@@ -298,7 +298,7 @@ this tool exists to refuse. So they are DERIVED, per scan, from what the repo al
 
 Two signals, both taken from the repo's own identity:
 
-  token    the repo's name contributes a distinctive token (`promoteplus-crm` -> `promoteplus`),
+  token    the repo's name contributes a distinctive token (`zenithapp-crm` -> `zenithapp`),
            and a host containing it is that project's own box.
   domain   a SELF-HOSTED forge remote (git.acme.internal/...) names the organisation's own
            domain. Public forges are excluded — a github.com remote says nothing about who owns
@@ -409,16 +409,16 @@ from agent.lib import own_infra
 
 
 def _sig():
-    return own_infra.signals(repo_path="/srv/promoteplus-crm",
-                             repo_id="https://git.topsdemo.in/root/promoteplus-crm.git")
+    return own_infra.signals(repo_path="/srv/zenithapp-crm",
+                             repo_id="https://git.devhost.io/root/zenithapp-crm.git")
 
 
 def test_own_infra_wins_over_the_api_label_rule():
     """Ordering matters and is the whole point: `api.<client>.com` is the client's OWN API, not a
     third-party lead. The `api.` label rule runs early, so own-infra must run before it."""
-    assert host_class.classify("api.promoteplus.ai", own=_sig()) == "own-infra"
-    assert host_class.classify("crm.promoteplus.ai", own=_sig()) == "own-infra"
-    assert host_class.classify("qa-promoteplus-idx.topsdemo.in", own=_sig()) == "own-infra"
+    assert host_class.classify("api.zenithapp.io", own=_sig()) == "own-infra"
+    assert host_class.classify("crm.zenithapp.io", own=_sig()) == "own-infra"
+    assert host_class.classify("qa-zenithapp-idx.devhost.io", own=_sig()) == "own-infra"
 
 
 def test_own_infra_never_claims_a_third_party():
@@ -428,7 +428,7 @@ def test_own_infra_never_claims_a_third_party():
 
 def test_classify_without_signals_is_unchanged():
     """The `own` keyword is optional; every existing caller must behave identically without it."""
-    assert host_class.classify("crm.promoteplus.ai") == "unclassified"
+    assert host_class.classify("crm.zenithapp.io") == "unclassified"
     assert host_class.classify("api.justcall.io") == "api-lead"
 ```
 
@@ -1405,7 +1405,7 @@ git commit -m "docs(plugin): one AI surface — leads.json and the AI Frontier t
 
 ```bash
 cd /tmp && /path/to/drift-detector-scan/bin/drift-scan run \
-  --root /home/tops/Projects/sandbox/promoteplus-crm \
+  --root /home/tops/Projects/sandbox/zenithapp-crm \
   --state /tmp/drift-e2e --now "$(date +%F)"
 ```
 
@@ -1418,7 +1418,7 @@ prevents the hijack, but the habit is what keeps the result trustworthy.)
 cd /tmp && /path/to/drift-detector-scan/bin/drift-scan research --state /tmp/drift-e2e
 ```
 
-Expected: **at most 2 hosts**, and `idximages.directaxess.com` should be among them — it is a
+Expected: **at most 2 hosts**, and `listingimages.thirdparty.io` should be among them — it is a
 genuine third party and is deliberately still queued. Before this plan it printed 27.
 If a host you expected to be bucketed is still listed, fix its catalog entry rather than the test.
 
@@ -1484,12 +1484,12 @@ defined in Task 6 and consumed by Task 7 (`_optional("leads.json")`) and Task 8 
 
 ## Result
 
-End-to-end run on the reference repo (`promoteplus-crm`), 2026-08-12, executed per Task 12 from a
+End-to-end run on the reference repo (`zenithapp-crm`), 2026-08-12, executed per Task 12 from a
 neutral `/tmp` cwd with `PYTHONSAFEPATH=1` and the persistent local catalog
 (`DRIFT_CATALOG_DIR=$HOME/.drift/catalog`). State dir: `/tmp/drift-e2e`.
 
 **1. Queue collapse — `drift-scan research`**
-Before this branch: 27 hosts. After: **1 host** — `idximages.directaxess.com`, exactly the one
+Before this branch: 27 hosts. After: **1 host** — `listingimages.thirdparty.io`, exactly the one
 vendor the plan named as deliberately still queued (genuine third party, no catalog match yet).
 Meets expectation (≤ 2, with that host present).
 

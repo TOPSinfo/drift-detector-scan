@@ -33,8 +33,8 @@ def test_own_infra_claims_are_named_not_silent():
     p = _payload(endpoints=[
         {"domain": "api.hubspot.com", "hostClass": "own-infra", "classified": False,
          "ownInfraReason": "repo token 'hubspot'"},
-        {"domain": "anything.topsdemo.in", "hostClass": "own-infra", "classified": False,
-         "ownInfraReason": "git remote org domain 'topsdemo.in'"},
+        {"domain": "anything.devhost.io", "hostClass": "own-infra", "classified": False,
+         "ownInfraReason": "git remote org domain 'devhost.io'"},
     ])
     out = md.render_markdown(p, "2026-07-21")
     assert "2 host(s) claimed as a repo's own infrastructure" in out

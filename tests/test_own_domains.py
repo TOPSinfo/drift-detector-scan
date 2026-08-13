@@ -24,7 +24,7 @@ def _write_overlay(monkeypatch, tmp_path, entries):
 
 
 _ENTRY = {
-    "repo": "bags-fba/sebago-foods", "domain": "sebagofoods.com", "by": "ai-resolution",
+    "repo": "acme-org/acmegrocer-foods", "domain": "acmegrocer.com", "by": "ai-resolution",
     "checked": "2026-08-13", "reason": "the project's own product domain",
 }
 
@@ -53,14 +53,14 @@ def test_load_is_empty_when_overlay_file_absent(monkeypatch, tmp_path):
 def test_load_groups_domains_by_repo(monkeypatch, tmp_path):
     _write_overlay(monkeypatch, tmp_path, [
         _ENTRY,
-        {"repo": "bags-fba/sebago-foods", "domain": "sebagodistribution.com",
+        {"repo": "acme-org/acmegrocer-foods", "domain": "acmedistribution.com",
          "by": "ai-resolution", "checked": "2026-08-13", "reason": "same project, second domain"},
-        {"repo": "org/promoteplus-crm", "domain": "promoteplus.ai", "by": "ai-resolution",
+        {"repo": "org/zenithapp-crm", "domain": "zenithapp.io", "by": "ai-resolution",
          "checked": "2026-08-13", "reason": "APP_URL and repo name both name it"},
     ])
     table = own_domains.load()
-    assert table["bags-fba/sebago-foods"] == frozenset({"sebagofoods.com", "sebagodistribution.com"})
-    assert table["org/promoteplus-crm"] == frozenset({"promoteplus.ai"})
+    assert table["acme-org/acmegrocer-foods"] == frozenset({"acmegrocer.com", "acmedistribution.com"})
+    assert table["org/zenithapp-crm"] == frozenset({"zenithapp.io"})
 
 
 @pytest.mark.parametrize("missing", ["repo", "domain", "by", "checked", "reason"])
@@ -73,7 +73,7 @@ def test_load_rejects_an_entry_missing_a_required_field(monkeypatch, tmp_path, m
 
 
 def test_load_rejects_a_non_mapping_entry(monkeypatch, tmp_path):
-    _write_overlay(monkeypatch, tmp_path, ["sebagofoods.com"])
+    _write_overlay(monkeypatch, tmp_path, ["acmegrocer.com"])
     with pytest.raises(own_domains.OwnDomainError):
         own_domains.load()
 
@@ -81,20 +81,20 @@ def test_load_rejects_a_non_mapping_entry(monkeypatch, tmp_path):
 # --------------------------------------------------------------------- own_infra.signals(confirmed=)
 def test_confirmed_domain_is_own_infra_strong_not_a_token():
     """Matches like the git-remote org domain (exact or subdomain suffix) — NOT a token
-    substring — so a confirmed `sebagofoods.com` claims `api.sebagofoods.com` but a mere
+    substring — so a confirmed `acmegrocer.com` claims `api.acmegrocer.com` but a mere
     lookalike host must not match."""
-    sig = own_infra.signals(confirmed=frozenset({"sebagofoods.com"}))
-    assert own_infra.is_own("sebagofoods.com", sig)
-    assert own_infra.is_own("api.sebagofoods.com", sig)          # subdomain
-    assert not own_infra.is_own("notsebagofoods.com", sig)       # lookalike, not a suffix match
-    assert not own_infra.is_own("sebagofoods.com.evil.io", sig)  # host doesn't END in the domain
+    sig = own_infra.signals(confirmed=frozenset({"acmegrocer.com"}))
+    assert own_infra.is_own("acmegrocer.com", sig)
+    assert own_infra.is_own("api.acmegrocer.com", sig)          # subdomain
+    assert not own_infra.is_own("notacmegrocer.com", sig)       # lookalike, not a suffix match
+    assert not own_infra.is_own("acmegrocer.com.evil.io", sig)  # host doesn't END in the domain
 
 
 def test_confirmed_domain_reason_is_not_a_token_claim():
     """A confirmed overlay domain is a reviewed, strong claim — coverage must land `na`, not
     stay `queued` the way a repo-name TOKEN claim does (dashboard_render._coverage)."""
-    sig = own_infra.signals(confirmed=frozenset({"sebagofoods.com"}))
-    reason = own_infra.reason("api.sebagofoods.com", sig)
+    sig = own_infra.signals(confirmed=frozenset({"acmegrocer.com"}))
+    reason = own_infra.reason("api.acmegrocer.com", sig)
     assert reason is not None
     assert not own_infra.is_token_claim(reason)
     assert dashboard_render._coverage("own-infra", False, reason) == "na"
@@ -118,10 +118,10 @@ _MAILGUN = Vendor("Mailgun", "api:mailgun", ("mailgun.net",), DEFAULT_VERSION_RE
 
 def test_confirmed_domain_classifies_own_infra_with_coverage_na_end_to_end(monkeypatch, tmp_path):
     _write_overlay(monkeypatch, tmp_path, [_ENTRY])
-    _write(tmp_path, "a.php", '$x=file_get_contents("https://api.sebagofoods.com/products");\n')
+    _write(tmp_path, "a.php", '$x=file_get_contents("https://api.acmegrocer.com/products");\n')
     out = scan_endpoints([_url("a.php", 1)], str(tmp_path), [_STRIPE],
-                         repo_id="https://git.example.com/bags-fba/sebago-foods.git")
-    rec = next(e for e in out["endpoints"] if e["domain"] == "api.sebagofoods.com")
+                         repo_id="https://git.example.com/acme-org/acmegrocer-foods.git")
+    rec = next(e for e in out["endpoints"] if e["domain"] == "api.acmegrocer.com")
     assert rec["hostClass"] == "own-infra"
     assert not own_infra.is_token_claim(rec.get("ownInfraReason"))
     assert dashboard_render._coverage(rec["hostClass"], rec["classified"],
@@ -129,11 +129,11 @@ def test_confirmed_domain_classifies_own_infra_with_coverage_na_end_to_end(monke
 
 
 def test_confirmed_domain_scoped_to_a_different_repo_does_not_apply(monkeypatch, tmp_path):
-    _write_overlay(monkeypatch, tmp_path, [_ENTRY])       # scoped to bags-fba/sebago-foods
-    _write(tmp_path, "a.php", '$x=file_get_contents("https://api.sebagofoods.com/products");\n')
+    _write_overlay(monkeypatch, tmp_path, [_ENTRY])       # scoped to acme-org/acmegrocer-foods
+    _write(tmp_path, "a.php", '$x=file_get_contents("https://api.acmegrocer.com/products");\n')
     out = scan_endpoints([_url("a.php", 1)], str(tmp_path), [_STRIPE],
                          repo_id="https://git.example.com/some-org/unrelated-repo.git")
-    rec = next(e for e in out["endpoints"] if e["domain"] == "api.sebagofoods.com")
+    rec = next(e for e in out["endpoints"] if e["domain"] == "api.acmegrocer.com")
     assert rec["hostClass"] != "own-infra"
 
 
@@ -143,10 +143,10 @@ def test_missing_overlay_file_changes_nothing_end_to_end(monkeypatch, tmp_path):
     feature. Uses a repo identity that shares no token with the host, so the only way this host
     could become own-infra is via a (nonexistent) confirmed entry."""
     monkeypatch.delenv("DRIFT_CATALOG_DIR", raising=False)
-    _write(tmp_path, "a.php", '$x=file_get_contents("https://api.sebagofoods.com/products");\n')
+    _write(tmp_path, "a.php", '$x=file_get_contents("https://api.acmegrocer.com/products");\n')
     out = scan_endpoints([_url("a.php", 1)], str(tmp_path), [_STRIPE],
                          repo_id="https://git.example.com/some-org/totally-different.git")
-    rec = next(e for e in out["endpoints"] if e["domain"] == "api.sebagofoods.com")
+    rec = next(e for e in out["endpoints"] if e["domain"] == "api.acmegrocer.com")
     assert rec["hostClass"] != "own-infra"
 
 

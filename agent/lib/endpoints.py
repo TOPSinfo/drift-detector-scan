@@ -131,7 +131,7 @@ def scan_endpoints(matches: list, repo_root: str, vendors: list, *, max_files: i
     # task writes them; this only reads and scopes). {} when $DRIFT_CATALOG_DIR is unset/absent
     # (own_domains.load()) — changes nothing, exactly today's behaviour. Scoped with the same
     # host-independent repo-identity match _repo_in_scope already uses for instance binding, so
-    # an entry recorded for `bags-fba/sebago-foods` never leaks into an unrelated repo.
+    # an entry recorded for `acme-org/acmegrocer-foods` never leaks into an unrelated repo.
     confirmed = frozenset(
         domain
         for repo_key, domains in own_domains.load().items()

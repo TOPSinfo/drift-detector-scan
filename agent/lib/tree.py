@@ -75,7 +75,7 @@ def _node(key, n, *, note="", children=None, unit="rows", rows=None, has_rows=Fa
 
 
 def _assign_paths(nodes, prefix=None):
-    """The node's full, UNIQUE path — e.g. `detected/sebago-foods/integrations/tracked` — the
+    """The node's full, UNIQUE path — e.g. `detected/acmegrocer-foods/integrations/tracked` — the
     identity `verify`'s checks key on now that `data-node` (tracked/queued/boilerplate/repo)
     repeats once per repo. A repo node's own path segment is its REPO NAME, not the shared key
     "repo"; every other node's segment is its own key, exactly the chain today's single-repo
