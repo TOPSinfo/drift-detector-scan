@@ -1377,3 +1377,52 @@ readable in seconds, and loading a Vue application to read twelve numbers is at 
 collapse and Task 8 keeps retiring the mixed tile strip (its unit bug is real regardless of where
 the tree lives), but neither needs to restructure around the tree. Task 9's
 `tree-certified-only` moves to `summary.html` with the other tree checks.
+
+---
+
+## Task 5c: the tree carries its rows (inserted after 5b)
+
+**Origin:** the owner saw `summary.html` and asked to see the actual data in the tree, not just
+counts. Chosen depth: **hosts, each expanding to its `file:line` locations.**
+
+This is not decoration. Today a node CLAIMS "20 boilerplate"; with rows it SHOWS twenty hosts that
+must each exist in `drift.json`. The tree stops being self-consistent and starts being
+self-evidencing — and it puts the product's actual claim, *down to `file:line`*, on the default view.
+
+**Files:**
+- Modify: `agent/lib/tree.py` (rows on each node; render them in `html_tree`)
+- Modify: `agent/lib/summary_render.py` if the rows need styling hooks; `agent/assets/summary.css`
+- Modify: `agent/lib/verify.py` (new `check_tree_rows`), `agent/cli.py` (register it)
+- Test: `tests/test_tree_rows.py`
+
+**Requirements:**
+
+1. **Rows are HTML-only.** `md_tree` keeps emitting counts alone — `drift.md` must not balloon with
+   176 file locations. `build()` may attach the rows; the ASCII renderer ignores them.
+
+2. **Rows must not break `tree-parity` or `tree-node-set`.** Those checks find nodes by the
+   `data-node` attribute and compare the HTML node sequence against the ASCII tree. Row elements
+   must therefore carry a DIFFERENT attribute (`data-row`, `data-loc`) and never `data-node`, so the
+   existing parsers skip them. Verify both invariants still pass unchanged — they were hard-won.
+
+3. **Native `<details>`/`<summary>` only. Still zero JavaScript.** A node expands to its hosts; a
+   host expands to its locations. No `<script>`, no handlers.
+
+4. **What each row shows.** Host; for `tracked` rows also the vendor, version and the vendor's
+   catalog verdict (joined from `payload["catalog"]` — `UNAUDITED` here is the honesty surface and
+   must be visible); for `queued` rows the reason where present (`ownInfraReason`); call-site count
+   for all.
+
+5. **`files[]` IS TRUNCATED and the page must say so.** Measured on the reference repo: 16 of 73
+   endpoints carry fewer locations than their `file_count` (`www.googleapis.com` reports 45
+   call-sites but only 20 locations). Rendering the short list unqualified would state "here is
+   where it is called" while hiding 25 of them — "cannot see" presented as "clean", on the surface
+   built to refuse exactly that. Every truncated row must read *showing 20 of 45*.
+
+6. **New invariant `check_tree_rows(html, payload)`:** for every node with rows, the number of
+   rendered rows equals that node's `data-n`; every rendered host exists in `drift.json`'s endpoints
+   for that node's bucket; and no row is invented. Prove it fails on a deleted row, an added row,
+   and a renamed host.
+
+7. Escape everything — file paths and hostnames both derive from scanned source. Deterministic
+   ordering (never by count); same payload → byte-identical page.
