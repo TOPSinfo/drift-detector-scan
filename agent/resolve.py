@@ -43,6 +43,7 @@ and `absorb`).
 from __future__ import annotations
 
 from pathlib import Path
+from urllib.parse import urlparse
 
 import yaml
 
@@ -51,6 +52,16 @@ from agent.lib import catalog_overlay, classify_url
 from agent.lib import vendors as vendors_mod
 
 _STATUSES = ("own-domain", "vendor-identity", "retiring", "unknown")
+
+
+def _looks_like_a_source_url(url) -> bool:
+    """Shape-check only: an http(s) URL with a host. This cannot and does not prove the page
+    at that URL actually supports the claim — only that the model supplied something that
+    could be fetched, not 'x', whitespace, a file:// path, or an unrelated scheme."""
+    if not isinstance(url, str) or not url.strip():
+        return False
+    parsed = urlparse(url.strip())
+    return parsed.scheme in ("http", "https") and bool(parsed.netloc)
 
 
 class ResolveRejected(Exception):
@@ -121,11 +132,19 @@ def check_verdicts(verdicts: list, *, vendors_path=None) -> list:
                 problems.append(
                     f"{where}: 'vendor-identity' needs a source_url confirming the host "
                     f"belongs to that vendor — without one the model is guessing at attribution")
+            elif not _looks_like_a_source_url(v.get("source_url")):
+                problems.append(
+                    f"{where}: source_url {v.get('source_url')!r} is not an http(s) URL with "
+                    f"a host")
         elif status == "retiring":
             if not v.get("vendor"):
                 problems.append(f"{where}: 'retiring' needs a `vendor` name")
             if not v.get("source_url"):
                 problems.append(f"{where}: 'retiring' with no source_url")
+            elif not _looks_like_a_source_url(v.get("source_url")):
+                problems.append(
+                    f"{where}: source_url {v.get('source_url')!r} is not an http(s) URL with "
+                    f"a host")
             elif not v.get("date"):
                 problems.append(f"{where}: 'retiring' with no date")
             elif not v.get("excerpt"):
