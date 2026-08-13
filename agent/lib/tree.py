@@ -28,6 +28,15 @@ from collections import Counter
 _ASSET_CLASSES = ("boilerplate", "social-widget", "vendored-lib", "asset-cdn", "own-infra",
                   "analytics")
 
+# The schema does not require `hostClass` on an endpoint — a real row can carry `null` or
+# omit the field. Left as a bare None, that value becomes a node KEY (`_node(c, ...)` below,
+# fed straight into `_li`'s `html.escape(node["key"])`), and `html.escape(None)` raises
+# AttributeError — a whole render crashing over one under-classified row. Folding it into
+# this sentinel BEFORE it ever reaches a node key means every downstream consumer (sorting,
+# escaping, the verify node-set check) only ever sees a plain string, and the row is still
+# counted honestly rather than silently dropped to make the crash go away.
+_NULL_HOST_CLASS = "(no hostClass)"
+
 _LABELS = {
     "detected": "detected", "integrations": "integrations", "assets": "assets",
     "tracked": "tracked", "queued": "queued", "needs-human": "needs human", "blocked": "blocked",
@@ -53,7 +62,8 @@ def build(payload: dict) -> list:
     # third party), which makes it an integration, not an asset. Deriving from hostClasses
     # would put the tree out by exactly that difference — the arithmetic failure this tree
     # exists to make impossible.
-    na_by_class = Counter(e.get("hostClass") for e in (payload.get("endpoints") or ())
+    na_by_class = Counter((e.get("hostClass") or _NULL_HOST_CLASS)
+                          for e in (payload.get("endpoints") or ())
                           if e.get("coverage") == "na")
 
     if cov is None:
