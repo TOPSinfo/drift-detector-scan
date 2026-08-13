@@ -60,12 +60,13 @@ This clones any URLs and classifies every source — **git repo · plain folder 
 
 ## Deliver the report
 
-1. **Verify — before you trust any number.** `"$SCAN" verify --state "$D"`. A green line means `drift.md`, `dashboard.html` and `drift.json` all agree; a non-zero exit means they don't — say so, and don't report a figure until it's resolved. The run wrote to `"$D"`: **`drift.json`** (canonical data), **`drift.md`** (the report as Markdown — tables, findings, coverage verdicts, and a Mermaid exposure graph), **`dashboard.html`** (a self-contained offline viewer), **`chart.html`** (an online charts view — same data, Chart.js from a CDN), plus `inventory.json` and `audit.json`.
+1. **Verify — before you trust any number.** `"$SCAN" verify --state "$D"`. A green line means `drift.md`, `summary.html`, `dashboard.html` and `drift.json` all agree; a non-zero exit means they don't — say so, and don't report a figure until it's resolved. The run wrote to `"$D"`: **`drift.json`** (canonical data), **`drift.md`** (the report as Markdown — tables, findings, coverage verdicts, and a Mermaid exposure graph), **`summary.html`** (the DEFAULT quick view — coverage tree + glossary + the four headline numbers, no JavaScript, opens instantly), **`dashboard.html`** (a self-contained offline viewer), **`chart.html`** (an online charts view — same data, Chart.js from a CDN), plus `inventory.json` and `audit.json`.
 
 2. **Render the report in the chat.** Read **`drift.md`** and paste it inline — it is Markdown, so its tables and the exposure graph render in place, and reading its source (not the HTML, which you cannot see) is what keeps you honest. It is already verified: paste it **verbatim** — never re-author, re-summarize, or re-number it; hand-editing reintroduces the exact drift `verify` exists to prevent. Put a 2-line headline above it: the delta (*"🆕 N new · ✅ M resolved since last scan"*), then *"🔴 N fixes · 🟠 M to review across K repos"* and the most urgent sunset.
 
 3. **List every representation as a link**, so the user picks how to view it:
    - 📄 **Markdown** — `<D>/drift.md`
+   - ⚡ **Summary** — `file://<D>/summary.html` — the quick/default view: the coverage tree, its glossary, and the four headline numbers (fixes/sunsets/past-due/unaudited). No JavaScript at all, so it opens instantly and works offline; lead with this one when someone just wants the numbers.
    - 🌐 **Dashboard** — `file://<D>/dashboard.html`  (offer `xdg-open`; self-contained, works offline)
    - 📊 **Charts** — `file://<D>/chart.html` — the same data as bar/doughnut/timeline charts. **Needs internet** (loads Chart.js from a CDN); if it can't reach the CDN it says so and points back at the dashboard. Not a Claude Artifact (its CSP blocks the CDN).
    - 🔢 **Data** — `<D>/drift.json`
