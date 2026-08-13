@@ -25,6 +25,7 @@ IDIOMS = "idioms.local.yaml"
 SUNSETS = "sunsets.local.yaml"
 ATTESTATIONS = "attestations.local.yaml"
 SDK_PROFILES = "sdk_profiles.local.yaml"   # client-scoped SDK profiles live in the overlay, not the package
+OWN_DOMAINS = "own_domains.local.yaml"     # confirmed own-infra domains — CLIENT DATA, overlay only
 
 
 def overlay_dir() -> str | None:
