@@ -50,7 +50,19 @@ def test_asset_by_extension_or_path():
 
 def test_unknown_with_no_signal_is_unclassified_not_hidden():
     assert hc.classify("api-gateway.internal.acme.io") in ("api-lead", "unclassified")
-    assert hc.classify("weird-host.example") == "unclassified"
+    # NOT "weird-host.example" — since F4, `.example` is a reserved-TLD entry in
+    # host_reputation.yaml's `boilerplate` list (see test_reserved_tld_hosts_classify_boilerplate
+    # below), so a host under it is no longer the "nothing matches" case this test wants.
+    assert hc.classify("weird-host.zzqux-nonexistent-tld") == "unclassified"
+
+
+def test_reserved_tld_hosts_classify_boilerplate():
+    """F4 (product-owner decision): RFC 2606/6761 reserved TLDs (.test/.example/.invalid) are no
+    longer hard-dropped by classify_url — they reach here and must classify `boilerplate`
+    (visible, excluded from the audit backlog), never `unclassified` (which would misread as an
+    unaudited lead) and never silently disappear."""
+    for host in ("cdn.example.test", "svc.example", "thing.foo.invalid"):
+        assert hc.classify(host) == "boilerplate", host
 
 
 def test_reputation_matches_on_registrable_suffix():

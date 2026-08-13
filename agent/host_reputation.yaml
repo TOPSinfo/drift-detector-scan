@@ -132,3 +132,12 @@ boilerplate:        # schema / namespace / doc / code hosts — links & namespac
   - acme.com              # placeholder org name in generated docs/fixtures. NOT dropped via
                           # classify_url._PLACEHOLDER: it is a REAL registrable domain, so a
                           # genuine call to it must stay visible rather than silently vanish.
+  # ── F4: RFC 2606 / RFC 6761 reserved TLDs. These used to be hard-dropped in
+  # classify_url._PLACEHOLDER on the theory that "nothing resolves behind them" makes dropping
+  # honest — but dropping still makes the host disappear from the inventory, and a reserved-TLD
+  # host found in real code (`cdn.example.test`) is still evidence the scan should show. Bare
+  # entries match by suffix the same way a dotted one does (host_class._reputation strips labels
+  # front-to-back), so `test` alone covers every `*.test` host.
+  - test
+  - example
+  - invalid
