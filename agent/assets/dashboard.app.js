@@ -529,7 +529,7 @@
           if(!self.matchesRepo(e.repo)) return false;
           // pending-audit hero shows only REAL found integrations we have not audited — never the
           // excluded asset/lib/schema noise (that is what surfaced w3.org's 298 schema refs here).
-          return wantUnknown ? (self.isIntegration(e.hostClass) && !e.classified) : !!e.classified;
+          return wantUnknown ? (self.isIntegration(e.hostClass, e.ownInfraReason) && !e.classified) : !!e.classified;
         });
         var byKey = {}, order = [];
         eps.forEach(function(e){
@@ -642,8 +642,8 @@
           // "Pending audit" = found integrations we have not audited (NOT the asset/lib noise);
           // "Assets" = the excluded non-integrations; "APIs" = the audited/catalogued ones.
           if(!f || f==="detected") return true;   // COMPLETE inventory — every endpoint, every kind
-          if(f==="excluded") return !self.isIntegration(e.hostClass);
-          if(f==="unknown")  return self.isIntegration(e.hostClass) && !e.classified;
+          if(f==="excluded") return !self.isIntegration(e.hostClass, e.ownInfraReason);
+          if(f==="unknown")  return self.isIntegration(e.hostClass, e.ownInfraReason) && !e.classified;
           if(f==="apis")     return e.classified;
           return true;
         });
@@ -687,8 +687,15 @@
       // had a click handler in the vanilla engine either. ----
       // A found integration (a third-party service the code calls) vs. an excluded non-integration
       // (a bundled asset/library or a schema host). Mirrors host_class.is_integration on the server;
-      // the verify hostClass invariant keeps the two in agreement.
-      isIntegration: function(hc){ return !!hc && !{"asset-cdn":1,"vendored-lib":1,"boilerplate":1,"own-infra":1}[hc]; },
+      // the verify hostClass invariant keeps the two in agreement. M1: an own-infra host claimed
+      // only by the WEAK repo-name-token signal (reason starts with "repo token '", mirroring
+      // own_infra.is_token_claim) still counts as an integration — otherwise clicking the
+      // "unknown" tile would show fewer rows than the tile's own count.
+      isIntegration: function(hc, reason){
+        if(!hc) return false;
+        if(!{"asset-cdn":1,"vendored-lib":1,"boilerplate":1,"own-infra":1}[hc]) return true;
+        return hc === "own-infra" && !!reason && reason.indexOf("repo token '") === 0;
+      },
       hostLabel: function(hc){
         return {"api":"audited","api-lead":"API lead","unclassified":"pending audit",
                 "social-widget":"social","analytics":"analytics","asset-cdn":"asset/CDN",

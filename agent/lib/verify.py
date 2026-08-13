@@ -462,12 +462,18 @@ def check_host_classes(payload: dict) -> None:
     if recount != (counts.get("hostClasses") or {}):
         raise Violation("hostclass-count",
                         f"counts.hostClasses={counts.get('hostClasses')} but the endpoints recount to {recount}")
-    integrations = sum(1 for e in endpoints if host_class.is_integration(e.get("hostClass")))
+    # M1: pass ownInfraReason through so a token-claimed own-infra host (kept `queued` by
+    # dashboard_render._coverage) recomputes as an integration here too — otherwise this
+    # recount would agree with a wrong counts.integrations/unknown for the exact same reason
+    # the renderer got it wrong, and the derived-count check below would never fire.
+    integrations = sum(1 for e in endpoints
+                       if host_class.is_integration(e.get("hostClass"), e.get("ownInfraReason")))
     derived = {"detected": len(endpoints),          # the headline: EVERY endpoint the engine read
                "integrations": integrations,
                "excluded": len(endpoints) - integrations,
                "unknown": sum(1 for e in endpoints
-                              if host_class.is_integration(e.get("hostClass")) and not e.get("classified"))}
+                              if host_class.is_integration(e.get("hostClass"), e.get("ownInfraReason"))
+                              and not e.get("classified"))}
     for name, expect in derived.items():
         if counts.get(name) != expect:
             raise Violation("hostclass-derived-count",
@@ -482,6 +488,23 @@ def check_host_classes(payload: dict) -> None:
         if cov.get(state) != n:
             raise Violation("coverage-partition",
                             f"counts.coverage[{state}]={cov.get(state)} but the endpoints hold {n}")
+    # M1: `research`'s work-list is every endpoint at coverage=queued — every one of those is,
+    # by construction, an integration not yet classified (an api-lead/unclassified host, or an
+    # own-infra host claimed only by the weak repo-name TOKEN signal — see dashboard_render._coverage).
+    # So `unknown` (integration AND not classified) can never be SMALLER than `queued`: if it were,
+    # the headline tile would undercount hosts the work-list is actively handing the user. This
+    # is deliberately NOT a recompute-and-compare like the checks above — it held even while
+    # counts.integrations/unknown were computed the OLD (hostClass-only) way, because verify
+    # recomputed them the SAME wrong way (see M1 in .superpowers/sdd/final-fixes-2-report.md);
+    # only a check that cross-references a DIFFERENT field (coverage.queued) catches that shape
+    # of bug.
+    queued = cov.get("queued", 0)
+    unknown = counts.get("unknown", 0)
+    if unknown < queued:
+        raise Violation("unknown-lt-queued",
+                        f"counts.unknown={unknown} is less than counts.coverage.queued={queued} — "
+                        f"research's work-list hands out more queued hosts than the headline "
+                        f"claims are even unknown")
 
 
 # Markers that mean "a model produced this". `by: ai-research` is deliberately NOT here: on a
