@@ -90,6 +90,21 @@ def _cmd_run(args) -> int:
     if not roots:
         print("run: no repos to scan — pass --root or a --config with a fleet", file=sys.stderr)
         return 2
+    resolve_verdicts = None
+    if getattr(args, "resolve", None):
+        try:
+            with open(args.resolve, encoding="utf-8") as fh:
+                resolve_payload = json.load(fh)
+        except OSError as exc:
+            print(f"run: --resolve {args.resolve!r} could not be read — {exc}", file=sys.stderr)
+            return 2
+        except ValueError as exc:      # json.JSONDecodeError
+            print(f"run: --resolve {args.resolve!r} is not valid JSON — {exc}", file=sys.stderr)
+            return 2
+        # same unwrap `resolve --apply` uses: a bare verdicts list, or {"verdicts": [...]}
+        # (exactly the shape `resolve --apply` writes to resolution.json)
+        resolve_verdicts = (resolve_payload.get("verdicts", resolve_payload)
+                            if isinstance(resolve_payload, dict) else resolve_payload)
     progress = None
     if getattr(args, "progress", False):
         print("drift-detector · scan → audit → deliver (deterministic · 0 LLM tokens)",
@@ -100,7 +115,7 @@ def _cmd_run(args) -> int:
     try:
         out = run_pipeline(roots, args.state, args.now,
                            pull=getattr(args, "pull", False), progress=progress,
-                           gitlab_hosts=gitlab_hosts)
+                           gitlab_hosts=gitlab_hosts, resolve=resolve_verdicts)
     except RuntimeError as exc:
         print(f"run failed: {exc}", file=sys.stderr)
         return 2
@@ -119,6 +134,21 @@ def _cmd_run(args) -> int:
     # or unreachable root buried in a good run must not disappear.
     for u in (out.get("rootsUnscannable") or []):
         print(f"⚠ skipped: {u['reason']}", file=sys.stderr)
+
+    rr = out.get("resolve")
+    if rr and rr["status"] == "applied":
+        w = rr["written"]
+        print(f"✓ resolve applied: {w['own_domain']} own-domain, {w['vendor_identity']} "
+              f"vendor-identity, {w['retiring']} retiring, {w['needs_human']} needs-human — "
+              f"re-scanned; drift.json reflects the re-scan", file=sys.stderr)
+    elif rr and rr["status"] == "rejected":
+        print("⚠ resolve: GATE REJECTED — nothing was applied, drift.json reflects the scan "
+              "BEFORE resolution:", file=sys.stderr)
+        for p in rr["problems"]:
+            print("  •", p, file=sys.stderr)
+    elif rr and rr["status"] == "error":
+        print(f"⚠ resolve: could not apply the verdicts ({rr['detail']}) — drift.json reflects "
+              f"the scan BEFORE resolution", file=sys.stderr)
 
     # record where this run wrote, so `drift-scan clean --all` can later find the scattered
     # <folder>/.drift-detector dirs without a $HOME-wide search. Best-effort; never fails a scan.
@@ -1406,6 +1436,11 @@ def main(argv: list[str]) -> int:
     pr.add_argument("--progress", action="store_true")
     pr.add_argument("--fail-on-deprecated", action="store_true",
                     help="exit 3 if any un-muted DEPRECATED finding (CI gate)")
+    pr.add_argument("--resolve",
+                    help="verdicts.json from an AI resolution pass (or `resolve --apply`'s own "
+                         "resolution.json) — gate it, apply it, and RE-SCAN so drift.json comes "
+                         "entirely from the deterministic re-scan, never the verdicts directly "
+                         "(docs/superpowers/specs/2026-08-13-no-queue-design.md)")
     pr.set_defaults(func=_cmd_run)
 
     pdl = sub.add_parser("deliver")       # findings -> GitLab issues (DevOps) + draft MRs (Dev)
