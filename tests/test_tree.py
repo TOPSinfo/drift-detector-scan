@@ -101,3 +101,44 @@ def test_an_unknowable_count_is_null_with_a_reason_never_zero():
 def test_build_is_pure_and_deterministic():
     p = _payload()
     assert tree.build(p) == tree.build(p)
+
+
+def _payload_with_unmapped_class():
+    """The reviewer's repro: 3 `na` rows whose hostClass is not in `_ASSET_CLASSES`.
+
+    A filter (iterate the fixed tuple, look up each) drops these 3 rows from the children
+    while `assets.n` still counts them via `cov["na"]` — a silent 3-row discrepancy in the
+    one structure whose entire job is to sum correctly."""
+    p = _payload()
+    p["endpoints"] += [{"domain": f"h{i}.mystery-class.test", "hostClass": "mystery-class",
+                        "coverage": "na"} for i in range(3)]
+    p["counts"]["coverage"]["na"] += 3
+    p["counts"]["excluded"] += 3
+    p["counts"]["detected"] += 3
+    return p
+
+
+def test_unmapped_hostclass_is_not_dropped_from_the_sum():
+    """Reviewer repro: an unmapped hostClass must still appear as a child, so assets.n stays
+    equal to the sum of its children rather than silently drifting ahead of them."""
+    f = _flat(tree.build(_payload_with_unmapped_class()))
+    assert f["assets"]["n"] == 46
+    kids = {c["key"]: c["n"] for c in f["assets"]["children"]}
+    assert "mystery-class" in kids
+    assert kids["mystery-class"] == 3
+    assert sum(kids.values()) == f["assets"]["n"]
+
+
+def test_unmapped_hostclass_ordering_is_deterministic():
+    """Known classes render first, in `_ASSET_CLASSES` order; unknown ones follow, alphabetical
+    — never sorted by count. Two runs of the same payload must render identically."""
+    p = _payload_with_unmapped_class()
+    b1, b2 = tree.build(p), tree.build(p)
+    assert b1 == b2
+
+    f = _flat(b1)
+    keys = [c["key"] for c in f["assets"]["children"]]
+    known = [k for k in tree._ASSET_CLASSES if k in keys]
+    unknown = sorted(k for k in keys if k not in tree._ASSET_CLASSES)
+    assert keys == known + unknown
+    assert "mystery-class" in unknown

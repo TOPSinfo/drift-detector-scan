@@ -19,8 +19,11 @@ from __future__ import annotations
 
 from collections import Counter
 
-# Assets are grouped by hostClass. Ordered loudest-first so the biggest bucket leads, and
-# fixed (not sorted by count) so two runs of the same payload render identically.
+# Assets are grouped by hostClass. This is an ORDERING preference, not a filter: classes
+# listed here render first, in this order, because they are the biggest/most familiar
+# buckets. Any hostClass NOT in this tuple still becomes a child — it is appended after,
+# alphabetically — because a filter silently drops rows it doesn't recognise, and this
+# structure's whole reason for existing is that its children always sum to their parent.
 _ASSET_CLASSES = ("boilerplate", "social-widget", "vendored-lib", "asset-cdn", "own-infra",
                   "analytics")
 
@@ -67,7 +70,12 @@ def build(payload: dict) -> list:
         for k in ("needs-human", "blocked"):
             life.append(_node(k, cov.get(k, 0)))
         integrations = _node("integrations", counts.get("integrations"), children=life)
-        kids = [_node(c, na_by_class[c]) for c in _ASSET_CLASSES if na_by_class.get(c)]
+        # Every OBSERVED class becomes a child — the tuple only decides the order. Known
+        # classes first (in _ASSET_CLASSES order), then any unmapped ones alphabetically, so
+        # a new hostClass added to the classifier is never dropped and ordering stays stable.
+        known = [c for c in _ASSET_CLASSES if c in na_by_class]
+        unknown = sorted(c for c in na_by_class if c not in _ASSET_CLASSES)
+        kids = [_node(c, na_by_class[c]) for c in known + unknown]
         assets = _node("assets", cov.get("na", counts.get("excluded")), children=kids)
 
     return [_node("detected", counts.get("detected"), children=[integrations, assets])]
