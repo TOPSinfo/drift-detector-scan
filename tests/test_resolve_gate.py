@@ -217,3 +217,19 @@ def test_retiring_source_url_must_be_an_http_url_with_a_host(bad_url):
 def test_vendor_identity_with_a_real_http_url_still_passes():
     v = _vendor_identity_verdict(source_url="https://geo-mapper.io/docs/api-hosts")
     assert resolve.check_verdicts([v]) == []
+
+
+# --------------------------------------------------------------------- CRITICAL 2: retiring goes through absorb.check_sunsets
+def test_retiring_with_malformed_date_field_is_refused_by_the_absorb_gate():
+    """resolve.py's retiring path lands in the SAME sunsets.local.yaml staged absorption
+    writes, so it must be held to absorb.check_sunsets's rules, not merely date_in_text.
+    '20261130' parses fine via date.fromisoformat, and its human-readable form ('November 30,
+    2026') can still legitimately appear in the excerpt — date_in_text alone waves it through,
+    but check_sunsets's `retires` regex (^\\d{4}-\\d{2}-\\d{2}$) must not."""
+    v = _retiring_verdict(date="20261130",
+                          excerpt="GeoMapper API v1 will be retired on November 30, 2026.")
+    problems = resolve.check_verdicts([v])
+    assert problems
+    assert any("YYYY-MM-DD" in p for p in problems)
+    with pytest.raises(resolve.ResolveRejected):
+        resolve.apply([v], now="2026-08-13")

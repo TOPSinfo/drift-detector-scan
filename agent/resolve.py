@@ -154,6 +154,15 @@ def check_verdicts(verdicts: list, *, vendors_path=None) -> list:
                 problems.append(
                     f"{where}: date {v.get('date')} does NOT appear verbatim in the fetched "
                     f"excerpt (verbatim-date check) — the model may have inferred it")
+            else:
+                # This verdict lands in the SAME sunsets.local.yaml staged absorption writes
+                # (agent/absorb.py promote()) — it must clear the same gate, not a weaker one
+                # reimplemented here. Build the candidate entry in absorb's own shape and hand
+                # it to absorb.check_sunsets, never duplicate its rules.
+                candidate = {"vendor": v.get("vendor"), "domain": host,
+                            "source": v.get("source_url"), "retires": v.get("date")}
+                for p in absorb.check_sunsets([candidate]):
+                    problems.append(f"{where}: {p}")
         # 'unknown' needs nothing further: "I could not tell" is always admissible.
     return problems
 
