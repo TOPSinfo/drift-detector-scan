@@ -85,6 +85,16 @@ def _vendor_verdict(**over):
     return v
 
 
+def _own_domain_verdict(**over):
+    # `repo` must be "web" — the value work_list()/drift.json's `endpoints[].repo` actually
+    # report for this fixture (the record's `path`, since the fixture repo has no git remote
+    # and own_infra's repo-scope match falls back to a basename match against it).
+    v = {"status": "own-domain", "host": _UNRESOLVED_HOST, "repo": "web",
+         "reason": "this is the project's own internal image-processing service, not a vendor"}
+    v.update(over)
+    return v
+
+
 def _run(root, state, *, resolve=None, http=None):
     return run_pipeline(str(root), str(state), "2026-08-13", run=_url_engine, engine="semgrep",
                         http=http or (lambda *a, **k: {}), resolve=resolve)
@@ -244,3 +254,33 @@ def test_omitting_resolve_behaves_exactly_as_before(tmp_path, monkeypatch):
     assert out_explicit["resolve"] is None
     assert ((state_implicit / "drift.json").read_bytes()
            == (state_explicit_none / "drift.json").read_bytes())
+
+
+# ======================================================================= Fix round 1 (review findings)
+
+# --------------------------------------------------------------------- CRITICAL: own-domain silent no-op
+def test_own_domain_verdict_through_resolve_moves_host_to_own_infra_and_queued_zero(tmp_path, monkeypatch):
+    """The primary case the design exists for — the review found it's a silent no-op. The
+    re-scan reused the per-repo cache (keyed on `rules_sig` = vendors+idioms only); the
+    own-domains overlay `apply` just wrote isn't part of that ruleset, so the cache served
+    scan 1's PRE-resolution record even though the overlay was written correctly and the CLI
+    printed 'resolve applied ... drift.json reflects the re-scan'. An own-domain verdict must
+    actually flip the host to `own-infra`/`na` and drop `coverage.queued` to 0."""
+    _no_network(monkeypatch)
+    _catalog_dir(monkeypatch, tmp_path)
+    root = _repo(tmp_path)
+    state = tmp_path / "state"
+
+    out = _run(root, state, resolve=[_own_domain_verdict()])
+
+    assert out["resolve"]["status"] == "applied"
+    assert out["resolve"]["written"]["own_domain"] == 1
+
+    drift = json.loads((state / "drift.json").read_text())
+    assert drift["counts"]["coverage"]["queued"] == 0        # was silently staying at 1
+    resolved = [e for e in drift["endpoints"] if e["domain"] == _UNRESOLVED_HOST]
+    assert resolved, "the host must still be present, just no longer queued/unclassified"
+    assert resolved[0]["hostClass"] == "own-infra"
+    assert resolved[0]["coverage"] == "na"
+
+    verify_mod.check_ai_firewall(drift)   # the central claim must still hold after this fix
