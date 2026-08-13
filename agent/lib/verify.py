@@ -510,6 +510,20 @@ def check_ai_firewall(payload: dict) -> None:
     IS a list of dicts instead means a future section (or a renamed one) is swept in automatically,
     the moment build_payload starts emitting it, with nobody having to remember to add its name
     here. ("findings" is left harmless if it ever does appear — it costs nothing to also check.)
+
+    THE BOUNDARY (read this before trusting a green run as total coverage): this walks only
+    TOP-LEVEL payload values that are a list of dicts, one level deep into each dict's OWN
+    fields. It does not recurse. Two shapes it therefore cannot see: (1) a top-level value that
+    is itself a dict rather than a list — `counts`, named in the spec as a place an AI marker
+    could hide, is exactly this shape, and a marker nested inside one of ITS values is invisible
+    here; (2) an AI marker nested a level deeper inside a list record (e.g. inside a sub-dict or
+    list-of-dicts field of a `rec`) rather than sitting directly on `rec`. Both are structural
+    blind spots, not oversights papered over by the marker list below. Separately, `_AI_MARKERS`
+    is an EXACT-STRING match against `_AI_FIELDS` values only — a marker spelled `llm`, `gpt`,
+    `model`, or `ai_lead`, or one hiding in a field this function doesn't inspect at all, walks
+    straight through. This function is a real guard against the bug it was written for (a
+    hardcoded, incomplete section list), not a guarantee that no AI-shaped data can ever reach
+    the certified payload by some other route.
     """
     for section, section_val in payload.items():
         if not isinstance(section_val, list):
