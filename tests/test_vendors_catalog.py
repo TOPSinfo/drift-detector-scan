@@ -15,6 +15,15 @@ def test_the_three_confirmed_integrations_classify():
     assert classify_url.classify_host("login.microsoftonline.com", v).vendor == "Microsoft Identity"
 
 
+# M3: Zapier was narrowed to its webhook-trigger host (hooks.zapier.com, see F6 above), but
+# api.zapier.com is a second, real, resolving Zapier API host — narrowed the same way, not a
+# revert to the bare zapier.com marketing domain.
+def test_zapier_api_host_classifies_alongside_the_webhook_host():
+    v = _vendors()
+    assert classify_url.classify_host("api.zapier.com", v).vendor == "Zapier"
+    assert classify_url.classify_host("hooks.zapier.com", v).vendor == "Zapier"
+
+
 # A dependency's published config enumerates these. Whether a code path selects them is a separate
 # question from whether the code references them — classify them, then let the attestation layer
 # say (honestly) that nobody has checked their retirement lists.

@@ -105,9 +105,11 @@
 # F6 (product-owner decision): the SPECIFIC API host, not the bare marketing domain — a bare
 # `justcall.io`/`zapier.com` would count a README link to the vendor's homepage as a tracked
 # integration. api.justcall.io confirmed at developer.justcall.io; hooks.zapier.com is Zapier's
-# actual webhook-trigger host (zapier.com itself is the marketing site).
+# webhook-trigger host and api.zapier.com is its separate, real, resolving REST API host
+# (zapier.com itself is the marketing site) — both kept as two narrow entries, not widened
+# back to the bare domain.
 - { vendor: JustCall,           techKey: api:justcall,           domains: [api.justcall.io] }
-- { vendor: Zapier,             techKey: api:zapier,             domains: [hooks.zapier.com] }
+- { vendor: Zapier,             techKey: api:zapier,             domains: [hooks.zapier.com, api.zapier.com] }
 - { vendor: Microsoft Identity, techKey: api:microsoft-identity, domains: [login.microsoftonline.com, login.microsoft.com] }
 
 # ── AI / LLM providers ─────────────────────────────────────────────────────
