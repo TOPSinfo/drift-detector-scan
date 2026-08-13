@@ -14,6 +14,7 @@ import re
 from collections import Counter
 
 from agent.lib import host_class, own_infra
+from agent.lib import tree as _tree
 from agent.lib.actions import build_actions
 
 _MAX_CVES = 20            # cap the per-action CVE list embedded in the blob
@@ -324,6 +325,10 @@ def render_payload(projection: dict, now: str, *, bundle: dict | None = None,
          '<title>Drift Detector — DevSecOps Cockpit</title>',
          "<style>" + CSS_SRC + "</style></head><body>",
          TEMPLATE_SRC,
+         # The coverage tree, rendered SERVER-SIDE from the same payload the blob carries. It is a
+         # verified projection (see verify.check_tree_matches_payload), which a Vue-computed tree
+         # could never be: its numbers would be produced in a browser nobody here can observe.
+         '<section id="coverage-tree">' + _tree.html_tree(_tree.build(projection)) + '</section>',
          '<script id="drift-data" type="application/json">' + _blob(projection) + "</script>",
          _blob_script("sbom-data", bundle["sbom"]),
          _blob_script("spdx-data", bundle["spdx"]),

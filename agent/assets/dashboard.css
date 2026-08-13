@@ -273,3 +273,9 @@ td.orig { width:1%; }
 .tierkey b { color:var(--ink); }
 .tierkey .orig { vertical-align:baseline; }
 .verifyline { margin-top:8px; font-size:12px; }
+/* The coverage tree. Deliberately plain — the guarantee is the arithmetic, not the styling,
+   and it must stay legible with CSS or JS disabled. */
+#coverage-tree .tree, #coverage-tree .tree ul { list-style: none; margin: 0; padding-left: 1.25rem; }
+#coverage-tree .tree > li { padding-left: 0; }
+#coverage-tree .tc { font-variant-numeric: tabular-nums; font-weight: 600; }
+#coverage-tree .tnote { opacity: .7; font-size: .9em; }
