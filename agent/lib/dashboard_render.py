@@ -13,7 +13,7 @@ import os
 import re
 from collections import Counter
 
-from agent.lib import host_class
+from agent.lib import host_class, own_infra
 from agent.lib.actions import build_actions
 
 _MAX_CVES = 20            # cap the per-action CVE list embedded in the blob
@@ -65,11 +65,19 @@ def _project_action(a: dict) -> dict:
 COVERAGE = ("tracked", "queued", "needs-human", "blocked", "na")
 
 
-def _coverage(host_class: str, classified: bool) -> str:
+def _coverage(host_class: str, classified: bool, own_infra_reason: str | None = None) -> str:
     if classified:
         return "tracked"                                   # catalogued vendor — retirements monitored
     if host_class in ("api-lead", "unclassified"):
         return "queued"                                    # detected API service, research pending
+    # F1: a repo-name-TOKEN own-infra claim is a heuristic, not the strong git-remote org-domain
+    # signal — too weak to silently drop a real third party (api.hubspot.com from a repo named
+    # `rev-hubspot-connector`) out of the research backlog. It stays hostClass own-infra (so the
+    # UI still labels it "probable own infrastructure"), but coverage stays queued so `research`
+    # still lists it. A domain claim (or the unrelated multi-host own-infra heuristic in
+    # endpoints._tag_own_infra, which carries no reason at all) keeps the original behaviour: na.
+    if host_class == "own-infra" and own_infra.is_token_claim(own_infra_reason):
+        return "queued"
     return "na"                                            # widget / asset / own-infra — not an API to track
 
 
@@ -78,11 +86,15 @@ def _endpoints_of(inventory: dict) -> list:
     for r in inventory.get("repos", []):
         for e in r.get("endpoints", []):
             hc = e.get("hostClass") or ("api" if e.get("classified") else "unclassified")
-            out.append({"repo": r.get("path"), "domain": e.get("domain"),
-                        "vendor": e.get("vendor"), "version": e.get("version"),
-                        "classified": bool(e.get("classified")),
-                        "hostClass": hc, "coverage": _coverage(hc, bool(e.get("classified"))),
-                        "file_count": e.get("file_count"), "files": e.get("files", [])})
+            reason = e.get("ownInfraReason")
+            rec = {"repo": r.get("path"), "domain": e.get("domain"),
+                   "vendor": e.get("vendor"), "version": e.get("version"),
+                   "classified": bool(e.get("classified")),
+                   "hostClass": hc, "coverage": _coverage(hc, bool(e.get("classified")), reason),
+                   "file_count": e.get("file_count"), "files": e.get("files", [])}
+            if reason:
+                rec["ownInfraReason"] = reason
+            out.append(rec)
     return out
 
 

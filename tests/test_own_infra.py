@@ -134,6 +134,30 @@ def test_repo_token_that_contains_a_vendor_token_is_also_dropped():
     assert not own_infra.is_own("api.globalpayments.com", sig)
 
 
+def test_reason_names_the_signal_and_the_matched_value():
+    """F1: the endpoint record must say WHY a host was claimed, not just tag it silently.
+    The exact wording is a contract other modules (dashboard_render, md_render) parse via
+    `is_token_claim`, so it is pinned here."""
+    sig = _sig()
+    assert own_infra.reason("crm.promoteplus.ai", sig) == "repo token 'promoteplus'"
+    dsig = own_infra.signals(repo_id="https://git.topsdemo.in/root/promoteplus-crm.git")
+    assert own_infra.reason("anything.topsdemo.in", dsig) == "git remote org domain 'topsdemo.in'"
+
+
+def test_reason_is_none_when_no_signal_claims_the_host():
+    sig = _sig()
+    assert own_infra.reason("api.justcall.io", sig) is None
+
+
+def test_is_token_claim_distinguishes_the_weak_signal():
+    """The distinction F1 hinges on: a token claim is a heuristic on the repo's own name and must
+    not be treated the same as the strong git-remote org-domain claim."""
+    assert own_infra.is_token_claim("repo token 'promoteplus'")
+    assert not own_infra.is_token_claim("git remote org domain 'topsdemo.in'")
+    assert not own_infra.is_token_claim(None)
+    assert not own_infra.is_token_claim("")
+
+
 def test_dev_azure_com_remote_is_not_own_infra():
     """`dev.azure.com`'s registrable form (`azure.com`) is not itself in `_PUBLIC_FORGES`, so the
     full remote host must also be checked or an Azure DevOps remote makes `azure.com` — and

@@ -17,6 +17,16 @@ Config-derived inference (APP_URL, composer/package name) was measured on a real
 rejected: APP_URL was `http://localhost` and the composer name was the framework default
 `laravel/laravel`. A signal that real projects leave at default is not a signal.
 
+The two signals carry different weight, and callers that drop a host out of the audit backlog
+entirely must respect that: `token` is a heuristic guess from the repo's own name (plausible, not
+certain), `domain` is the git-remote org's actual identity (strong). See `reason`/`is_token_claim`
+below — a token claim alone is not grounds to remove a host from view, only to label it.
+
+`_registrable`'s public-suffix rule (`_SLD_GENERICS` + a bare 2-letter ccTLD) covers the general
+`{generic}.{cctld}` family, but it is NOT a Public Suffix List: an uncovered ccTLD second-level
+that isn't an ordinary English generic (`nic.in`) or a 3-label suffix (`nsw.gov.au`) will still
+resolve to the wrong registrable domain. A true fix needs the real PSL, not a hand-rolled rule.
+
 Deterministic and pure: inputs in, set out. No filesystem, no network, no clock.
 """
 from __future__ import annotations
@@ -141,11 +151,50 @@ def signals(repo_path: str = "", repo_id: str = "", vendor_tokens: frozenset = f
     return {"tokens": tokens, "domains": domains}
 
 
-def is_own(host: str, sig: dict) -> bool:
-    """Is `host` this repo's own infrastructure? False on no signal — failing toward SHOWN."""
+def _claim(host: str, sig: dict):
+    """The strongest signal claiming `host`: `("domain", value)` or `("token", value)`, or None
+    if neither fires. Domain is checked first — it is the git-remote org domain, a strong claim
+    (a self-hosted forge's own identity); token is the repo-name heuristic, weaker (see the
+    module docstring). `is_own` doesn't care which one matched; `reason` does, so callers that
+    must treat the two differently (F1: a token claim is not strong enough to drop a host out of
+    the research backlog, only a domain claim is) can tell them apart."""
     h = (host or "").lower()
     if not h:
-        return False
-    if any(h == d or h.endswith("." + d) for d in sig.get("domains") or ()):
-        return True
-    return any(t in h for t in sig.get("tokens") or ())
+        return None
+    for d in sig.get("domains") or ():
+        if h == d or h.endswith("." + d):
+            return ("domain", d)
+    for t in sig.get("tokens") or ():
+        if t in h:
+            return ("token", t)
+    return None
+
+
+def is_own(host: str, sig: dict) -> bool:
+    """Is `host` this repo's own infrastructure? False on no signal — failing toward SHOWN."""
+    return _claim(host, sig) is not None
+
+
+_REASON_LABEL = {"domain": "git remote org domain", "token": "repo token"}
+
+
+def reason(host: str, sig: dict) -> str | None:
+    """A human-readable description of WHY `host` was claimed as own-infra, naming the exact
+    signal and the value that matched it — e.g. "repo token 'promoteplus'" or "git remote org
+    domain 'topsdemo.in'". None when no signal claims the host. This is what lets a caller (and a
+    report reader) see the claim instead of a silent disappearance — recorded on the endpoint
+    record as `ownInfraReason` (see agent/lib/endpoints.py)."""
+    claim = _claim(host, sig)
+    if claim is None:
+        return None
+    kind, val = claim
+    return f"{_REASON_LABEL[kind]} '{val}'"
+
+
+def is_token_claim(reason_text: str | None) -> bool:
+    """True when a `reason()` string names the WEAK repo-name-token signal rather than the
+    strong git-remote org-domain one. A token is a heuristic guessed from the scanned repo's own
+    name — plausible, not certain — so a caller (dashboard_render's coverage lifecycle) that
+    would otherwise drop an own-infra host out of the research backlog must check this first and
+    keep a token-claimed host queued instead; a domain-claimed host is dropped as before."""
+    return bool(reason_text) and reason_text.startswith(_REASON_LABEL["token"] + " ")

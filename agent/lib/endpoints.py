@@ -168,6 +168,16 @@ def scan_endpoints(matches: list, repo_root: str, vendors: list, *, max_files: i
             rec["hostClass"] = "api" if rec["classified"] else host_class.classify(
                 host, url=rec["example"], in_call=_looks_like_call(line), file_ext=_ext_of(rel),
                 own=own_sig)
+            # WHY this host was claimed as own-infra — the signal and the value that matched
+            # (F1: a silent own-infra tag is how a real third party like api.hubspot.com used to
+            # vanish from the research backlog). None when own_sig didn't cause the tag (e.g. the
+            # _OWN_CLOUD cloud-backend rule fired instead), so the field is absent rather than
+            # misleading. dashboard_render's coverage lifecycle reads this to decide whether the
+            # host may drop out of the backlog (a domain claim) or must stay queued (a token claim).
+            if rec["hostClass"] == "own-infra":
+                own_reason = own_infra.reason(host, own_sig)
+                if own_reason:
+                    rec["ownInfraReason"] = own_reason
             groups[key] = rec
         rec["file_count"] += 1
         if loc not in rec["files"]:        # collect all unique locs; sort + cap at the end
