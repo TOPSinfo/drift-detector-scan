@@ -678,12 +678,22 @@ def _cmd_leads(args) -> int:
                   file=sys.stderr)
             return 2
         for i in entry.get("integrations") or []:
-            r = str((i or {}).get("retired", "")).strip().lower()
-            host = (i or {}).get("host") or (i or {}).get("vendor") or "?"
-            if _DATEISH.search(r):
-                problems.append(f"{host}: 'retired' carries a date ({r!r}) — a lead says WHETHER, "
-                                f"never WHEN; a dated claim must go through the absorb gate")
-            elif r not in _TRISTATE:
+            i = i if isinstance(i, dict) else {}
+            host = i.get("host") or i.get("vendor") or "?"
+            # The date guard must cover EVERY string field of the record, not just `retired` —
+            # `retired` is already fully covered by the tri-state check below (anything that
+            # isn't yes/no/unknown is refused there, dates included, making a second date check
+            # on that one field redundant). The actual leak was elsewhere: a free-text field
+            # (`note`, `evidence`, ...) rendered straight into the dashboard's Evidence column,
+            # so `{"retired":"yes","note":"Sunset on 2026-03-01 per the changelog"}` sailed
+            # through untouched and put an ungated date in front of a reader.
+            for field, val in i.items():
+                if isinstance(val, str) and _DATEISH.search(val):
+                    problems.append(f"{host}: {field!r} carries a date ({val!r}) — a lead says "
+                                    f"WHETHER, never WHEN; a dated claim must go through the "
+                                    f"absorb gate")
+            r = str(i.get("retired", "")).strip().lower()
+            if r not in _TRISTATE:
                 problems.append(f"{host}: 'retired' is {r!r}, not one of yes/no/unknown")
     if problems:
         print("leads: REFUSED — a lead may not carry a certified-tier claim:", file=sys.stderr)
