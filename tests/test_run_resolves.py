@@ -284,3 +284,94 @@ def test_own_domain_verdict_through_resolve_moves_host_to_own_infra_and_queued_z
     assert resolved[0]["coverage"] == "na"
 
     verify_mod.check_ai_firewall(drift)   # the central claim must still hold after this fix
+
+
+# --------------------------------------------------------------------- IMPORTANT: re-scan diff baseline
+def test_resolve_run_payload_matches_a_plain_run_over_the_same_populated_catalog(tmp_path, monkeypatch):
+    """`scan_folder` calls `save_ir` on every scan, so a naive re-scan diffs against SCAN 1's own
+    just-saved IR instead of the state dir's real prior run. Reproduces the review's phantom-drift
+    finding: comparing two routes to the identical end state — (a) populate the catalog directly
+    (as a prior --resolve run would have already done) then run PLAIN, an entirely ordinary single
+    scan; (b) run --resolve in one shot against an empty catalog, landing the SAME verdict mid-run
+    — both are a state dir's first-ever scan, so both must report the SAME baseline
+    `inventoryDrift` (`changes: []`, the repo newly `reposAdded`). Before the fix, (b) instead
+    shows the resolved host as spuriously removed (pre-resolution form) AND added (post-resolution
+    form) — an artifact of this run scanning twice, which the spec forbids ('this must be the
+    identical deterministic scan, not a different kind of scan')."""
+    _no_network(monkeypatch)
+    root = _repo(tmp_path)
+
+    catalog_a = tmp_path / "catalog-a"
+    catalog_a.mkdir()
+    resolve_mod.apply([_vendor_verdict()], now="2026-08-13", overlay_dir=str(catalog_a))
+    state_a = tmp_path / "state-a"
+    monkeypatch.setenv("DRIFT_CATALOG_DIR", str(catalog_a))
+    _run(root, state_a)                                 # plain run, catalog ALREADY populated
+
+    catalog_b = tmp_path / "catalog-b"
+    catalog_b.mkdir()
+    monkeypatch.setenv("DRIFT_CATALOG_DIR", str(catalog_b))
+    state_b = tmp_path / "state-b"
+    _run(root, state_b, resolve=[_vendor_verdict()])    # resolve run, catalog populated MID-run
+
+    drift_a = json.loads((state_a / "drift.json").read_text())
+    drift_b = json.loads((state_b / "drift.json").read_text())
+    assert drift_a["inventoryDrift"] == drift_b["inventoryDrift"]
+    assert drift_b["inventoryDrift"]["changes"] == []       # no phantom removed+added pair
+    assert drift_b["inventoryDrift"]["reposAdded"] == ["web"]
+
+    verify_mod.check_ai_firewall(drift_b)   # the central claim must still hold after this fix
+
+
+# --------------------------------------------------------------------- IMPORTANT: rescan failure after apply
+def test_apply_succeeds_but_rescan_fails_falls_back_to_scan1s_document(tmp_path, monkeypatch):
+    """The overlay write cannot be undone once `apply` succeeds, but the re-scan is a second
+    ordinary scan and can fail for any reason a scan can (engine crash, I/O, ruleset generation).
+    Before the fix, `run_pipeline` let that exception propagate — the catalog was already
+    mutated, scan 1's perfectly good fresh document was discarded, and the state dir was left
+    holding whatever drift.json a PREVIOUS run wrote (or nothing at all). The deterministic
+    report must never be withheld: on a re-scan failure, `run_pipeline` must fall back to scan
+    1's document and report the run as degraded, not raise.
+
+    Faults injected PER-REPO (e.g. via `run=`) don't reach this path at all — `scan_folder`'s own
+    per-repo loop already swallows those into `coverage.reposErrored` and returns a normal doc, by
+    design (a single bad repo must never abort a whole-fleet scan). This fault is injected instead
+    at `write_ruleset`, a scan_folder-level call OUTSIDE that per-repo loop — a stand-in for any
+    of the several things scan_folder does that are NOT per-repo (ruleset generation, disk I/O
+    saving the IR, ...) and so are not already caught."""
+    _no_network(monkeypatch)
+    catalog = _catalog_dir(monkeypatch, tmp_path)
+    root = _repo(tmp_path)
+    state = tmp_path / "state"
+
+    import agent.inventory_scan as inv_mod
+    real_write_ruleset = inv_mod.write_ruleset
+    calls = {"n": 0}
+
+    def flaky_write_ruleset(*a, **k):
+        calls["n"] += 1
+        if calls["n"] == 2:                 # the RE-scan's call — scan 1 must succeed normally
+            raise RuntimeError("ruleset generation exploded on the re-scan")
+        return real_write_ruleset(*a, **k)
+
+    monkeypatch.setattr(inv_mod, "write_ruleset", flaky_write_ruleset)
+
+    out = run_pipeline(str(root), str(state), "2026-08-13", run=_url_engine, engine="semgrep",
+                       http=lambda *a, **k: {}, resolve=[_vendor_verdict()])
+
+    assert calls["n"] == 2, "sanity: the re-scan really was attempted (not short-circuited)"
+    # the overlay write is NOT undone — apply() had already succeeded before the re-scan blew up
+    assert list(catalog.iterdir())
+    # the run must not raise, and must report something distinct from a clean "applied"
+    assert out["resolve"]["status"] not in ("applied", "rejected")
+    assert "exploded" in out["resolve"]["detail"]
+
+    # scan 1's perfectly good report is what got written -- never withheld, and it correctly
+    # reflects the PRE-resolution state (the re-scan that would have picked up the overlay never
+    # completed).
+    drift_path = state / "drift.json"
+    assert drift_path.exists()
+    drift = json.loads(drift_path.read_text())
+    assert drift["counts"]["coverage"]["queued"] == 1
+
+    verify_mod.check_ai_firewall(drift)   # the central claim must still hold after this fix
