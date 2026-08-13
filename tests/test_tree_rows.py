@@ -122,6 +122,48 @@ def test_a_faithful_render_passes():
     verify.check_tree_rows(_render(), _payload())   # no raise
 
 
+# ---------------------------------------------------------------------------------------
+# Task 5d — a row must belong to the REPO its bucket claims, not just the bucket. Before the
+# repo split, "which repo" wasn't a question `check_tree_rows` could even ask; now that
+# `tracked` exists once per repo, a row swapped between two repos' `tracked` buckets is a
+# real host in a real bucket — it is simply the WRONG repo's row, which is exactly the
+# confusion this task exists to remove.
+# ---------------------------------------------------------------------------------------
+
+def _multi_repo_payload():
+    eps = [
+        {"repo": "repoA", "domain": "api.repoA.test", "hostClass": "api", "coverage": "tracked",
+         "vendor": "vendorA", "version": "v1"},
+        {"repo": "repoB", "domain": "api.repoB.test", "hostClass": "api", "coverage": "tracked",
+         "vendor": "vendorB", "version": "v1"},
+    ]
+    return {"counts": {"detected": len(eps)}, "endpoints": eps,
+            "catalog": [{"vendor": "vendorA", "verdict": "CURRENT"},
+                        {"vendor": "vendorB", "verdict": "CURRENT"}]}
+
+
+def test_a_faithful_multi_repo_render_passes_rows():
+    p = _multi_repo_payload()
+    verify.check_tree_rows(tree.html_tree(tree.build(p)), p)
+
+
+def test_a_row_from_the_wrong_repo_is_a_violation():
+    """The host is real, the bucket (`tracked`) is right — but it is repoB's row rendered
+    under repoA's tracked node. Proven in the direction that actually exposes a KEY-BY-`key`
+    implementation: alphabetically, repoB's own entry is built LAST and so — under a lookup
+    keyed on the semantic `data-node`/`key` (which repeats once per repo) rather than the
+    unique `data-path` — silently WINS every collision, meaning repoA's own tracked bucket
+    never gets checked against anything at all and this exact tamper sails through. Repo-
+    scoping the lookup by data-path is what makes repoA's own bucket checkable again."""
+    p = _multi_repo_payload()
+    html = tree.html_tree(tree.build(p))
+    tampered = html.replace('data-row="api.repoA.test"', 'data-row="api.repoB.test"', 1)
+    assert tampered != html
+    with pytest.raises(verify.Violation) as e:
+        verify.check_tree_rows(tampered, p)
+    assert e.value.check == "tree-rows"
+
+
 def test_a_deleted_row_is_a_violation():
     """A row silently dropped — the tree undercounts what the scan actually found."""
     html = _render()

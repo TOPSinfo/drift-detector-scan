@@ -42,21 +42,48 @@ _NULL_HOST_CLASS = "(no hostClass)"
 # would hit the same crash `_NULL_HOST_CLASS` exists to avoid, one layer later.
 _NULL_DOMAIN = "(unknown host)"
 
+# Task 5d: an endpoint's `repo` field is likewise optional (older payloads, or a caller that
+# never set it). Endpoints missing it are grouped under this one sentinel bucket rather than
+# dropped, so a payload with SOME repo-tagged rows and some without still sums honestly — and
+# a payload where EVERY row lacks it collapses to exactly one group, which is what keeps the
+# repo level from appearing (see `build`'s `multi_repo` gate: it fires on >1 distinct group).
+_NULL_REPO = "(unknown repo)"
+
 _LABELS = {
     "detected": "detected", "integrations": "integrations", "assets": "assets",
     "tracked": "tracked", "queued": "queued", "needs-human": "needs human", "blocked": "blocked",
 }
 
 
-def _node(key, n, *, note="", children=None, unit="rows", rows=None, has_rows=False):
-    return {"key": key, "label": _LABELS.get(key, key), "n": n, "unit": unit,
-            "note": note, "children": children or [], "rows": rows or [],
+def _node(key, n, *, note="", children=None, unit="rows", rows=None, has_rows=False,
+          label=None, repo=None):
+    return {"key": key, "label": label if label is not None else _LABELS.get(key, key), "n": n,
+            "unit": unit, "note": note, "children": children or [], "rows": rows or [],
             # `has_rows` is a distinct flag from `bool(rows)`: a bucket that is a legitimate
             # row-bearing leaf (tracked/queued/needs-human/blocked, or an asset hostClass) but
             # happens to have zero matching endpoints must still assert "0 rows rendered" — an
             # empty `rows` list alone can't tell a real zero apart from "this node never carries
             # rows at all" (detected/integrations/assets, which are sums, not row buckets).
-            "has_rows": has_rows}
+            "has_rows": has_rows,
+            # Task 5d: `repo` is set ONLY on a repo-level node (its raw repo string — the
+            # segment `data-repo` carries and `data-path` uses, since the repo's actual NAME,
+            # not the shared semantic key "repo", is what disambiguates one repo's `tracked`
+            # from another's). `path` is filled in by `_assign_paths` once the whole tree
+            # exists — every node needs its full ancestor chain first, which recursive
+            # construction here (children built before their parent) does not have yet.
+            "repo": repo, "path": None}
+
+
+def _assign_paths(nodes, prefix=None):
+    """The node's full, UNIQUE path — e.g. `detected/sebago-foods/integrations/tracked` — the
+    identity `verify`'s checks key on now that `data-node` (tracked/queued/boilerplate/repo)
+    repeats once per repo. A repo node's own path segment is its REPO NAME, not the shared key
+    "repo"; every other node's segment is its own key, exactly the chain today's single-repo
+    tree already implies (detected/integrations/tracked, unchanged)."""
+    for n in nodes:
+        seg = n["repo"] if n.get("repo") else n["key"]
+        n["path"] = seg if prefix is None else f"{prefix}/{seg}"
+        _assign_paths(n["children"], n["path"])
 
 
 def _row(e: dict, catalog_by_vendor: dict, bucket: str) -> dict:
@@ -86,11 +113,65 @@ def _row(e: dict, catalog_by_vendor: dict, bucket: str) -> dict:
     return row
 
 
+def _lifecycle_and_assets_from_endpoints(endpoints, catalog_by_vendor):
+    """The `integrations`/`assets` subtree derived ENTIRELY from a list of endpoint rows, no
+    `counts` involved. Used for a repo's own subtree in a multi-repo tree: `payload["counts"]`
+    is a whole-scan aggregate with no per-repo split, so a repo's lifecycle/asset numbers can
+    only come from its own rows — mirroring the same partition the single-repo branch of
+    `build` computes from `counts.coverage`/`na_by_class`, just sourced locally instead of
+    from the payload's aggregate tally.
+    """
+    by_coverage: dict = {"tracked": [], "queued": [], "needs-human": [], "blocked": []}
+    na_rows_by_class: dict = {}
+    for e in endpoints:
+        c = e.get("coverage")
+        if c in by_coverage:
+            by_coverage[c].append(e)
+        elif c == "na":
+            na_rows_by_class.setdefault(e.get("hostClass") or _NULL_HOST_CLASS, []).append(e)
+    na_by_class = Counter({k: len(v) for k, v in na_rows_by_class.items()})
+
+    tracked_eps = by_coverage["tracked"]
+    vendors = len({e.get("vendor") for e in tracked_eps if e.get("vendor")})
+    tracked_note = (f"{len(tracked_eps)} classified rows → {vendors} distinct vendors"
+                    if tracked_eps else "")
+    life = [_node("tracked", len(tracked_eps), note=tracked_note, has_rows=True,
+                  rows=[_row(e, catalog_by_vendor, "tracked") for e in tracked_eps]),
+            _node("queued", len(by_coverage["queued"]), has_rows=True,
+                  rows=[_row(e, catalog_by_vendor, "queued") for e in by_coverage["queued"]])]
+    # needs-human / blocked are part of the partition and render even at 0: they are real
+    # states a scan can be in, and hiding them would make a stuck repo look like a clean one.
+    for k in ("needs-human", "blocked"):
+        life.append(_node(k, len(by_coverage[k]), has_rows=True,
+                          rows=[_row(e, catalog_by_vendor, k) for e in by_coverage[k]]))
+    # `integrations.n` is defined as the SUM of its own children (never independently
+    # recounted from `len(endpoints)`) — so a repo's subtree always sums to itself even if an
+    # endpoint somehow carries a `coverage` value outside the five recognised states.
+    integrations = _node("integrations", sum(len(v) for v in by_coverage.values()), children=life)
+    # Every OBSERVED class becomes a child — the tuple only decides the order. Known
+    # classes first (in _ASSET_CLASSES order), then any unmapped ones alphabetically, so
+    # a new hostClass added to the classifier is never dropped and ordering stays stable.
+    known = [c for c in _ASSET_CLASSES if c in na_by_class]
+    unknown = sorted(c for c in na_by_class if c not in _ASSET_CLASSES)
+    kids = [_node(c, na_by_class[c], has_rows=True,
+                  rows=[_row(e, catalog_by_vendor, c) for e in na_rows_by_class[c]])
+            for c in known + unknown]
+    assets = _node("assets", sum(na_by_class.values()), children=kids)
+    return integrations, assets
+
+
 def build(payload: dict) -> list:
     """The node tree for `payload`. One root (`detected`); children sum to their parent.
 
     A count that cannot be derived is None with a `note` saying why — never 0, because a
     confident zero over missing data is the exact failure this tool exists to refuse.
+
+    Task 5d: when the payload's endpoints span MORE THAN ONE repo, a repo level is inserted
+    between the root and the lifecycle/asset split — each repo carrying its own complete
+    breakdown, in a fixed alphabetical order (never by count, so two runs of the same payload
+    render identically and the biggest repo never jumps to the front). A single-repo payload
+    (today's overwhelming case, and every scan before this one) takes the ORIGINAL code path
+    below unchanged — there is nothing to disambiguate, so nothing new renders.
     """
     counts = payload.get("counts") or {}
     cov = counts.get("coverage")
@@ -105,6 +186,27 @@ def build(payload: dict) -> list:
     # so absent endpoints means no row claim at all, not a row claim of zero.
     have_endpoints = payload.get("endpoints") is not None
     endpoints = payload.get("endpoints") or ()
+
+    # Task 5d: group by repo BEFORE anything else. A row missing `repo` entirely falls into
+    # `_NULL_REPO`'s own group rather than being silently dropped from every sum below it —
+    # see that sentinel's own comment. `multi_repo` fires on more than one DISTINCT group,
+    # which also correctly covers "every row is missing `repo`" (exactly one group, the
+    # sentinel) as the single-repo case it actually is.
+    repo_groups: dict = {}
+    for e in endpoints:
+        repo_groups.setdefault(e.get("repo") or _NULL_REPO, []).append(e)
+    if len(repo_groups) > 1:
+        repo_children = []
+        for repo_name in sorted(repo_groups):        # fixed alphabetical order, never by count
+            integrations, assets = _lifecycle_and_assets_from_endpoints(
+                repo_groups[repo_name], catalog_by_vendor)
+            repo_children.append(_node("repo", integrations["n"] + assets["n"],
+                                       label=repo_name, repo=repo_name,
+                                       children=[integrations, assets]))
+        roots = [_node("detected", counts.get("detected"), children=repo_children)]
+        _assign_paths(roots)
+        return roots
+
     # One pass over the endpoints: bucket by coverage state (the lifecycle leaves' rows) and,
     # for `na` rows, by hostClass (the asset breakdown's rows) — the SAME source
     # `na_by_class`'s count already came from, now keeping the records themselves too.
@@ -152,7 +254,9 @@ def build(payload: dict) -> list:
                 for c in known + unknown]
         assets = _node("assets", cov.get("na", counts.get("excluded")), children=kids)
 
-    return [_node("detected", counts.get("detected"), children=[integrations, assets])]
+    roots = [_node("detected", counts.get("detected"), children=[integrations, assets])]
+    _assign_paths(roots)
+    return roots
 
 
 def _sanitize(s) -> str:
@@ -267,8 +371,16 @@ def _li(node) -> str:
     # `verify._TREE_LI_TEXT` anchors on that exact adjacency (tree-parity/tree-text-mismatch),
     # and it does not require the `<li>` to end there, so appending after is invisible to it.
     rows_html = _rows_html(node["rows"]) if node["has_rows"] else ""
-    return (f'<li data-node="{_html.escape(node["key"])}" data-n="{n}" '
-            f'data-unit="{_html.escape(node["unit"])}">'
+    # Task 5d: `data-path` is the node's UNIQUE identity (verify keys on this now that
+    # `data-node` repeats once per repo); it sits right after `data-node`, which several
+    # existing invariants/tests locate via `<li data-node="X"[^>]*>` — a fixed prefix that
+    # must keep matching, so nothing may be inserted BEFORE `data-node`. `data-repo` is
+    # appended LAST, right before `>`, and only for a repo node, so it never disturbs
+    # `verify._TREE_LI_TEXT`'s fixed `data-node/data-path/data-n/data-unit` prefix either.
+    path = node.get("path") or node["key"]
+    repo_attr = f' data-repo="{_html.escape(str(node["repo"]))}"' if node.get("repo") else ""
+    return (f'<li data-node="{_html.escape(node["key"])}" data-path="{_html.escape(path)}" '
+            f'data-n="{n}" data-unit="{_html.escape(node["unit"])}"{repo_attr}>'
             f'<span class="tc">{text}</span>{note}{kids}{rows_html}</li>')
 
 
@@ -292,6 +404,11 @@ def html_tree(nodes: list) -> str:
 DEFINITIONS = {
     "detected": "Every outbound endpoint the scan read. The complete inventory — everything "
                "below is a filter over this, never a gate that hides a row.",
+    # Task 5d: only appears when the scan covered more than one repo. `data-node="repo"` is
+    # the same for every repo — the repo's own NAME lives in its label and `data-repo`, not
+    # here — so this one entry covers however many repos a fleet scan carries.
+    "repo": "One repository the scan covered. Appears only when a scan spans more than one — "
+           "the numbers below are that repo's own, never mixed with another's.",
     "integrations": "Third-party services this code actually calls.",
     "tracked": "The vendor is recognised and its retirements are monitored. Counted in endpoint "
               "rows; the distinct-vendor figure is the annotation beside it.",

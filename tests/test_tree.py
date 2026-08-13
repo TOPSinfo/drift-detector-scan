@@ -211,3 +211,160 @@ def test_md_tree_includes_the_roots_own_note():
     root = tree._node("detected", 73, note="a root note")
     md_line = tree.md_tree([root])[0]
     assert "a root note" in md_line
+
+
+# ---------------------------------------------------------------------------------------
+# Task 5d — the tree splits by repo. Origin: the first multi-repo scan (mls-mapper +
+# promoteplus-crm + sebago-foods, 142 endpoints) melted three repos into one set of numbers;
+# the owner called that out as "one confusion point is repo mixing". Repo becomes level 1 —
+# but ONLY when the scan covered more than one repo, so a single-repo tree still renders
+# exactly what it renders today.
+# ---------------------------------------------------------------------------------------
+
+def _multi_repo_payload():
+    """A small stand-in for the real three-repo scan (8/73/61 = 142), shaped the same way:
+    each repo gets its own tracked/queued/na rows, scaled down so the sums are checkable by
+    eye. `sebago-foods` has the most endpoints but must still render LAST — alphabetical
+    order, never by count."""
+    def eps(repo, n_tracked, n_queued, n_na):
+        out = []
+        for i in range(n_tracked):
+            out.append({"repo": repo, "domain": f"api{i}.{repo}.test", "hostClass": "api",
+                        "coverage": "tracked", "vendor": f"{repo}-vendor{i}", "version": "v1"})
+        for i in range(n_queued):
+            out.append({"repo": repo, "domain": f"q{i}.{repo}.test", "hostClass": "unclassified",
+                        "coverage": "queued"})
+        for i in range(n_na):
+            out.append({"repo": repo, "domain": f"a{i}.{repo}.test", "hostClass": "boilerplate",
+                        "coverage": "na"})
+        return out
+
+    endpoints = (eps("mls-mapper", 3, 0, 5)
+                + eps("promoteplus-crm", 27, 3, 43)
+                + eps("sebago-foods", 20, 1, 40))
+    return {"counts": {"detected": len(endpoints)}, "endpoints": endpoints}
+
+
+def test_repo_level_appears_only_when_more_than_one_repo():
+    nodes = tree.build(_multi_repo_payload())
+    root = nodes[0]
+    kids = root["children"]
+    assert {c["key"] for c in kids} == {"repo"}          # data-node is the SEMANTIC key "repo"
+    assert [c["label"] for c in kids] == ["mls-mapper", "promoteplus-crm", "sebago-foods"]
+
+
+def test_single_repo_payload_has_no_repo_level():
+    """The exact SAME shape `_payload()` already exercises everywhere else in this file — a
+    single repo's rows carry no `repo` field variety at all, so the tree must render exactly
+    as it does in every other test in this module: integrations/assets, no repo wrapper."""
+    nodes = tree.build(_payload())
+    kids = {c["key"] for c in nodes[0]["children"]}
+    assert kids == {"integrations", "assets"}
+
+
+def test_endpoints_with_no_repo_field_render_no_repo_level():
+    """False-red sweep case: a payload whose endpoints simply never carry a `repo` field must
+    not spontaneously grow a repo level — there is nothing to disambiguate."""
+    nodes = tree.build(_payload())               # _eps() rows never set "repo" at all
+    kids = {c["key"] for c in nodes[0]["children"]}
+    assert kids == {"integrations", "assets"}
+
+
+def test_each_repo_subtree_sums_to_its_own_total_and_repos_sum_to_root():
+    nodes = tree.build(_multi_repo_payload())
+    root = nodes[0]
+    total = 0
+    for repo_node in root["children"]:
+        kids_sum = sum(c["n"] for c in repo_node["children"])
+        assert kids_sum == repo_node["n"], repo_node["label"]
+        total += repo_node["n"]
+    assert total == root["n"] == 8 + 73 + 61 == 142
+
+
+def test_repo_node_carries_data_repo_and_a_unique_data_path():
+    html = tree.html_tree(tree.build(_multi_repo_payload()))
+    assert 'data-repo="mls-mapper"' in html
+    assert 'data-path="detected/mls-mapper"' in html
+    assert 'data-path="detected/mls-mapper/integrations/tracked"' in html
+    assert 'data-path="detected/promoteplus-crm/integrations/tracked"' in html
+    # the SAME semantic data-node repeats once per repo — that is the whole point of
+    # separating identity (data-path) from the glossary key (data-node).
+    assert html.count('data-node="tracked"') == 3
+
+
+def test_single_repo_paths_match_todays_implicit_shape():
+    """`data-path` is a NEW attribute added everywhere, single-repo included — but the shape it
+    encodes for a single-repo tree is exactly today's implicit nesting, and no `data-repo`
+    attribute appears anywhere on a single-repo page."""
+    html = tree.html_tree(tree.build(_payload()))
+    assert 'data-path="detected"' in html
+    assert 'data-path="detected/integrations"' in html
+    assert 'data-path="detected/integrations/tracked"' in html
+    assert 'data-path="detected/assets/boilerplate"' in html
+    assert "data-repo=" not in html
+
+
+def test_repos_render_in_a_fixed_alphabetical_order_never_by_count():
+    """sebago-foods (61) outnumbers mls-mapper (8) — order must stay alphabetical, not
+    largest/smallest first."""
+    html = tree.html_tree(tree.build(_multi_repo_payload()))
+    assert (html.index('data-repo="mls-mapper"') < html.index('data-repo="promoteplus-crm"')
+           < html.index('data-repo="sebago-foods"'))
+
+
+def test_a_repo_with_zero_integrations_still_sums():
+    p = _multi_repo_payload()
+    p["endpoints"] = [e for e in p["endpoints"]
+                      if not (e["repo"] == "mls-mapper" and e["coverage"] != "na")]
+    p["counts"]["detected"] = len(p["endpoints"])
+    nodes = tree.build(p)
+    mls = next(c for c in nodes[0]["children"] if c["label"] == "mls-mapper")
+    integ = next(c for c in mls["children"] if c["key"] == "integrations")
+    assert integ["n"] == 0
+    assert sum(c["n"] for c in mls["children"]) == mls["n"]
+
+
+def test_md_tree_renders_the_repo_level():
+    body = "\n".join(tree.md_tree(tree.build(_multi_repo_payload())))
+    assert "8 mls-mapper" in body
+    assert "73 promoteplus-crm" in body
+    assert "61 sebago-foods" in body
+
+
+def test_repo_is_defined_in_the_glossary():
+    assert "repo" in tree.DEFINITIONS
+
+
+def test_build_is_pure_and_deterministic_across_repos():
+    p = _multi_repo_payload()
+    assert tree.build(p) == tree.build(p)
+
+
+def test_false_red_sweep_for_the_repo_split():
+    """Task 5d requirement 6: none of these honest shapes may gain a spurious repo level,
+    crash, or fail to sum at any depth."""
+    cases = {}
+    cases["single-repo payload"] = _payload()
+    p = _payload(); del p["endpoints"]
+    cases["no endpoints"] = p
+    cases["empty payload"] = {}
+    p = _multi_repo_payload()
+    p["endpoints"] = [e for e in p["endpoints"]
+                      if not (e["repo"] == "mls-mapper" and e["coverage"] != "na")]
+    p["counts"]["detected"] = len(p["endpoints"])
+    cases["a repo with zero integrations"] = p
+    cases["multi-repo payload"] = _multi_repo_payload()
+
+    def _sums_ok(nodes, label):
+        for n in nodes:
+            if n["children"]:
+                kids = [c["n"] for c in n["children"]]
+                if n["n"] is not None and all(k is not None for k in kids):
+                    assert sum(kids) == n["n"], f"{label}: {n['key']} sum mismatch"
+            _sums_ok(n["children"], label)
+
+    for name, payload in cases.items():
+        nodes = tree.build(payload)               # must not raise
+        tree.html_tree(nodes)                      # must not raise
+        "\n".join(tree.md_tree(nodes))              # must not raise
+        _sums_ok(nodes, name)
