@@ -328,7 +328,8 @@ def render_payload(projection: dict, now: str, *, bundle: dict | None = None,
          # The coverage tree, rendered SERVER-SIDE from the same payload the blob carries. It is a
          # verified projection (see verify.check_tree_matches_payload), which a Vue-computed tree
          # could never be: its numbers would be produced in a browser nobody here can observe.
-         '<section id="coverage-tree">' + _tree.html_tree(_tree.build(projection)) + '</section>',
+         '<section id="coverage-tree">' + _tree.html_tree(_tree.build(projection))
+         + _tree.html_definitions(_tree.build(projection)) + '</section>',
          '<script id="drift-data" type="application/json">' + _blob(projection) + "</script>",
          _blob_script("sbom-data", bundle["sbom"]),
          _blob_script("spdx-data", bundle["spdx"]),
