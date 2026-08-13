@@ -643,7 +643,22 @@ def _cmd_probe(args) -> int:
 
 
 _TRISTATE = ("yes", "no", "unknown")
-_DATEISH = re.compile(r"\d{4}-\d{2}-\d{2}|\d{4}/\d{2}/\d{2}")
+# M2: numeric ISO/slash forms (2026-03-01, 2026/03/01) were the whole gate — a model that spells
+# the date out in prose ("Sunset on March 1, 2026") or writes it DD/MM/YYYY or MM/DD/YYYY
+# ("01/03/2026") sailed straight through into a free-text field (`note`) and rendered as an
+# ungated date in the dashboard's Evidence column. `_MONTHISH` covers both day-then-month and
+# month-then-day orderings, full and abbreviated month names (Sep/Sept both accepted). Kept
+# deliberately narrow to full day+month+year triples — a bare year ("the 2019 rewrite") or a
+# spec number ("RFC 2606") must still pass, or the gate pushes users to skip it.
+_MONTHISH = (r"(?:Jan(?:uary)?|Feb(?:ruary)?|Mar(?:ch)?|Apr(?:il)?|May|Jun(?:e)?|Jul(?:y)?|"
+            r"Aug(?:ust)?|Sep(?:t(?:ember)?)?|Oct(?:ober)?|Nov(?:ember)?|Dec(?:ember)?)")
+_DATEISH = re.compile(
+    r"\d{4}-\d{2}-\d{2}"                                           # 2026-03-01
+    r"|\d{4}/\d{2}/\d{2}"                                           # 2026/03/01
+    r"|\d{1,2}/\d{1,2}/\d{4}"                                       # 01/03/2026 or 03/01/2026
+    r"|" + _MONTHISH + r"\.?\s+\d{1,2}(?:st|nd|rd|th)?,?\s+\d{4}"   # March 1, 2026 / Mar 1, 2026
+    r"|\d{1,2}(?:st|nd|rd|th)?\s+" + _MONTHISH + r"\.?,?\s+\d{4}",  # 1 March 2026 / 1 Mar 2026
+    re.IGNORECASE)
 
 
 def _cmd_leads(args) -> int:
