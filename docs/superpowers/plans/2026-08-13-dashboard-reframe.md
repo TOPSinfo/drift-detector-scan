@@ -1328,3 +1328,52 @@ the required outcome exactly. Every new module and every invariant carries compl
 `md_tree`/`html_tree`/`html_definitions` (Tasks 2, 3, 5) and by `verify._tree_nodes` (Task 4).
 `Violation` check names — `tree-sums`, `tree-payload`, `tree-units`, `tree-parity`,
 `tree-definitions`, `tree-certified-only` — are used identically in implementations and tests.
+
+---
+
+## Task 5b: `summary.html` — the bare-bones page (inserted after Stage 1)
+
+**Origin:** the owner opened the Stage 1 output and found the tree appended at the BOTTOM of the
+cockpit, underneath the very tile strip it replaces. That placement was a plan error — Task 3 said
+to inject "immediately after `TEMPLATE_SRC`", written thinking of position relative to the data
+blobs, but `TEMPLATE_SRC` is the entire page, so "after" meant "below everything".
+
+Asked where the tree should actually live, the owner chose a **separate bare-bones page** over
+fixing the placement in the cockpit. That is the stronger answer: the tree's whole value is being
+readable in seconds, and loading a Vue application to read twelve numbers is at odds with that.
+
+**The end state, three surfaces from one builder:**
+
+| surface | what it is |
+|---|---|
+| `drift.md` | the report, with the ASCII tree — readable with no browser at all |
+| `summary.html` | **the default view**: tree + glossary + headline numbers. Pure HTML, no Vue, no JS |
+| `dashboard.html` | the detailed cockpit — tables, timeline, SBOM/SARIF. The drill-down |
+
+**Files:**
+- Create: `agent/lib/summary_render.py`, `agent/assets/summary.css`
+- Modify: `agent/lib/dashboard_render.py` (REMOVE the `#coverage-tree` section), `agent/run.py`
+  (write `summary.html`), `agent/cli.py` (point the tree checks at `summary.html`)
+- Test: `tests/test_summary_page.py`
+
+**Requirements:**
+1. `summary_render.render_summary(payload, now) -> str` emits a complete, self-contained HTML
+   document: the coverage tree, the glossary, and the headline numbers (fixes, sunsets, past-due,
+   unaudited). It embeds its own CSS inline and loads **no** JavaScript whatsoever — not Vue, not a
+   snippet. If the page needs JS to be correct it is not a projection.
+2. **The `├─` / `└─` connectors are drawn in CSS**, via pseudo-elements, so the HTML reads like the
+   ASCII tree. They are decoration over the `<ul>` structure, never content — the numbers still
+   live in `data-n`, so a connector cannot lie about arithmetic.
+3. The tree section is REMOVED from `dashboard.html`. One tree per surface; the cockpit keeps its
+   own tables.
+4. `verify`'s tree checks (`tree-sums`, `tree-payload`, `tree-units`, `tree-text-mismatch`,
+   `tree-parity`, `tree-node-set`, `tree-definitions`, `tree-missing`) now run against
+   `summary.html`. They must keep firing on every tamper they already catch — that coverage was
+   proven end-to-end and must not regress in the move.
+5. Deterministic and self-contained: same payload → byte-identical page, and it must render with
+   both JavaScript and network access entirely absent.
+
+**Knock-on for Stage 2:** the tree is no longer the cockpit's header, so Task 6 keeps the plane
+collapse and Task 8 keeps retiring the mixed tile strip (its unit bug is real regardless of where
+the tree lives), but neither needs to restructure around the tree. Task 9's
+`tree-certified-only` moves to `summary.html` with the other tree checks.
