@@ -77,10 +77,14 @@ def test_the_tree_needs_no_javascript():
         assert banned not in html, banned
 
 
-def test_the_tree_is_embedded_in_the_dashboard():
+def test_the_tree_is_no_longer_embedded_in_the_dashboard():
+    """Task 5b moved the tree OUT of the cockpit onto its own page (summary.html — see
+    agent/lib/summary_render.py and tests/test_summary_page.py). Stage 1 had injected it here,
+    at the BOTTOM of this Vue application, under the very tile strip it was meant to replace —
+    a placement bug the owner asked to fix by giving the tree its own bare-bones page instead."""
     html = render_payload(_payload(), "2026-08-13")
-    assert '<ul class="tree"' in html
-    assert 'data-node="detected"' in html
+    assert '<ul class="tree"' not in html
+    assert 'id="coverage-tree"' not in html
 
 
 def test_html_is_escaped():

@@ -14,7 +14,6 @@ import re
 from collections import Counter
 
 from agent.lib import host_class, own_infra
-from agent.lib import tree as _tree
 from agent.lib.actions import build_actions
 
 _MAX_CVES = 20            # cap the per-action CVE list embedded in the blob
@@ -325,11 +324,11 @@ def render_payload(projection: dict, now: str, *, bundle: dict | None = None,
          '<title>Drift Detector — DevSecOps Cockpit</title>',
          "<style>" + CSS_SRC + "</style></head><body>",
          TEMPLATE_SRC,
-         # The coverage tree, rendered SERVER-SIDE from the same payload the blob carries. It is a
-         # verified projection (see verify.check_tree_matches_payload), which a Vue-computed tree
-         # could never be: its numbers would be produced in a browser nobody here can observe.
-         '<section id="coverage-tree">' + _tree.html_tree(_tree.build(projection))
-         + _tree.html_definitions(_tree.build(projection)) + '</section>',
+         # The coverage tree lives on its OWN page now (agent/lib/summary_render.py,
+         # summary.html) — not here. It used to be injected as a `#coverage-tree` section
+         # after TEMPLATE_SRC, but that placed it at the BOTTOM of this Vue application,
+         # under the very tile strip it was meant to replace. The tree's whole value is being
+         # readable in seconds; a heavy cockpit is the wrong home for it. One tree per surface.
          '<script id="drift-data" type="application/json">' + _blob(projection) + "</script>",
          _blob_script("sbom-data", bundle["sbom"]),
          _blob_script("spdx-data", bundle["spdx"]),
