@@ -26,6 +26,19 @@ def test_verbatim_date_check_rejects_absent_or_wrong_date():
     assert not absorb.date_in_text("not-a-date", "February 3, 2026")                    # unparseable claim
 
 
+def test_verbatim_date_check_requires_a_token_boundary_not_a_bare_substring():
+    """The date must appear AS a date in the text, not merely as a substring of some larger
+    unrelated token — a build id, a longer digit run, etc."""
+    # "2026-11-30" is a substring of "12026-11-3012" but is not itself present as a date.
+    assert not absorb.date_in_text("2026-11-30", "build id 12026-11-3012")
+    # the compact ISO form ("20261130") parses fine via date.fromisoformat, and its
+    # human-readable forms are legitimately derived from it — but the compact form itself must
+    # not match as a substring of a larger token either.
+    assert not absorb.date_in_text("20261130", "build 20261130x failed")
+    # sanity: the same date at a real boundary still matches.
+    assert absorb.date_in_text("2026-11-30", "GeoMapper API v1 retires 2026-11-30.")
+
+
 # --- check 1: a date nobody sourced is not admissible ---------------------------
 
 def test_sunset_without_a_source_url_is_rejected():
