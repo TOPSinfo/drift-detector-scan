@@ -39,6 +39,16 @@ overlay directory is configured, that too is refused (there is nowhere safe to p
 
 Deterministic: stdlib + PyYAML only, no wall-clock (`now` is passed in, exactly like `research`
 and `absorb`).
+
+WHAT THIS GATE CANNOT PROVE. This is a pure, offline check over the strings a model hands it —
+it never fetches `source_url` itself. It proves the cited date appears, verbatim and at a token
+boundary, in the `excerpt` string the model SUPPLIED; it cannot prove that excerpt actually came
+from the page at `source_url`, or that the page still says that. A fabricated but internally
+self-consistent excerpt (a plausible date, phrased the way a real changelog would phrase it)
+passes every check here. That is an inherent limit of a deterministic gate with no network
+access, not a gap this module can close — closing it needs an out-of-band fetch-and-compare step
+this gate does not perform. Treat a clean pass as "the evidence is well-formed and internally
+consistent," never as "a human (or a fetch) confirmed the source says this."
 """
 from __future__ import annotations
 
