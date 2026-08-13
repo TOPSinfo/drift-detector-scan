@@ -220,7 +220,7 @@ def _row_html(r: dict) -> str:
     extra = ""
     if r["verdict"] is not None:
         vendor = _html.escape(str(r["vendor"])) if r["vendor"] else "(vendor unknown)"
-        version = f" v{_html.escape(str(r['version']))}" if r.get("version") else ""
+        version = f" {_html.escape(str(r['version']))}" if r.get("version") else ""
         verdict = _html.escape(str(r["verdict"]))
         extra = (f' <span class="rvendor">{vendor}{version}</span>'
                 f' <span class="verdict">{verdict}</span>')

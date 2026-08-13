@@ -164,6 +164,47 @@ def test_a_renamed_host_is_a_violation():
 # No false REDs — an honest report must stay green on every edge shape.
 # ---------------------------------------------------------------------------------------
 
+def test_version_renders_verbatim_without_adding_prefix():
+    """The version field already carries its prefix (v1, 2024-01, 3.0).
+    Rendering must not prepend another v — output shows the payload verbatim.
+    This is the fix for the 'vv1' bug on Anthropic, DeepSeek, Groq rows."""
+    payload = {"counts": {"detected": 4, "integrations": 4, "excluded": 0, "apis": 4,
+                          "coverage": {"tracked": 4, "queued": 0, "needs-human": 0,
+                                       "blocked": 0, "na": 0}},
+               "endpoints": [
+                   {"domain": "api1.test", "hostClass": "api", "coverage": "tracked",
+                    "vendor": "Anthropic", "version": "v1"},
+                   {"domain": "api2.test", "hostClass": "api", "coverage": "tracked",
+                    "vendor": "Shopify", "version": "2024-01"},
+                   {"domain": "api3.test", "hostClass": "api", "coverage": "tracked",
+                    "vendor": "Custom", "version": "3.0"},
+                   {"domain": "api4.test", "hostClass": "api", "coverage": "tracked",
+                    "vendor": "NoVersion", "version": None},
+               ],
+               "catalog": [{"vendor": "Anthropic", "verdict": "CURRENT"},
+                          {"vendor": "Shopify", "verdict": "CURRENT"},
+                          {"vendor": "Custom", "verdict": "CURRENT"},
+                          {"vendor": "NoVersion", "verdict": "CURRENT"}]}
+    html = tree.html_tree(tree.build(payload))
+
+    # Version prefixes already in payload must render verbatim
+    assert 'v1</span>' in html, "v1 should render as v1, not vv1"
+    assert 'vv1</span>' not in html, "should not double the v prefix"
+    assert '2024-01</span>' in html, "calendar version should render unchanged"
+    assert '3.0</span>' in html, "numeric version should render unchanged"
+
+    # The NoVersion row should have no version span at all (or span with no version text)
+    # Extract the NoVersion row to check it has no stray version separator
+    import re
+    noversion_rows = re.findall(r'<div class="row" data-row="api4\.test">.*?</div>', html, re.DOTALL)
+    assert len(noversion_rows) == 1
+    noversion_row = noversion_rows[0]
+    # Should have "NoVersion" vendor but no version text after it
+    assert "NoVersion" in noversion_row
+    # Check there's no span with empty or stray content between vendor and verdict
+    assert 'class="rvendor">NoVersion</span>' in noversion_row
+
+
 def test_false_red_sweep_stays_green_on_honest_shapes():
     cases = {}
     cases["full payload"] = _payload()
