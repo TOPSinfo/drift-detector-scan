@@ -29,3 +29,48 @@ def test_audit_without_out_html_writes_none(tmp_path, monkeypatch):
     cli.main(["audit", "--in", str(inv), "--now", "2026-07-15",
               ])
     assert not (tmp_path / "dashboard.html").exists()
+
+
+def _full_state_dir(tmp_path):
+    """A complete state dir (drift.json, inventory.json, audit.json, drift.md,
+    dashboard.html, summary.html) built from the SAME pure renderers `run_pipeline` uses —
+    everything `verify` requires, so this fixture stands in for a real `run`."""
+    from agent.lib.dashboard_render import build_payload, build_bundle, render_payload
+    from agent.lib.md_render import render_markdown
+    from agent.lib.summary_render import render_summary
+
+    now = "2026-08-13"
+    inventory = {"generated": now, "repos": [{"path": "svc", "endpoints": [], "sdks": [],
+                                              "runtimes": {}}]}
+    audit = {"generated": now, "findings": [],
+            "counts": {"DEPRECATED": 0, "REVIEW": 0, "reposAffected": 0}, "coverage": {}}
+    payload = build_payload(inventory, audit)
+    bundle = build_bundle(inventory, audit, now)
+
+    (tmp_path / "inventory.json").write_text(json.dumps(inventory))
+    (tmp_path / "audit.json").write_text(json.dumps(audit))
+    (tmp_path / "drift.json").write_text(json.dumps(payload))
+    (tmp_path / "drift.md").write_text(render_markdown(payload, now))
+    (tmp_path / "dashboard.html").write_text(
+        render_payload(payload, now, bundle=bundle))
+    (tmp_path / "summary.html").write_text(render_summary(payload, now))
+    return now
+
+
+def test_render_repairs_a_state_dir_missing_summary_html(tmp_path):
+    """task-5b Finding 2: `summary.html` became REQUIRED by `verify` (missing -> exit 4),
+    but `render` — the obvious repair for a state dir predating this change, or one that was
+    hand-staged — rewrote only dashboard.html. `verify` named the missing file correctly, yet
+    the documented remedy did not produce it. A state dir missing ONLY summary.html must
+    become verifiable again after `render`."""
+    now = _full_state_dir(tmp_path)
+    (tmp_path / "summary.html").unlink()
+
+    # confirm the fixture is otherwise sound and the gap is real
+    assert cli.main(["verify", "--state", str(tmp_path)]) == 4
+
+    rc = cli.main(["render", "--state", str(tmp_path), "--now", now])
+    assert rc == 0
+    assert (tmp_path / "summary.html").exists()
+
+    assert cli.main(["verify", "--state", str(tmp_path)]) == 0

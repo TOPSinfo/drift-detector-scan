@@ -4,7 +4,7 @@ from __future__ import annotations
 import hashlib
 import os
 
-from agent.lib import engine as engine_mod, ir_store, scan_util
+from agent.lib import catalog_overlay, engine as engine_mod, ir_store, scan_util
 from agent.lib.vendors import load_vendors
 from agent.lib.vendor_rules import write_ruleset, rule_kinds_by_language
 from agent.lib import shapes
@@ -118,10 +118,21 @@ def scan_folder(root, state_dir, now, *, engine=None, run=None, git=None, progre
     # matches) and scan_repo (which reads a path-constant match's repo scope + bound vendor).
     idiom_instances = idioms_mod.load_idioms()
     write_ruleset(vendors, rules_path, idiom_instances=idiom_instances)
-    # the per-repo cache key folds in this signature (the compiled ruleset = vendors + idioms), so
-    # adding/absorbing an idiom re-scans the repo instead of serving its stale pre-idiom record.
+    # the per-repo cache key folds in this signature, so adding/absorbing an idiom (or any other
+    # catalog input a scan reads) re-scans the repo instead of serving its stale record.
     with open(rules_path, "rb") as _rf:
-        rules_sig = hashlib.sha256(_rf.read()).hexdigest()[:12]
+        ruleset_sig = hashlib.sha256(_rf.read()).hexdigest()[:12]     # compiled ruleset = vendors + idioms
+    # ...but NOT everything a repo's classification depends on lives in the compiled ruleset: the
+    # own-domains overlay (agent/lib/own_domains.py, read inside scan_endpoints via
+    # agent/lib/endpoints.py) can flip a host from queued/unclassified to own-infra without
+    # touching a single ast-grep rule. A cache keyed on ruleset_sig alone stayed blind to it — a
+    # gated, correctly-written own-domain verdict through `run --resolve` was a silent no-op,
+    # because the re-scan's cache lookup still matched scan 1's pre-resolution record. Folding in
+    # the WHOLE overlay directory's content (not naming own_domains specifically) makes this
+    # structural: any future overlay kind that a scan starts reading invalidates the cache by
+    # construction, not because someone remembered to list it here.
+    overlay_sig = catalog_overlay.overlay_signature()
+    rules_sig = hashlib.sha256(f"{ruleset_sig}|{overlay_sig}".encode("utf-8")).hexdigest()[:12]
 
     _p("resolving sources under " + ", ".join(str(r) for r in roots) + " …")
     # A checkout, a plain folder, or a git/GitLab URL (cloned into <state>/sources/) all

@@ -18,7 +18,7 @@ _Every task's requirements implicitly include these (from CLAUDE.md):_
 - **"Cannot see" ≠ "clean", strengthened.** The `_IGNORE` set is *silently dropped* today. M1 must **keep and count** those hosts (bucketed + collapsed), never hide them. Nothing vanishes; everything is classed and countable.
 - **Never invent a date.** M1 adds *no* dates and *no* vendor classifications — `hostClass` is orthogonal to `classified`/`vendor`. A catalogued vendor is still `classified:true`; `hostClass` only triages the *rest*.
 - **The catalog is data, reviewed.** New reputation/template entries carry a `source:` and enter via review (same discipline as `vendors.yaml`). No live fetch.
-- **Prove a guard against its bug.** The mls-mapper incident becomes a regression fixture; the triage test must be shown to FAIL on the pre-M1 behavior (flat wall) before the fix.
+- **Prove a guard against its bug.** The geo-mapper incident becomes a regression fixture; the triage test must be shown to FAIL on the pre-M1 behavior (flat wall) before the fix.
 - **`verify` is the only correctness claim.** Extend it; a green `verify` must still mean drift.json/drift.md/dashboard.html agree, now including `hostClass`.
 - Runtime deps stay **stdlib + PyYAML**. `verify.check_accessor_coverage` tracks loop vars `a|e|p|cv|row` — **any new cockpit `v-for` must use other names.**
 
@@ -174,7 +174,7 @@ social-widget:    # share links / embeds / follow buttons (host-level; grammar a
 vendored-lib:     # a UI kit / library talking about itself in its own docs/comments
   - jquery.com                # from _IGNORE
   - ckeditor.com              # from _IGNORE
-  - keenthemes.com            # Metronic template vendor (the mls-mapper incident, Task 7)
+  - keenthemes.com            # Metronic template vendor (the geo-mapper incident, Task 7)
   - momentjs.com              # appears in moment.min.js banner comments
 boilerplate:      # schema/doc/registry hosts that are never integrations
   - w3.org                   # from _IGNORE
@@ -433,7 +433,7 @@ def test_hostclass_invariant_catches_missing_class():
 
 ---
 
-## Task 7: The mls-mapper incident regression fixture (prove-a-guard)
+## Task 7: The geo-mapper incident regression fixture (prove-a-guard)
 
 **Files:**
 - Create: `tests/fixtures/mls_incident/` — `index.html` (Metronic-style demo: `wa.me`, `tiktok.com`, `pinterest.com` social block + `images.unsplash.com` `<img>`), `vendor/moment.min.js` (one-line header comment mentioning `momentjs.com`), `app/importer.php` (ONE real cURL to `https://api.greatschools.org/v2/schools`).
@@ -456,7 +456,7 @@ def test_incident_becomes_triaged_not_a_wall(tmp_path):
 
 - [ ] **Step 3: Run → confirm it PASSES with M1** and FAILS on pre-M1 (checkout `master`, run, observe the flat-unknown behavior — document the before/after in the test docstring; this is the principle-5 proof).
 - [ ] **Step 4: Full suite** — `.venv/bin/python -m pytest -q`. Expected: all green (existing + new).
-- [ ] **Step 5: Commit** — `git commit -m "test(triage): mls-mapper incident regression — wall of unknowns becomes 1 ranked lead"`
+- [ ] **Step 5: Commit** — `git commit -m "test(triage): geo-mapper incident regression — wall of unknowns becomes 1 ranked lead"`
 
 ---
 

@@ -35,7 +35,7 @@ def test_api_shape_in_call_context_is_a_lead():
 
 
 def test_api_labeled_host_is_a_lead_without_a_versioned_path_or_call():
-    """A real repo (sebago-foods) reaches api.keepa.com / api.printnode.com / geocode-api.arcgis.com
+    """A real repo (acmegrocer-foods) reaches api.keepa.com / api.printnode.com / geocode-api.arcgis.com
     with no /vN path and via wrappers we don't sniff as calls. The `api.`/`api-`/`-api.` label alone
     is a strong enough API signal to surface them as leads, not bury them in 'pending audit'."""
     for host in ("api.keepa.com", "api.printnode.com", "api.sellersnap.io",
@@ -167,16 +167,16 @@ def test_bucketed_hosts_are_not_integrations(host):
 
 
 def _sig():
-    return own_infra.signals(repo_path="/srv/promoteplus-crm",
-                             repo_id="https://git.topsdemo.in/root/promoteplus-crm.git")
+    return own_infra.signals(repo_path="/srv/zenithapp-crm",
+                             repo_id="https://git.devhost.io/root/zenithapp-crm.git")
 
 
 def test_own_infra_wins_over_the_api_label_rule():
     """Ordering matters and is the whole point: `api.<client>.com` is the client's OWN API, not a
     third-party lead. The `api.` label rule runs early, so own-infra must run before it."""
-    assert hc.classify("api.promoteplus.ai", own=_sig()) == "own-infra"
-    assert hc.classify("crm.promoteplus.ai", own=_sig()) == "own-infra"
-    assert hc.classify("qa-promoteplus-idx.topsdemo.in", own=_sig()) == "own-infra"
+    assert hc.classify("api.zenithapp.io", own=_sig()) == "own-infra"
+    assert hc.classify("crm.zenithapp.io", own=_sig()) == "own-infra"
+    assert hc.classify("qa-zenithapp-idx.devhost.io", own=_sig()) == "own-infra"
 
 
 def test_own_infra_never_claims_a_third_party():
@@ -186,5 +186,5 @@ def test_own_infra_never_claims_a_third_party():
 
 def test_classify_without_signals_is_unchanged():
     """The `own` keyword is optional; every existing caller must behave identically without it."""
-    assert hc.classify("crm.promoteplus.ai") == "unclassified"
+    assert hc.classify("crm.zenithapp.io") == "unclassified"
     assert hc.classify("api.justcall.io") == "api-lead"

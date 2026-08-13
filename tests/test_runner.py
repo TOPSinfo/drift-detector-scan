@@ -137,7 +137,7 @@ def test_runner_ignores_a_foreign_agent_package_in_the_callers_cwd(tmp_path):
 
     This shipped. Running `drift-scan` from the older sibling checkout (which has its own
     `agent/` + catalogs) executed THAT engine's code and attestations while reporting itself
-    as a normal run: promoteplus-crm graded 7 vendors UNAUDITED instead of 2, deterministic
+    as a normal run: zenithapp-crm graded 7 vendors UNAUDITED instead of 2, deterministic
     and green and wrong. `verify` cannot catch it — the wrong engine verifies its own output.
     """
     import subprocess
@@ -149,3 +149,41 @@ def test_runner_ignores_a_foreign_agent_package_in_the_callers_cwd(tmp_path):
                           cwd=tmp_path, capture_output=True, text=True, timeout=180)
     assert "DECOY ENGINE RAN" not in (proc.stdout + proc.stderr), \
         "the caller's cwd shadowed the pinned engine"
+
+
+def test_promptfile_describes_the_no_queue_resolution_pass():
+    """docs/superpowers/specs/2026-08-13-no-queue-design.md: unresolved hosts no longer sit in
+    a queue for a human (or a separate `/drift-research` step) to pick up later — the owner's
+    own framing was 'just run it along the scan, I don't want any queued'. The promptfile must
+    describe the resolution pass as automatic (no gate, no question), name the real commands
+    (`resolve` for the work-list, `run --resolve` for gate+apply+re-scan+deliver in one call),
+    and state the load-bearing honesty rules: a retirement date still needs a verbatim-quoted
+    source, `unknown` is a legitimate verdict, a failed pass degrades rather than blocks, and a
+    catalogued vendor can never be claimed as own-infra."""
+    main = (_ROOT / "commands" / "drift-detector.md").read_text()
+
+    # the real commands, not an invented flow
+    assert '"$SCAN" resolve --state' in main                 # prints the unresolved work-list
+    assert "--resolve" in main and '"$SCAN" run' in main      # run --resolve: gate+apply+re-scan+deliver
+
+    # automatic — no gate, no question, ever
+    assert "no queue" in main.lower() or "no-queue" in main.lower()
+    assert "want me to research" in main.lower() or "ask first" in main.lower() or \
+        "without asking" in main.lower()
+
+    # honesty rule 1: a retirement date still needs a source, verbatim in the excerpt
+    assert "verbatim" in main.lower()
+    assert "excerpt" in main.lower()
+
+    # honesty rule 2: `unknown` is legitimate, never invented away
+    assert "`unknown`" in main or "'unknown'" in main
+    assert "needs-human" in main or "needs human" in main.lower()
+
+    # honesty rule 3: a failed pass degrades, never blocks
+    assert "degrade" in main.lower()
+
+    # honesty rule 4: a catalogued vendor can never become own-infra
+    assert "own-infra" in main.lower() and "catalogued vendor" in main.lower()
+
+    # the old world — queued for a later, separate research step — is gone from this file
+    assert "queued for research" not in main.lower()

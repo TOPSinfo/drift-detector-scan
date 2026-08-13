@@ -1,0 +1,64 @@
+:root{
+  /* light-dark() follows the OS/browser preference on its own (color-scheme: light dark) —
+     this page ships no JS, so there is no toggle to flip it; the browser does the work. */
+  color-scheme: light dark;
+  --accent:#e0533d; --accent-2:#3d7de0;
+  --bg:light-dark(#f5f5f2,#0f1114); --panel:light-dark(#fff,#16191e);
+  --line:light-dark(#e4e4de,#2a2f38); --ink:light-dark(#191b1f,#e8ebf1);
+  --muted:light-dark(#6a7180,#98a1b1);
+  --mono:ui-monospace,"SF Mono",Menlo,Consolas,monospace;
+  --sans:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:14px/1.6 var(--sans);padding:28px 20px 60px}
+header,.headline,#tree{max-width:760px;margin-left:auto;margin-right:auto}
+header{margin-bottom:20px}
+h1{font-size:19px;margin:0 0 6px;letter-spacing:-.01em}
+h1 .accent{color:var(--accent)}
+.meta{color:var(--muted);font-size:12.5px;margin:0}
+.meta a{color:var(--accent-2);text-decoration:none}
+.meta a:hover{text-decoration:underline}
+
+.headline{margin-top:0;margin-bottom:20px;display:grid;
+  grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px}
+.headline .stat{background:var(--panel);border:1px solid var(--line);border-radius:10px;
+  padding:10px 14px}
+.headline dt{font-size:11px;text-transform:uppercase;letter-spacing:.04em;color:var(--muted);
+  margin:0 0 4px}
+.headline dd{font-size:20px;font-weight:700;margin:0;font-variant-numeric:tabular-nums}
+
+#tree{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:16px 18px}
+
+/* The tree connectors: ├─ / └─ are drawn HERE, in CSS, as ::before content on top of the
+   plain nested <ul>/<li> structure tree.py emits. Decoration only — the numbers a reader sees
+   live in the <li>'s own text (bound to data-n by verify.check_tree_matches_payload), so a
+   connector can never misstate the arithmetic underneath it. */
+.tree,.tree ul{list-style:none;margin:0;padding-left:0}
+.tree ul{padding-left:1.6em}
+.tree ul>li::before{content:"├─ ";color:var(--muted);font-family:var(--mono)}
+.tree ul>li:last-child::before{content:"└─ "}
+.tc{font-variant-numeric:tabular-nums;font-weight:600}
+.tnote{opacity:.75;font-size:.92em}
+
+details.defs{margin-top:18px;border-top:1px solid var(--line);padding-top:12px}
+details.defs summary{cursor:pointer;font-weight:600;color:var(--accent-2)}
+details.defs dl{margin:10px 0 0;display:grid;grid-template-columns:max-content 1fr;gap:4px 14px}
+details.defs dt{font-family:var(--mono);color:var(--ink);font-weight:600}
+details.defs dd{margin:0;color:var(--muted)}
+
+/* A leaf's own rows — the hosts backing its count, and each host's file:line locations.
+   Native <details>, no JS: the whole tree still renders (and expands) with scripting off. */
+details.rows{margin:.3em 0 .2em 1.6em}
+details.rows>summary{cursor:pointer;color:var(--accent-2);font-size:.9em}
+.row{padding:.25em 0 .25em 1em;border-left:2px solid var(--line);margin:.15em 0 .15em .2em;
+  font-size:.92em}
+.rhost{font-family:var(--mono)}
+.rcount{color:var(--muted);font-variant-numeric:tabular-nums}
+.rvendor{color:var(--muted)}
+.verdict{font-family:var(--mono);font-size:.85em;padding:0 .4em;border-radius:4px;
+  border:1px solid var(--line)}
+.rreason{color:var(--muted);font-style:italic}
+details.locs{margin:.2em 0 .2em 1.4em}
+details.locs>summary{cursor:pointer;color:var(--muted);font-size:.88em}
+details.locs>div{font-family:var(--mono);font-size:.85em;color:var(--ink);padding:.1em 0 .1em .4em}
+.rtrunc{color:var(--accent);font-style:italic;padding:.1em 0 .1em .4em}

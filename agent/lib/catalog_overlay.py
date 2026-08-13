@@ -13,6 +13,7 @@ The overlay is additive and git-reviewed (principle 4: the catalog is data, revi
 """
 from __future__ import annotations
 
+import hashlib
 import os
 from pathlib import Path
 
@@ -25,6 +26,7 @@ IDIOMS = "idioms.local.yaml"
 SUNSETS = "sunsets.local.yaml"
 ATTESTATIONS = "attestations.local.yaml"
 SDK_PROFILES = "sdk_profiles.local.yaml"   # client-scoped SDK profiles live in the overlay, not the package
+OWN_DOMAINS = "own_domains.local.yaml"     # confirmed own-infra domains — CLIENT DATA, overlay only
 
 
 def overlay_dir() -> str | None:
@@ -58,3 +60,30 @@ def load_list(name: str) -> list:
         raise ValueError(f"catalog overlay {name} must be a YAML list, "
                          f"got {type(raw).__name__}")
     return raw
+
+
+def overlay_signature() -> str:
+    """A content hash over EVERY file in the overlay directory — not the named overlays one by
+    one, the whole directory. This is what a scan-cache key should fold in alongside the compiled
+    ruleset signature: `own_domains.local.yaml` (own-infra confirmations) changes a repo's
+    classification without changing a single ast-grep rule, so a cache keyed on the ruleset alone
+    stays blind to it — the exact bug that made an `own-domain` verdict through `run --resolve` a
+    silent no-op (a gated, correctly-written overlay entry the re-scan's cache never saw). Hashing
+    the directory rather than enumerating filenames means a FUTURE overlay kind invalidates the
+    cache by construction the day it starts being read during a scan, with no call site needing to
+    remember to add it.
+
+    Deterministic and content-only (never mtime, never file order): '' when the overlay dir is
+    unset, missing, or holds no files, so an unconfigured overlay changes nothing."""
+    d = overlay_dir()
+    if not d or not os.path.isdir(d):
+        return ""
+    h = hashlib.sha256()
+    for p in sorted(Path(d).iterdir()):
+        if not p.is_file():
+            continue
+        h.update(p.name.encode("utf-8"))
+        h.update(b"\0")
+        h.update(p.read_bytes())
+        h.update(b"\0")
+    return h.hexdigest()[:12]

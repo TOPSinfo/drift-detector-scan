@@ -45,7 +45,11 @@ def date_in_text(date_iso: str, text: str) -> bool:
     """The 'verbatim date' check: is the ISO date present in `text` in any common human form?
     A retirement date must appear ON the page it cites — not merely be asserted by the model.
     Converts "the model says the page says <date>" into "the page demonstrably contains <date>."
-    Covers ISO, M/D/Y, D/M/Y, 'Month D, Y', 'D Month Y', 3-letter abbreviations, and ordinals."""
+    Covers ISO, M/D/Y, D/M/Y, 'Month D, Y', 'D Month Y', 3-letter abbreviations, and ordinals.
+
+    Every form must land at a TOKEN BOUNDARY — not merely as a substring of a larger token
+    (a build id, a longer run of digits, ...). Without this, "2026-11-30" matches inside
+    "12026-11-3012", and a compact form like "20261130" matches inside "20261130x"."""
     if not date_iso or not text:
         return False
     try:
@@ -64,7 +68,8 @@ def date_in_text(date_iso: str, text: str) -> bool:
         f"{mon} {d.day}{sfx}, {d.year}", f"{d.day}{sfx} {mon} {d.year}",
         f"{d.day} {mon} {d.year}", f"{d.day} {abbr} {d.year}", f"{d.day:02d} {mon} {d.year}",
     }
-    return any(f in t for f in forms)
+    return any(re.search(r"(?<![A-Za-z0-9])" + re.escape(f.lower()) + r"(?![A-Za-z0-9])", t)
+               for f in forms)
 
 
 class AbsorbRejected(Exception):
