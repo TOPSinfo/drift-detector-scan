@@ -19,7 +19,7 @@ from __future__ import annotations
 
 from datetime import date as _date
 
-from agent.lib import owners
+from agent.lib import owners, own_infra
 
 SCHEMA_VERSION = "drift/v1"
 
@@ -182,6 +182,28 @@ def render_markdown(payload: dict, now: str) -> str:
         summary_rows.append(["Sources unscannable (not read)", counts.get("unscannable", 0)])
     L += _table(["Metric", "Count"], summary_rows)
     L.append("")
+
+    # --- own-infra disclosure: F1. A host tagged own-infra must never just disappear from the
+    # report — this is the one place that names how many were claimed and by which signal. A
+    # git-remote org-domain claim is strong (excluded from the backlog, as before); a repo-name
+    # TOKEN claim is a heuristic (kept queued for research instead — see dashboard_render._coverage),
+    # so the two are counted separately rather than folded into one silent number.
+    own_eps = [e for e in payload.get("endpoints", []) if e.get("hostClass") == "own-infra"]
+    if own_eps:
+        token_claimed = sum(1 for e in own_eps if own_infra.is_token_claim(e.get("ownInfraReason")))
+        domain_claimed = sum(1 for e in own_eps
+                             if e.get("ownInfraReason") and not own_infra.is_token_claim(e.get("ownInfraReason")))
+        other = len(own_eps) - token_claimed - domain_claimed
+        parts = []
+        if domain_claimed:
+            parts.append(f"{domain_claimed} by git-remote org domain")
+        if token_claimed:
+            parts.append(f"{token_claimed} by repo-name token (heuristic — kept queued for research)")
+        if other:
+            parts.append(f"{other} by other signals")
+        L.append(f"_{len(own_eps)} host(s) claimed as a repo's own infrastructure — "
+                 + ", ".join(parts) + "._")
+        L.append("")
 
     # --- findings, split into the two delivery queues (DevOps vs Developer) ---
     # Repo is the FIRST column of every table: the same finding (a vendored SDK, a shared

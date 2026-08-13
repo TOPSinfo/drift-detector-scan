@@ -51,6 +51,30 @@ def test_own_domain_multi_subdomain_is_tagged_own_infra(tmp_path):
     assert by["api.keepa.com"] == "api-lead"      # single-host third party is NOT swept into own-infra
 
 
+def test_repo_token_own_infra_claim_records_a_reason(tmp_path):
+    """F1 reproduction: `rev-hubspot-connector` -> api.hubspot.com. The repo-name TOKEN signal is
+    a heuristic, not the strong git-remote org-domain signal, so the endpoint must carry
+    `ownInfraReason` naming it — the field dashboard_render reads to keep the host queued rather
+    than silently dropping a real third party out of the research backlog."""
+    _write(tmp_path, "a.php", '$r = $client->get("https://api.hubspot.com/crm/v3/objects");\n')
+    out = scan_endpoints([_url("a.php", 1)], str(tmp_path), _VENDORS,
+                         repo_id="git@git.example.com:example-org/rev-hubspot-connector.git")
+    rec = next(e for e in out["endpoints"] if e["domain"] == "api.hubspot.com")
+    assert rec["hostClass"] == "own-infra"          # still marked own-infra for display
+    assert rec.get("ownInfraReason") == "repo token 'hubspot'"
+
+
+def test_org_domain_own_infra_claim_records_a_different_reason(tmp_path):
+    """The strong signal (a self-hosted forge remote) gets its own distinguishable reason, so a
+    reader — or dashboard_render's coverage decision — can tell the two claims apart."""
+    _write(tmp_path, "a.php", '$x=file_get_contents("https://anything.topsdemo.in/x");\n')
+    out = scan_endpoints([_url("a.php", 1)], str(tmp_path), _VENDORS,
+                         repo_id="https://git.topsdemo.in/root/promoteplus-crm.git")
+    rec = next(e for e in out["endpoints"] if e["domain"] == "anything.topsdemo.in")
+    assert rec["hostClass"] == "own-infra"
+    assert rec.get("ownInfraReason") == "git remote org domain 'topsdemo.in'"
+
+
 _MAILGUN = Vendor("Mailgun", "api:mailgun", ("mailgun.net",), DEFAULT_VERSION_REGEX)
 
 
