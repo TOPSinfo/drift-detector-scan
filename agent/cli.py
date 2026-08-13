@@ -470,6 +470,66 @@ def _cmd_research(args) -> int:
     return 0
 
 
+def _cmd_resolve(args) -> int:
+    """The no-queue resolution gate (docs/superpowers/specs/2026-08-13-no-queue-design.md).
+    Two modes:
+
+      resolve --state <dir>                        → print the UNRESOLVED work-list (every
+                                                      endpoint still coverage=='queued' — host,
+                                                      repo, call-sites, why) as JSON. What an AI
+                                                      resolution pass consumes.
+      resolve --state <dir> --apply v.json --now D  → gate-validate every verdict in v.json and,
+                                                      ONLY if every one passes, land it as
+                                                      reviewed overlay data (own-domains /
+                                                      vendors / sunsets under $DRIFT_CATALOG_DIR)
+                                                      that the deterministic scanner re-derives
+                                                      on its next run. One rejected verdict
+                                                      blocks the whole apply — nothing is
+                                                      written. Zero tokens; the AI ran elsewhere,
+                                                      this only validates + records what it found.
+    """
+    if not args.state:
+        print("resolve: --state <dir> is required", file=sys.stderr)
+        return 2
+    drift_path = os.path.join(args.state, "drift.json")
+    if not os.path.exists(drift_path):
+        print(f"resolve: no drift.json in {args.state} — run a scan first", file=sys.stderr)
+        return 3
+    with open(drift_path, encoding="utf-8") as fh:
+        drift = json.load(fh)
+    from agent import resolve as resolve_mod
+    if not args.apply:
+        work = resolve_mod.work_list(drift)
+        print(json.dumps(work, indent=2))
+        print(f"# {len(work)} host(s) unresolved", file=sys.stderr)
+        return 0
+    if not args.now:
+        print("resolve --apply: pass --now <YYYY-MM-DD> (the date you're recording this pass)",
+              file=sys.stderr)
+        return 2
+    with open(args.apply, encoding="utf-8") as fh:
+        payload = json.load(fh)
+    verdicts = payload.get("verdicts", payload) if isinstance(payload, dict) else payload
+    try:
+        result = resolve_mod.apply(verdicts, now=args.now)
+    except resolve_mod.ResolveRejected as exc:
+        print("resolve: GATE REJECTED — nothing was written:", file=sys.stderr)
+        for p in exc.args[0]:
+            print("  •", p, file=sys.stderr)
+        return 3
+    record = {"checked": args.now, "resolved": len(verdicts), "verdicts": verdicts}
+    with open(os.path.join(args.state, "resolution.json"), "w", encoding="utf-8") as fh:
+        json.dump(record, fh, indent=1)
+    w = result["written"]
+    print(f"✓ resolve applied: {w['own_domain']} own-domain, {w['vendor_identity']} "
+          f"vendor-identity, {w['retiring']} retiring, {w['needs_human']} needs-human — "
+          f"written to {os.path.join(args.state, 'resolution.json')}")
+    if w["own_domain"] or w["vendor_identity"] or w["retiring"]:
+        print(f"  overlay updated under {os.environ.get('DRIFT_CATALOG_DIR')}")
+    print("  re-run `run`/`render` on this state to re-derive coverage deterministically.")
+    return 0
+
+
 def _cmd_verify(args) -> int:
     """Check a produced report against itself: do the tiles agree with the tables, does
     the page carry the data the JSON claims, is every row distinguishable?
@@ -1481,6 +1541,12 @@ def main(argv: list[str]) -> int:
     prs.add_argument("--attest")          # catalog mode: YAML file to write `current` attestations into
     prs.add_argument("--now", default=None)
     prs.set_defaults(func=_cmd_research)
+
+    prv = sub.add_parser("resolve")       # the no-queue resolution gate: work-list, or apply gated verdicts
+    prv.add_argument("--state", required=True)
+    prv.add_argument("--apply")           # verdicts.json from an AI resolution pass
+    prv.add_argument("--now", default=None)
+    prv.set_defaults(func=_cmd_resolve)
 
     ppl = sub.add_parser("plan")          # resolve sources + report what WOULD scan
     ppl.add_argument("--root", action="append", required=True)
