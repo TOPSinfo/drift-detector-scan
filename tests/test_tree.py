@@ -165,3 +165,13 @@ def test_md_tree_states_a_null_count_rather_than_printing_zero():
     body = "\n".join(tree.md_tree(tree.build(p)))
     assert "not counted" in body
     assert "0 integrations" not in body
+
+
+def test_null_node_with_no_note_still_shows_its_label():
+    """A null count with no note is not hypothetical — real callers always attach a note today,
+    but the whole point of a null count is to say WHAT is not counted. An unnoted null leaf must
+    never render as a bare, unidentifiable 'not counted'."""
+    node = tree._node("integrations", None)
+    body = "\n".join(tree.md_tree([node]))
+    assert "not counted" in body
+    assert "integrations" in body

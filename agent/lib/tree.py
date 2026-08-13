@@ -81,11 +81,32 @@ def build(payload: dict) -> list:
     return [_node("detected", counts.get("detected"), children=[integrations, assets])]
 
 
+def _sanitize(s) -> str:
+    """Neutralise sequences a label/note could use to escape its own line inside the fenced
+    block: CR/LF (a bare newline could inject a new Markdown line, including a heading) and
+    backtick runs (three or more would close the fence early and let whatever follows render
+    as live Markdown). A rendering concern only — this never rejects a payload, it just makes
+    sure `md_tree`'s output can't stop being the plain text it claims to be. The tree's own
+    `_LABELS` values and node keys are all closed-vocabulary today, so this is a no-op on every
+    real call; it exists for the labels that are not guaranteed closed one layer up."""
+    s = str(s)
+    s = s.replace("\r\n", " ").replace("\r", " ").replace("\n", " ")
+    return s.replace("`", "'")
+
+
+def _fmt(node) -> str:
+    label = _sanitize(node["label"])
+    if node["n"] is None:
+        # A null count with no label would render as a bare, unidentifiable "not counted" —
+        # the whole point of a null count is to say WHAT is not counted.
+        return f"not counted ({label})" if label else "not counted"
+    return f"{node['n']} {label}"
+
+
 def _line(node, prefix, is_last, out):
     branch = "└─ " if is_last else "├─ "
-    n = "not counted" if node["n"] is None else f"{node['n']} {node['label']}"
-    note = f"   ({node['note']})" if node["note"] else ""
-    out.append(f"{prefix}{branch}{n}{note}")
+    note = f"   ({_sanitize(node['note'])})" if node["note"] else ""
+    out.append(f"{prefix}{branch}{_fmt(node)}{note}")
     kids = node["children"]
     for i, k in enumerate(kids):
         _line(k, prefix + ("   " if is_last else "│  "), i == len(kids) - 1, out)
@@ -96,8 +117,7 @@ def md_tree(nodes: list) -> list:
     the shape IS the explanation — a flat list of the same numbers is what failed to communicate."""
     out: list = []
     for root in nodes:
-        head = "not counted" if root["n"] is None else f"{root['n']} {root['label']}"
-        out.append(head)
+        out.append(_fmt(root))
         kids = root["children"]
         for i, k in enumerate(kids):
             _line(k, "", i == len(kids) - 1, out)

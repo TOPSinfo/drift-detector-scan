@@ -295,3 +295,28 @@ def test_markdown_carries_the_coverage_tree():
     assert "detected" in out and "├─" in out
     # sits after the Summary table, before the coverage-verdicts section
     assert out.index("## Summary") < out.index("## Coverage tree") < out.index("## Coverage — what the scan is sure of")
+
+
+def test_coverage_tree_labels_cannot_break_out_of_the_fence():
+    """Reviewer repro: a hostile hostClass label (`own-infra```\\n\\n# INJECTED`) breaks out of
+    the fenced code block and injects arbitrary Markdown into drift.md. Not reachable through
+    classify() today — host_class.classify() only returns closed-VOCAB values — but that
+    guarantee lives one layer away, and the tree is the thing writing the file, so it must
+    render honestly even for a payload it should never see."""
+    hostile = "own-infra```\n\n# INJECTED"
+    p = _payload(counts={**_payload()["counts"],
+                         "detected": 4, "integrations": 1, "excluded": 3, "apis": 1,
+                         "coverage": {"tracked": 1, "queued": 0, "needs-human": 0,
+                                     "blocked": 0, "na": 3}},
+                 endpoints=[{"domain": "h.example.test", "hostClass": hostile, "coverage": "na"}
+                            for _ in range(3)])
+    out = md.render_markdown(p, "2026-07-21")
+    start = out.index("## Coverage tree")
+    end = out.index("## Coverage — what the scan is sure of")
+    section = out[start:end]
+    # exactly the tree's own opening and closing fence — never a third from the hostile label
+    assert section.count("```") == 2
+    # the label's own text may still appear (rendering is honest), but never as an injected
+    # heading on its own line — that's what "broke out of the fence" means
+    assert "\n# INJECTED" not in section
+    assert "\n\n# INJECTED" not in out
