@@ -492,6 +492,9 @@ def _cmd_verify(args) -> int:
         audit = _json.loads(_slurp("audit.json"))
         html = _slurp("dashboard.html")
         drift_md = _slurp("drift.md")
+        # The coverage tree lives on its OWN page (summary.html), not the cockpit — see
+        # agent/lib/summary_render.py. The tree checks below parse THIS, not `html`.
+        summary_html = _slurp("summary.html")
     except OSError as exc:
         print(f"drift verify: nothing to verify — {exc}", file=sys.stderr)
         return 4
@@ -501,9 +504,9 @@ def _cmd_verify(args) -> int:
               (_verify.check_md_matches_payload, (drift_md, payload)),
               (_verify.check_unscannable_surfaced, (drift_md, payload)),
               (_verify.check_mermaid_wellformed, (drift_md,)),
-              (_verify.check_tree_matches_payload, (html, payload)),
-              (_verify.check_tree_parity, (html, drift_md)),
-              (_verify.check_tree_definitions, (html,))]
+              (_verify.check_tree_matches_payload, (summary_html, payload)),
+              (_verify.check_tree_parity, (summary_html, drift_md)),
+              (_verify.check_tree_definitions, (summary_html,))]
     # chart.html is the OPTIONAL online view: absent is fine, but if present its embedded
     # payload must equal drift.json exactly — the charts must draw from the real data.
     try:
@@ -534,7 +537,7 @@ def _cmd_verify(args) -> int:
     n = payload.get("counts", {})
     print(f"✓ report is self-consistent — {n.get('sunsets', 0)} sunsets, "
           f"{n.get('eol', 0)} eol, {n.get('unaudited', 0)} unaudited-vendor(s); "
-          f"drift.md, dashboard.html and drift.json all agree")
+          f"drift.md, summary.html, dashboard.html and drift.json all agree")
     return 0
 
 

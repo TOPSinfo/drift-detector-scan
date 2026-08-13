@@ -377,11 +377,15 @@ def test_drift_verify_cli_passes_clean_and_fails_tampered(tmp_path, capsys):
     from agent.cli import main
     from agent.lib.dashboard_render import render_payload
     from agent.lib.md_render import render_markdown
+    from agent.lib.summary_render import render_summary
     payload, _ = _real_payload()
     (tmp_path / "drift.json").write_text(json.dumps(payload, indent=2))
     (tmp_path / "audit.json").write_text(json.dumps({"findings": TWELVE}))
     (tmp_path / "dashboard.html").write_text(render_payload(payload, "2026-07-20"))
     (tmp_path / "drift.md").write_text(render_markdown(payload, "2026-07-20"))
+    # summary.html is where the tree checks (tree-sums/tree-payload/...) now run — see
+    # agent/cli.py's verify command and agent/lib/summary_render.py.
+    (tmp_path / "summary.html").write_text(render_summary(payload, "2026-07-20"))
 
     assert main(["verify", "--state", str(tmp_path)]) == 0
 

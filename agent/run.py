@@ -14,6 +14,7 @@ from agent.audit import audit_inventory
 from agent.lib.chart_render import render_chart
 from agent.lib.dashboard_render import build_payload, build_bundle, render_payload
 from agent.lib.md_render import render_markdown
+from agent.lib.summary_render import render_summary
 from agent.lib.findings_state import apply_lifecycle
 from agent.lib.repo_discovery import discover_repos
 from agent.lib.http_util import default_http
@@ -58,14 +59,17 @@ def run_pipeline(roots, state_dir, now, *, pull=False,
     audit = audit_inventory(doc, now, http=http) if http else audit_inventory(doc, now)
     apply_lifecycle(audit, state_dir, now)
     _write_json(os.path.join(state_dir, "audit.json"), audit)
-    # ONE payload, four sinks that cannot disagree:
+    # ONE payload, five sinks that cannot disagree:
     #   drift.json     the canonical machine-readable report (the "spec")
     #   drift.md       the primary, agent-readable view (a verified projection)
+    #   summary.html   the default HUMAN view: coverage tree + glossary + headline numbers,
+    #                  no JavaScript — readable in seconds, unlike the cockpit below
     #   dashboard.html a self-contained viewer (embeds the same payload, offline/CDN-free)
     #   chart.html     an ONLINE chart view — same embedded payload, Chart.js from a CDN
     payload = build_payload(doc, audit, diff=scan["diff"], gitlab_hosts=gitlab_hosts)
     _write_json(os.path.join(state_dir, "drift.json"), payload)
     _write(os.path.join(state_dir, "drift.md"), render_markdown(payload, now))
+    _write(os.path.join(state_dir, "summary.html"), render_summary(payload, now))
     # AI tiers (all optional): if a pass wrote its document into this state, surface it in the AI
     # Frontier tab. Each rides as its OWN blob so the certified drift-data stays byte-identical —
     # the mechanical proof the AI tiers cannot touch the certified one.
