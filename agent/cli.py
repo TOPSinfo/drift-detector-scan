@@ -506,7 +506,8 @@ def _cmd_verify(args) -> int:
               (_verify.check_mermaid_wellformed, (drift_md,)),
               (_verify.check_tree_matches_payload, (summary_html, payload)),
               (_verify.check_tree_parity, (summary_html, drift_md)),
-              (_verify.check_tree_definitions, (summary_html,))]
+              (_verify.check_tree_definitions, (summary_html,)),
+              (_verify.check_summary_headline, (summary_html, payload))]
     # chart.html is the OPTIONAL online view: absent is fine, but if present its embedded
     # payload must equal drift.json exactly — the charts must draw from the real data.
     try:

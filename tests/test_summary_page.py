@@ -13,6 +13,9 @@ carries what those checks parse, and that dashboard.html no longer duplicates th
 """
 import re
 
+import pytest
+
+from agent.lib import verify
 from agent.lib.dashboard_render import render_payload
 from agent.lib.summary_render import render_summary
 
@@ -81,12 +84,13 @@ def test_a_hostile_hostclass_is_escaped():
 
 def test_headline_numbers_are_read_from_the_real_counts_keys():
     """fixes/sunsets/pastDue/unaudited — the real key names in payload['counts'], not
-    guessed/renamed ones."""
+    guessed/renamed ones. Each tile also carries a `data-count` binding (task-5b Finding 1)
+    so the value the reader sees is machine-checkable, not just plausible-looking."""
     page = render_summary(_payload(), "2026-08-13")
-    assert re.search(r"<dd>4</dd>", page)   # fixes
-    assert re.search(r"<dd>2</dd>", page)   # sunsets
-    assert re.search(r"<dd>1</dd>", page)   # pastDue
-    assert re.search(r"<dd>5</dd>", page)   # unaudited
+    assert re.search(r'<dd data-count="fixes">4</dd>', page)
+    assert re.search(r'<dd data-count="sunsets">2</dd>', page)
+    assert re.search(r'<dd data-count="pastDue">1</dd>', page)
+    assert re.search(r'<dd data-count="unaudited">5</dd>', page)
 
 
 def test_meta_line_carries_repo_count_and_generated_date():
@@ -100,3 +104,72 @@ def test_dashboard_no_longer_carries_the_tree():
     page = render_payload(_payload(), "2026-08-13")
     assert 'id="coverage-tree"' not in page
     assert '<ul class="tree"' not in page
+
+
+# ---------------------------------------------------------------------------------------
+# Fix round 1, Finding 1 — the headline tiles carried no machine-readable binding to
+# payload["counts"], so `verify` never noticed a hand-tampered digit. Reproduce the exact
+# bugs the review flagged (a tampered <dd>, a tampered repo count), then require
+# `verify.check_summary_headline` to catch them.
+# ---------------------------------------------------------------------------------------
+
+def test_a_faithful_summary_page_passes_the_headline_check():
+    page = render_summary(_payload(), "2026-08-13")
+    verify.check_summary_headline(page, _payload())   # no raise
+
+
+def test_tampering_the_unaudited_tile_is_caught():
+    """Verified bug: hand-editing <dd>5</dd> -> <dd>0</dd> for Unaudited used to leave
+    `verify` green."""
+    page = render_summary(_payload(), "2026-08-13")
+    tampered = page.replace('<dd data-count="unaudited">5</dd>', '<dd data-count="unaudited">0</dd>')
+    assert tampered != page
+    with pytest.raises(verify.Violation) as e:
+        verify.check_summary_headline(tampered, _payload())
+    assert e.value.check == "summary-headline"
+
+
+def test_tampering_the_repo_count_is_caught():
+    """Verified bug: '1 repo(s)' -> '99 repo(s)' used to leave `verify` green."""
+    page = render_summary(_payload(), "2026-08-13")
+    tampered = page.replace('<span data-count="reposScanned">3</span>',
+                            '<span data-count="reposScanned">99</span>')
+    assert tampered != page
+    with pytest.raises(verify.Violation) as e:
+        verify.check_summary_headline(tampered, _payload())
+    assert e.value.check == "summary-headline"
+
+
+def test_false_red_sweep_headline_check_stays_green_on_honest_shapes():
+    """The check must never fire on an honest report, including payload shapes that legally
+    lack a counts key (a legacy payload, an empty payload) — an absent count is 'not counted',
+    not a violation. Mirrors the sweep in test_verify_tree.py for the tree checks."""
+    cases = {}
+    cases["full payload"] = _payload()
+    p = _payload(); del p["counts"]["unaudited"]
+    cases["legacy payload, missing 'unaudited' key"] = p
+    cases["empty payload"] = {}
+    p = _payload(); p["counts"] = {**p["counts"], "fixes": 0, "sunsets": 0, "pastDue": 0,
+                                   "unaudited": 0, "reposScanned": 0}
+    cases["all-zero counts"] = p
+    p = _payload(); p["counts"] = {**p["counts"], "fixes": None, "sunsets": None,
+                                   "pastDue": None, "unaudited": None, "reposScanned": None}
+    cases["null-count headline"] = p
+    p = _payload_with_unmapped_hostclass()
+    cases["unmapped hostClass"] = p
+
+    for name, payload in cases.items():
+        page = render_summary(payload, "2026-08-13")
+        try:
+            verify.check_summary_headline(page, payload)
+        except verify.Violation as v:
+            pytest.fail(f"false RED on {name!r}: [{v.check}] {v.detail}")
+
+
+def _payload_with_unmapped_hostclass():
+    p = _payload()
+    p["endpoints"] = p["endpoints"] + [{"domain": "h99.mystery.test", "hostClass": "mystery-class",
+                                        "coverage": "na"}]
+    p["counts"] = {**p["counts"], "excluded": p["counts"]["excluded"] + 1,
+                   "detected": p["counts"]["detected"] + 1}
+    return p
