@@ -33,8 +33,8 @@ def test_own_infra_claims_are_named_not_silent():
     p = _payload(endpoints=[
         {"domain": "api.hubspot.com", "hostClass": "own-infra", "classified": False,
          "ownInfraReason": "repo token 'hubspot'"},
-        {"domain": "anything.topsdemo.in", "hostClass": "own-infra", "classified": False,
-         "ownInfraReason": "git remote org domain 'topsdemo.in'"},
+        {"domain": "anything.devhost.io", "hostClass": "own-infra", "classified": False,
+         "ownInfraReason": "git remote org domain 'devhost.io'"},
     ])
     out = md.render_markdown(p, "2026-07-21")
     assert "2 host(s) claimed as a repo's own infrastructure" in out
@@ -279,3 +279,44 @@ def test_a_pipe_in_an_unscannable_reason_is_escaped():
                  counts={**_payload()["counts"], "unscannable": 1})
     out = md.render_markdown(p, "2026-07-21")
     assert "bad \\| reason" in out
+
+
+# ------------------------------------------------- the coverage tree
+def test_markdown_carries_the_coverage_tree():
+    """The tree is a projection like every other surface: rendered from the payload here (not
+    the browser) so `verify` can check it against drift.json. This file has no dedicated
+    counts.coverage fixture, so build one inline mirroring a real scan's shape."""
+    p = _payload(counts={**_payload()["counts"],
+                         "detected": 73, "integrations": 30, "excluded": 43, "apis": 21,
+                         "coverage": {"tracked": 27, "queued": 3, "needs-human": 0,
+                                     "blocked": 0, "na": 43}})
+    out = md.render_markdown(p, "2026-07-21")
+    assert "## Coverage tree" in out
+    assert "detected" in out and "├─" in out
+    # sits after the Summary table, before the coverage-verdicts section
+    assert out.index("## Summary") < out.index("## Coverage tree") < out.index("## Coverage — what the scan is sure of")
+
+
+def test_coverage_tree_labels_cannot_break_out_of_the_fence():
+    """Reviewer repro: a hostile hostClass label (`own-infra```\\n\\n# INJECTED`) breaks out of
+    the fenced code block and injects arbitrary Markdown into drift.md. Not reachable through
+    classify() today — host_class.classify() only returns closed-VOCAB values — but that
+    guarantee lives one layer away, and the tree is the thing writing the file, so it must
+    render honestly even for a payload it should never see."""
+    hostile = "own-infra```\n\n# INJECTED"
+    p = _payload(counts={**_payload()["counts"],
+                         "detected": 4, "integrations": 1, "excluded": 3, "apis": 1,
+                         "coverage": {"tracked": 1, "queued": 0, "needs-human": 0,
+                                     "blocked": 0, "na": 3}},
+                 endpoints=[{"domain": "h.example.test", "hostClass": hostile, "coverage": "na"}
+                            for _ in range(3)])
+    out = md.render_markdown(p, "2026-07-21")
+    start = out.index("## Coverage tree")
+    end = out.index("## Coverage — what the scan is sure of")
+    section = out[start:end]
+    # exactly the tree's own opening and closing fence — never a third from the hostile label
+    assert section.count("```") == 2
+    # the label's own text may still appear (rendering is honest), but never as an injected
+    # heading on its own line — that's what "broke out of the fence" means
+    assert "\n# INJECTED" not in section
+    assert "\n\n# INJECTED" not in out

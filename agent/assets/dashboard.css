@@ -273,3 +273,5 @@ td.orig { width:1%; }
 .tierkey b { color:var(--ink); }
 .tierkey .orig { vertical-align:baseline; }
 .verifyline { margin-top:8px; font-size:12px; }
+/* The coverage tree moved to its own bare-bones page (summary.html / summary.css). It no
+   longer has a section in this stylesheet — one tree, one stylesheet. */

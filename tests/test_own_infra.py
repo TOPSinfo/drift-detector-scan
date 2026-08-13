@@ -12,21 +12,21 @@ from agent.lib import own_infra
 
 
 def _sig():
-    return own_infra.signals(repo_path="/srv/checkouts/promoteplus-crm",
-                             repo_id="https://git.topsdemo.in/root/promoteplus-crm.git")
+    return own_infra.signals(repo_path="/srv/checkouts/zenithapp-crm",
+                             repo_id="https://git.devhost.io/root/zenithapp-crm.git")
 
 
 def test_repo_name_token_catches_the_clients_own_hosts():
     sig = _sig()
-    assert sig["tokens"] == {"promoteplus"}          # `crm` is generic and too short
-    for host in ("crm.promoteplus.ai", "promotepluscdn.com", "qa-promoteplus-idx.topsdemo.in"):
+    assert sig["tokens"] == {"zenithapp"}          # `crm` is generic and too short
+    for host in ("crm.zenithapp.io", "zenithappcdn.com", "qa-zenithapp-idx.devhost.io"):
         assert own_infra.is_own(host, sig), host
 
 
 def test_self_hosted_forge_domain_is_own_infra():
     sig = _sig()
-    assert "topsdemo.in" in sig["domains"]
-    assert own_infra.is_own("anything.topsdemo.in", sig)
+    assert "devhost.io" in sig["domains"]
+    assert own_infra.is_own("anything.devhost.io", sig)
 
 
 def test_a_public_forge_is_never_treated_as_own_infra():
@@ -78,15 +78,15 @@ def test_short_and_generic_names_yield_no_token():
 
 def test_no_signals_means_no_claims():
     sig = own_infra.signals()
-    assert sig == {"tokens": set(), "domains": set()}
-    assert not own_infra.is_own("crm.promoteplus.ai", sig)
+    assert sig == {"tokens": set(), "domains": set(), "confirmed": set()}
+    assert not own_infra.is_own("crm.zenithapp.io", sig)
 
 
 def test_vendor_named_repo_does_not_suppress_that_vendors_host():
     """A repo literally named after its vendor (`acme-mailgun-sync`) must not swallow that
     vendor's host once the caller supplies the vendor-name tokens."""
     sig = own_infra.signals(repo_path="/srv/acme-mailgun-sync",
-                            repo_id="https://git.topsdemo.in/root/acme-mailgun-sync.git",
+                            repo_id="https://git.devhost.io/root/acme-mailgun-sync.git",
                             vendor_tokens=frozenset({"mailgun"}))
     assert "mailgun" not in sig["tokens"]
     assert not own_infra.is_own("api.mailgun.net", sig)
@@ -140,7 +140,7 @@ def test_bare_two_label_public_suffix_remote_yields_no_domain():
 def test_genuine_org_domains_still_resolve_correctly():
     """The general rule must not swallow real organisation domains — only the public-suffix
     label pair is special-cased, the label above it still comes through."""
-    assert own_infra.signals(repo_id="https://git.topsdemo.in/root/x.git")["domains"] == {"topsdemo.in"}
+    assert own_infra.signals(repo_id="https://git.devhost.io/root/x.git")["domains"] == {"devhost.io"}
     assert own_infra.signals(repo_id="https://git.acme.co.uk/root/x.git")["domains"] == {"acme.co.uk"}
 
 
@@ -152,7 +152,7 @@ def test_repo_token_that_contains_a_vendor_token_is_also_dropped():
     name; over-dropping is the SAFE direction, since a dropped token just leaves the host
     visible in the queue, whereas a kept one deletes a real vendor from the backlog."""
     sig = own_infra.signals(repo_path="/srv/acme-globalpaymentsapi-bridge",
-                            repo_id="https://git.topsdemo.in/root/acme-globalpaymentsapi-bridge.git",
+                            repo_id="https://git.devhost.io/root/acme-globalpaymentsapi-bridge.git",
                             vendor_tokens=frozenset({"globalpayments"}))
     assert "globalpaymentsapi" not in sig["tokens"]
     assert not own_infra.is_own("api.globalpayments.com", sig)
@@ -163,9 +163,9 @@ def test_reason_names_the_signal_and_the_matched_value():
     The exact wording is a contract other modules (dashboard_render, md_render) parse via
     `is_token_claim`, so it is pinned here."""
     sig = _sig()
-    assert own_infra.reason("crm.promoteplus.ai", sig) == "repo token 'promoteplus'"
-    dsig = own_infra.signals(repo_id="https://git.topsdemo.in/root/promoteplus-crm.git")
-    assert own_infra.reason("anything.topsdemo.in", dsig) == "git remote org domain 'topsdemo.in'"
+    assert own_infra.reason("crm.zenithapp.io", sig) == "repo token 'zenithapp'"
+    dsig = own_infra.signals(repo_id="https://git.devhost.io/root/zenithapp-crm.git")
+    assert own_infra.reason("anything.devhost.io", dsig) == "git remote org domain 'devhost.io'"
 
 
 def test_reason_is_none_when_no_signal_claims_the_host():
@@ -176,8 +176,8 @@ def test_reason_is_none_when_no_signal_claims_the_host():
 def test_is_token_claim_distinguishes_the_weak_signal():
     """The distinction F1 hinges on: a token claim is a heuristic on the repo's own name and must
     not be treated the same as the strong git-remote org-domain claim."""
-    assert own_infra.is_token_claim("repo token 'promoteplus'")
-    assert not own_infra.is_token_claim("git remote org domain 'topsdemo.in'")
+    assert own_infra.is_token_claim("repo token 'zenithapp'")
+    assert not own_infra.is_token_claim("git remote org domain 'devhost.io'")
     assert not own_infra.is_token_claim(None)
     assert not own_infra.is_token_claim("")
 

@@ -5,13 +5,17 @@ client's staging box must never be written into it. They also cannot be pattern-
 `cdn.*` / `qa-*` heuristic would claim a genuine third-party CDN, which is the false confidence
 this tool exists to refuse. So they are DERIVED, per scan, from what the repo already tells us.
 
-Two signals, both taken from the repo's own identity:
+Three signals:
 
-  token    the repo's name contributes a distinctive token (`promoteplus-crm` -> `promoteplus`),
-           and a host containing it is that project's own box.
-  domain   a SELF-HOSTED forge remote (git.acme.internal/...) names the organisation's own
-           domain. Public forges are excluded — a github.com remote says nothing about who owns
-           api.github.com.
+  token      the repo's name contributes a distinctive token (`zenithapp-crm` -> `zenithapp`),
+             and a host containing it is that project's own box.
+  domain     a SELF-HOSTED forge remote (git.acme.internal/...) names the organisation's own
+             domain. Public forges are excluded — a github.com remote says nothing about who owns
+             api.github.com.
+  confirmed  a reviewed entry from the own-domains overlay (agent/lib/own_domains.py) — an AI
+             resolution pass's claim that survived a gate, not derived from the repo at all. It
+             matches STRONG, like `domain` (exact host or subdomain suffix), never like a token
+             substring: see docs/superpowers/specs/2026-08-13-no-queue-design.md.
 
 Config-derived inference (APP_URL, composer/package name) was measured on a real repo and
 rejected: APP_URL was `http://localhost` and the composer name was the framework default
@@ -129,14 +133,22 @@ def _registrable(host: str) -> str:
     return two
 
 
-def signals(repo_path: str = "", repo_id: str = "", vendor_tokens: frozenset = frozenset()) -> dict:
-    """{'tokens', 'domains'} — everything derivable about this repo's own identity.
+def signals(repo_path: str = "", repo_id: str = "", vendor_tokens: frozenset = frozenset(),
+           confirmed: frozenset = frozenset()) -> dict:
+    """{'tokens', 'domains', 'confirmed'} — everything derivable about this repo's own identity.
 
     `repo_path` is the checkout directory; `repo_id` is the git remote (or the identity string
     `scope_edges.identity` normalises), either of which may be absent. `vendor_tokens` is the
     set of vendor-name tokens the caller (which owns the catalog — this module deliberately does
     not load one) already knows about; any derived token that collides with one is dropped, so a
     repo named after its own vendor (`acme-mailgun-sync`) cannot suppress that vendor's host.
+
+    `confirmed` is the set of domains an own-domains overlay entry (agent/lib/own_domains.py)
+    already scoped to THIS repo — the caller (endpoints.scan_endpoints) does that scoping, this
+    function only classifies. The SAME vendor-collision guard applies: a confirmed domain that
+    names a catalogued vendor is dropped here, non-negotiably — see module docstring and
+    docs/superpowers/specs/2026-08-13-no-queue-design.md's "Risks" section. Callers must never
+    route around this by constructing `domains` from unreviewed data instead.
     """
     tokens = _tokens(os.path.basename((repo_path or "").rstrip("/")))
     domains: set = set()
@@ -159,22 +171,34 @@ def signals(repo_path: str = "", repo_id: str = "", vendor_tokens: frozenset = f
     tokens = {t for t in tokens
               if t not in vendor_tokens
               and not any(len(vt) >= _MIN_TOKEN and vt in t for vt in vendor_tokens)}
-    return {"tokens": tokens, "domains": domains}
+    # The non-negotiable guard, restated for the overlay: a REVIEWED confirmed domain gets no
+    # more trust than a repo-derived token when it collides with a catalogued vendor's name —
+    # the vendor always wins. Same equality-or-contains check as the token guard above, same
+    # over-dropping-is-safe reasoning (a dropped confirmation leaves the host visible for a
+    # human/AI to re-triage; a kept one silently deletes a real vendor from the audit backlog).
+    confirmed_domains = {d.lower() for d in confirmed
+                         if d and d.lower() not in vendor_tokens
+                         and not any(len(vt) >= _MIN_TOKEN and vt in d.lower() for vt in vendor_tokens)}
+    return {"tokens": tokens, "domains": domains, "confirmed": confirmed_domains}
 
 
 def _claim(host: str, sig: dict):
-    """The strongest signal claiming `host`: `("domain", value)` or `("token", value)`, or None
-    if neither fires. Domain is checked first — it is the git-remote org domain, a strong claim
-    (a self-hosted forge's own identity); token is the repo-name heuristic, weaker (see the
-    module docstring). `is_own` doesn't care which one matched; `reason` does, so callers that
-    must treat the two differently (F1: a token claim is not strong enough to drop a host out of
-    the research backlog, only a domain claim is) can tell them apart."""
+    """The strongest signal claiming `host`: `("domain", value)`, `("confirmed", value)`, or
+    `("token", value)`, or None if none fire. `domain` and `confirmed` are checked first — both
+    are strong claims (a self-hosted forge's own identity; a reviewed overlay confirmation) —
+    `token` is the repo-name heuristic, weaker (see the module docstring). `is_own` doesn't care
+    which one matched; `reason` does, so callers that must treat them differently (F1: a token
+    claim is not strong enough to drop a host out of the research backlog, only a strong claim
+    is) can tell them apart."""
     h = (host or "").lower()
     if not h:
         return None
     for d in sig.get("domains") or ():
         if h == d or h.endswith("." + d):
             return ("domain", d)
+    for d in sig.get("confirmed") or ():
+        if h == d or h.endswith("." + d):
+            return ("confirmed", d)
     for t in sig.get("tokens") or ():
         if t in h:
             return ("token", t)
@@ -186,13 +210,14 @@ def is_own(host: str, sig: dict) -> bool:
     return _claim(host, sig) is not None
 
 
-_REASON_LABEL = {"domain": "git remote org domain", "token": "repo token"}
+_REASON_LABEL = {"domain": "git remote org domain", "token": "repo token",
+                 "confirmed": "confirmed own domain"}
 
 
 def reason(host: str, sig: dict) -> str | None:
     """A human-readable description of WHY `host` was claimed as own-infra, naming the exact
-    signal and the value that matched it — e.g. "repo token 'promoteplus'" or "git remote org
-    domain 'topsdemo.in'". None when no signal claims the host. This is what lets a caller (and a
+    signal and the value that matched it — e.g. "repo token 'zenithapp'" or "git remote org
+    domain 'devhost.io'". None when no signal claims the host. This is what lets a caller (and a
     report reader) see the claim instead of a silent disappearance — recorded on the endpoint
     record as `ownInfraReason` (see agent/lib/endpoints.py)."""
     claim = _claim(host, sig)

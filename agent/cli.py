@@ -90,6 +90,30 @@ def _cmd_run(args) -> int:
     if not roots:
         print("run: no repos to scan — pass --root or a --config with a fleet", file=sys.stderr)
         return 2
+    resolve_verdicts = None
+    if getattr(args, "resolve", None):
+        try:
+            with open(args.resolve, encoding="utf-8") as fh:
+                resolve_payload = json.load(fh)
+        except OSError as exc:
+            print(f"run: --resolve {args.resolve!r} could not be read — {exc}", file=sys.stderr)
+            return 2
+        except ValueError as exc:      # json.JSONDecodeError
+            print(f"run: --resolve {args.resolve!r} is not valid JSON — {exc}", file=sys.stderr)
+            return 2
+        # same unwrap `resolve --apply` uses: a bare verdicts list, or {"verdicts": [...]}
+        # (exactly the shape `resolve --apply` writes to resolution.json)
+        resolve_verdicts = (resolve_payload.get("verdicts", resolve_payload)
+                            if isinstance(resolve_payload, dict) else resolve_payload)
+        # A JSON *string* (or number/bool) unwraps to itself above, and `resolve.check_verdicts`
+        # happily iterates it — a string iterates its CHARACTERS, so a plain-text --resolve file
+        # used to fail deep inside the gate with a baffling `verdict #1 ('e'): not a mapping`
+        # instead of a clear, immediate refusal naming the actual problem.
+        if not isinstance(resolve_verdicts, list):
+            print(f"run: --resolve {args.resolve!r} must contain a list of verdicts (or "
+                  f"{{'verdicts': [...]}}), got {type(resolve_verdicts).__name__}",
+                  file=sys.stderr)
+            return 2
     progress = None
     if getattr(args, "progress", False):
         print("drift-detector · scan → audit → deliver (deterministic · 0 LLM tokens)",
@@ -100,7 +124,7 @@ def _cmd_run(args) -> int:
     try:
         out = run_pipeline(roots, args.state, args.now,
                            pull=getattr(args, "pull", False), progress=progress,
-                           gitlab_hosts=gitlab_hosts)
+                           gitlab_hosts=gitlab_hosts, resolve=resolve_verdicts)
     except RuntimeError as exc:
         print(f"run failed: {exc}", file=sys.stderr)
         return 2
@@ -119,6 +143,34 @@ def _cmd_run(args) -> int:
     # or unreachable root buried in a good run must not disappear.
     for u in (out.get("rootsUnscannable") or []):
         print(f"⚠ skipped: {u['reason']}", file=sys.stderr)
+
+    # Distinct, non-zero exit codes for the non-clean `--resolve` outcomes: without these an
+    # automated caller had no way to tell "resolved" from "refused" short of scraping stderr —
+    # `run` exited 0 either way. Separate from (and checked before) the --fail-on-deprecated
+    # gate below, which can still tighten this further (exit 3/4) but never loosens it back to 0.
+    resolve_rc = 0
+    rr = out.get("resolve")
+    if rr and rr["status"] == "applied":
+        w = rr["written"]
+        print(f"✓ resolve applied: {w['own_domain']} own-domain, {w['vendor_identity']} "
+              f"vendor-identity, {w['retiring']} retiring, {w['needs_human']} needs-human — "
+              f"re-scanned; drift.json reflects the re-scan", file=sys.stderr)
+    elif rr and rr["status"] == "rejected":
+        print("⚠ resolve: GATE REJECTED — nothing was applied, drift.json reflects the scan "
+              "BEFORE resolution:", file=sys.stderr)
+        for p in rr["problems"]:
+            print("  •", p, file=sys.stderr)
+        resolve_rc = 5                     # 'refused' must be distinguishable from 'resolved'
+    elif rr and rr["status"] == "degraded":
+        w = rr["written"]
+        print(f"⚠ resolve: applied ({w['own_domain']} own-domain, {w['vendor_identity']} "
+              f"vendor-identity, {w['retiring']} retiring) but the RE-SCAN failed "
+              f"({rr['detail']}) — drift.json reflects the scan BEFORE resolution; the catalog "
+              f"overlay was still updated, so a plain re-run will pick it up", file=sys.stderr)
+        resolve_rc = 6                     # 'partially applied, re-scan blew up' — its own code
+    elif rr and rr["status"] == "error":
+        print(f"⚠ resolve: could not apply the verdicts ({rr['detail']}) — drift.json reflects "
+              f"the scan BEFORE resolution", file=sys.stderr)
 
     # record where this run wrote, so `drift-scan clean --all` can later find the scattered
     # <folder>/.drift-detector dirs without a $HOME-wide search. Best-effort; never fails a scan.
@@ -150,7 +202,7 @@ def _cmd_run(args) -> int:
             print(f"✗ gate: {c['DEPRECATED']} DEPRECATED finding(s) (excluding muted) — failing (exit 3)",
                   file=sys.stderr)
             return 3
-    return 0
+    return resolve_rc
 
 
 def _cmd_clean(args) -> int:
@@ -470,6 +522,66 @@ def _cmd_research(args) -> int:
     return 0
 
 
+def _cmd_resolve(args) -> int:
+    """The no-queue resolution gate (docs/superpowers/specs/2026-08-13-no-queue-design.md).
+    Two modes:
+
+      resolve --state <dir>                        → print the UNRESOLVED work-list (every
+                                                      endpoint still coverage=='queued' — host,
+                                                      repo, call-sites, why) as JSON. What an AI
+                                                      resolution pass consumes.
+      resolve --state <dir> --apply v.json --now D  → gate-validate every verdict in v.json and,
+                                                      ONLY if every one passes, land it as
+                                                      reviewed overlay data (own-domains /
+                                                      vendors / sunsets under $DRIFT_CATALOG_DIR)
+                                                      that the deterministic scanner re-derives
+                                                      on its next run. One rejected verdict
+                                                      blocks the whole apply — nothing is
+                                                      written. Zero tokens; the AI ran elsewhere,
+                                                      this only validates + records what it found.
+    """
+    if not args.state:
+        print("resolve: --state <dir> is required", file=sys.stderr)
+        return 2
+    drift_path = os.path.join(args.state, "drift.json")
+    if not os.path.exists(drift_path):
+        print(f"resolve: no drift.json in {args.state} — run a scan first", file=sys.stderr)
+        return 3
+    with open(drift_path, encoding="utf-8") as fh:
+        drift = json.load(fh)
+    from agent import resolve as resolve_mod
+    if not args.apply:
+        work = resolve_mod.work_list(drift)
+        print(json.dumps(work, indent=2))
+        print(f"# {len(work)} host(s) unresolved", file=sys.stderr)
+        return 0
+    if not args.now:
+        print("resolve --apply: pass --now <YYYY-MM-DD> (the date you're recording this pass)",
+              file=sys.stderr)
+        return 2
+    with open(args.apply, encoding="utf-8") as fh:
+        payload = json.load(fh)
+    verdicts = payload.get("verdicts", payload) if isinstance(payload, dict) else payload
+    try:
+        result = resolve_mod.apply(verdicts, now=args.now)
+    except resolve_mod.ResolveRejected as exc:
+        print("resolve: GATE REJECTED — nothing was written:", file=sys.stderr)
+        for p in exc.args[0]:
+            print("  •", p, file=sys.stderr)
+        return 3
+    record = {"checked": args.now, "resolved": len(verdicts), "verdicts": verdicts}
+    with open(os.path.join(args.state, "resolution.json"), "w", encoding="utf-8") as fh:
+        json.dump(record, fh, indent=1)
+    w = result["written"]
+    print(f"✓ resolve applied: {w['own_domain']} own-domain, {w['vendor_identity']} "
+          f"vendor-identity, {w['retiring']} retiring, {w['needs_human']} needs-human — "
+          f"written to {os.path.join(args.state, 'resolution.json')}")
+    if w["own_domain"] or w["vendor_identity"] or w["retiring"]:
+        print(f"  overlay updated under {os.environ.get('DRIFT_CATALOG_DIR')}")
+    print("  re-run `run`/`render` on this state to re-derive coverage deterministically.")
+    return 0
+
+
 def _cmd_verify(args) -> int:
     """Check a produced report against itself: do the tiles agree with the tables, does
     the page carry the data the JSON claims, is every row distinguishable?
@@ -492,6 +604,9 @@ def _cmd_verify(args) -> int:
         audit = _json.loads(_slurp("audit.json"))
         html = _slurp("dashboard.html")
         drift_md = _slurp("drift.md")
+        # The coverage tree lives on its OWN page (summary.html), not the cockpit — see
+        # agent/lib/summary_render.py. The tree checks below parse THIS, not `html`.
+        summary_html = _slurp("summary.html")
     except OSError as exc:
         print(f"drift verify: nothing to verify — {exc}", file=sys.stderr)
         return 4
@@ -500,7 +615,12 @@ def _cmd_verify(args) -> int:
     checks = [(_verify.check_blob_matches_payload, (html, _json.dumps(payload))),
               (_verify.check_md_matches_payload, (drift_md, payload)),
               (_verify.check_unscannable_surfaced, (drift_md, payload)),
-              (_verify.check_mermaid_wellformed, (drift_md,))]
+              (_verify.check_mermaid_wellformed, (drift_md,)),
+              (_verify.check_tree_matches_payload, (summary_html, payload)),
+              (_verify.check_tree_parity, (summary_html, drift_md)),
+              (_verify.check_tree_definitions, (summary_html,)),
+              (_verify.check_tree_rows, (summary_html, payload)),
+              (_verify.check_summary_headline, (summary_html, payload))]
     # chart.html is the OPTIONAL online view: absent is fine, but if present its embedded
     # payload must equal drift.json exactly — the charts must draw from the real data.
     try:
@@ -531,7 +651,7 @@ def _cmd_verify(args) -> int:
     n = payload.get("counts", {})
     print(f"✓ report is self-consistent — {n.get('sunsets', 0)} sunsets, "
           f"{n.get('eol', 0)} eol, {n.get('unaudited', 0)} unaudited-vendor(s); "
-          f"drift.md, dashboard.html and drift.json all agree")
+          f"drift.md, summary.html, dashboard.html and drift.json all agree")
     return 0
 
 
@@ -1282,12 +1402,19 @@ def _cmd_adhoc_report(args) -> int:
 
 
 def _cmd_render(args) -> int:
-    """Re-render dashboard.html from the state dir: the certified drift.json + optional AI-tier docs
-    (adhoc.json / leads.json). The certified `drift-data` blob is byte-identical to run.py's render,
-    so `verify` stays green — the AI tiers are strictly additive, never a change to the certified one.
-    This is the seam that lets the ad-hoc pass (a second scan) fold its tier into the ONE cockpit."""
+    """Re-render dashboard.html AND summary.html from the state dir: the certified drift.json +
+    optional AI-tier docs (adhoc.json / leads.json) for the cockpit. The certified `drift-data`
+    blob is byte-identical to run.py's render, so `verify` stays green — the AI tiers are
+    strictly additive, never a change to the certified one. This is the seam that lets the
+    ad-hoc pass (a second scan) fold its tier into the ONE cockpit.
+
+    summary.html is included because `verify` now REQUIRES it (task-5b Finding 2): a state dir
+    predating that change, or one hand-staged with just drift.json, used to leave `render` unable
+    to produce the one file `verify` was naming as missing — the obvious repair did not repair.
+    """
     import json as _json
     from agent.lib.dashboard_render import build_bundle, render_payload
+    from agent.lib.summary_render import render_summary
 
     def _load(name, required=True):
         try:
@@ -1310,9 +1437,11 @@ def _cmd_render(args) -> int:
                           adhoc=adhoc, leads=leads, research=research)
     with open(os.path.join(args.state, "dashboard.html"), "w", encoding="utf-8") as fh:
         fh.write(html)
+    with open(os.path.join(args.state, "summary.html"), "w", encoding="utf-8") as fh:
+        fh.write(render_summary(payload, args.now))
     tiers = "certified" + (" + shaped" if adhoc else "") + (" + leads" if leads else "") \
             + (" + research" if research else "")
-    print(f"render: dashboard.html rewritten ({tiers})")
+    print(f"render: dashboard.html + summary.html rewritten ({tiers})")
     return 0
 
 
@@ -1329,6 +1458,11 @@ def main(argv: list[str]) -> int:
     pr.add_argument("--progress", action="store_true")
     pr.add_argument("--fail-on-deprecated", action="store_true",
                     help="exit 3 if any un-muted DEPRECATED finding (CI gate)")
+    pr.add_argument("--resolve",
+                    help="verdicts.json from an AI resolution pass (or `resolve --apply`'s own "
+                         "resolution.json) — gate it, apply it, and RE-SCAN so drift.json comes "
+                         "entirely from the deterministic re-scan, never the verdicts directly "
+                         "(docs/superpowers/specs/2026-08-13-no-queue-design.md)")
     pr.set_defaults(func=_cmd_run)
 
     pdl = sub.add_parser("deliver")       # findings -> GitLab issues (DevOps) + draft MRs (Dev)
@@ -1464,6 +1598,12 @@ def main(argv: list[str]) -> int:
     prs.add_argument("--attest")          # catalog mode: YAML file to write `current` attestations into
     prs.add_argument("--now", default=None)
     prs.set_defaults(func=_cmd_research)
+
+    prv = sub.add_parser("resolve")       # the no-queue resolution gate: work-list, or apply gated verdicts
+    prv.add_argument("--state", required=True)
+    prv.add_argument("--apply")           # verdicts.json from an AI resolution pass
+    prv.add_argument("--now", default=None)
+    prv.set_defaults(func=_cmd_resolve)
 
     ppl = sub.add_parser("plan")          # resolve sources + report what WOULD scan
     ppl.add_argument("--root", action="append", required=True)

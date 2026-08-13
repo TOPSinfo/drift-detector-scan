@@ -37,17 +37,17 @@ def test_endpoints_carry_hostclass(tmp_path):
 
 def test_own_domain_multi_subdomain_is_tagged_own_infra(tmp_path):
     """A registrable domain reached at >=2 distinct hosts is the repo's OWN infra, not a vendor, so
-    it drops out of the integration/pending count (the bobavida/neptunes.sebagofoods.com case). A
+    it drops out of the integration/pending count (the bobavida/orders.acmegrocer.com case). A
     single-host third party is NOT swept in."""
-    _write(tmp_path, "a.php", '$x=file_get_contents("https://bobavida.sebagofoods.com/x");\n')
-    _write(tmp_path, "b.php", '$y=file_get_contents("https://neptunes.sebagofoods.com/y");\n')
-    _write(tmp_path, "c.php", '$z=file_get_contents("https://sebagofoods.com/z");\n')
+    _write(tmp_path, "a.php", '$x=file_get_contents("https://shop.acmegrocer.com/x");\n')
+    _write(tmp_path, "b.php", '$y=file_get_contents("https://orders.acmegrocer.com/y");\n')
+    _write(tmp_path, "c.php", '$z=file_get_contents("https://acmegrocer.com/z");\n')
     _write(tmp_path, "d.php", '$r=$client->get("https://api.keepa.com/product");\n')
     ms = [_url("a.php", 1), _url("b.php", 1), _url("c.php", 1), _url("d.php", 1)]
     by = {e["domain"]: e["hostClass"] for e in scan_endpoints(ms, str(tmp_path), _VENDORS)["endpoints"]}
-    assert by["bobavida.sebagofoods.com"] == "own-infra"
-    assert by["neptunes.sebagofoods.com"] == "own-infra"
-    assert by["sebagofoods.com"] == "own-infra"
+    assert by["shop.acmegrocer.com"] == "own-infra"
+    assert by["orders.acmegrocer.com"] == "own-infra"
+    assert by["acmegrocer.com"] == "own-infra"
     assert by["api.keepa.com"] == "api-lead"      # single-host third party is NOT swept into own-infra
 
 
@@ -67,12 +67,12 @@ def test_repo_token_own_infra_claim_records_a_reason(tmp_path):
 def test_org_domain_own_infra_claim_records_a_different_reason(tmp_path):
     """The strong signal (a self-hosted forge remote) gets its own distinguishable reason, so a
     reader — or dashboard_render's coverage decision — can tell the two claims apart."""
-    _write(tmp_path, "a.php", '$x=file_get_contents("https://anything.topsdemo.in/x");\n')
+    _write(tmp_path, "a.php", '$x=file_get_contents("https://anything.devhost.io/x");\n')
     out = scan_endpoints([_url("a.php", 1)], str(tmp_path), _VENDORS,
-                         repo_id="https://git.topsdemo.in/root/promoteplus-crm.git")
-    rec = next(e for e in out["endpoints"] if e["domain"] == "anything.topsdemo.in")
+                         repo_id="https://git.devhost.io/root/zenithapp-crm.git")
+    rec = next(e for e in out["endpoints"] if e["domain"] == "anything.devhost.io")
     assert rec["hostClass"] == "own-infra"
-    assert rec.get("ownInfraReason") == "git remote org domain 'topsdemo.in'"
+    assert rec.get("ownInfraReason") == "git remote org domain 'devhost.io'"
 
 
 _MAILGUN = Vendor("Mailgun", "api:mailgun", ("mailgun.net",), DEFAULT_VERSION_REGEX)

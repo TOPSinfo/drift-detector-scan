@@ -51,14 +51,14 @@ This covers `cdn.example.test`.
 be pattern-guessed (a `cdn.*` heuristic would claim a genuine CDN vendor). It must be *derived from
 the repo being scanned*. Two signals, both already present in the inventory:
 
-- **Repo-name token.** The repo directory basename and the git remote path give `promoteplus-crm`.
+- **Repo-name token.** The repo directory basename and the git remote path give `zenithapp-crm`.
   Split on `-`/`_`, keep tokens of **6 or more characters**, drop a generic stop-list (crm, app, api,
-  web, admin, portal, client, server, laravel, symfony, django…). Result: `{promoteplus}`. A host
+  web, admin, portal, client, server, laravel, symfony, django…). Result: `{zenithapp}`. A host
   containing that token is own-infra. This catches all three of the observed hosts —
-  `crm.promoteplus.ai`, `promotepluscdn.com`, `qa-promoteplus-idx.topsdemo.in` — and none of the real
+  `crm.zenithapp.io`, `zenithappcdn.com`, `qa-zenithapp-idx.devhost.io` — and none of the real
   vendor hosts.
-- **Org domain from the git remote.** `https://git.topsdemo.in/root/promoteplus-crm.git` yields the
-  registrable domain `topsdemo.in`. Hosts under it are the organisation's own infrastructure. This
+- **Org domain from the git remote.** `https://git.devhost.io/root/zenithapp-crm.git` yields the
+  registrable domain `devhost.io`. Hosts under it are the organisation's own infrastructure. This
   catches the third host independently of the name token.
 
 Config-derived inference was evaluated and **rejected**: the target repo's `.env.example` has
@@ -76,7 +76,7 @@ enumerates: DeepSeek, Groq, Mistral, xAI, OpenRouter, ElevenLabs, VoyageAI. All 
 with a catalog verdict of **UNAUDITED** until somebody attests them. That is the honest state:
 detected and classified, retirement list unchecked. It is not a silent promotion to "clean".
 
-**Deliberately left queued:** `idximages.directaxess.com` is a real third party the code reaches.
+**Deliberately left queued:** `listingimages.thirdparty.io` is a real third party the code reaches.
 Burying it would be exactly the false-clean this tool exists to refuse.
 
 Expected result on the reference repo: **27 queued → ~1**.

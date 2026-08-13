@@ -139,7 +139,7 @@ jobs:
           {
             echo "# Drift Detector — latest scan"
             echo
-            echo "_Scanned $(date +%F) · [scan run]($RUN_URL) · [raw data](state/drift.json) · [dashboard](state/dashboard.html)_"
+            echo "_Scanned $(date +%F) · [scan run]($RUN_URL) · [raw data](state/drift.json) · [summary](state/summary.html) · [dashboard](state/dashboard.html)_"
             echo
             python3 -c "import re;t=open('${REPORT}').read();print(re.sub(r'^---\n.*?\n---\n','',t,count=1,flags=re.S))"
           } > drift-ops/README.md
@@ -202,6 +202,7 @@ jobs:
           path: |
             drift-ops/state/drift.md
             drift-ops/state/drift.json
+            drift-ops/state/summary.html
             drift-ops/state/dashboard.html
             drift-ops/state/chart.html
             drift-ops/state/sbom.json

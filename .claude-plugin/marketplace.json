@@ -10,7 +10,7 @@
       "displayName": "Drift Detector",
       "source": "./",
       "description": "Detect third-party integration drift across a folder of repos \u2014 code-level API/SDK/runtime usage (via ast-grep), operation-level vendor sunsets, CVE/EOL, and an interactive dashboard, with an honest verdict that says where it is blind. Deterministic + zero-token at the core; an opt-in AI cross-check surfaces leads the rules missed, kept strictly separate from the certified findings.",
-      "version": "0.19.0-beta",
+      "version": "0.20.0-beta",
       "author": {
         "name": "Tops Infosolutions Pvt Ltd",
         "email": "driftdetector7@gmail.com"

@@ -12,7 +12,7 @@ All notable changes to the Drift Detector plugin. Dates are YYYY-MM-DD.
   `sdk-only-no-callsite` blind spot for the *deterministic* scan: a repo that reaches an API through
   an SDK (`twilio/sdk`, `@sendgrid/mail` — method chains, config-injected URLs) has no scannable host
   literal. New `sdk_clients.yaml` maps API-client packages → vendor+host; a dependency injects a
-  synthetic endpoint (attribution `sdk-client`, evidenced at `composer.json`). Proven: promoteplus-crm
+  synthetic endpoint (attribution `sdk-client`, evidenced at `composer.json`). Proven: zenithapp-crm
   now surfaces **Twilio + SendGrid** — vendors the deterministic scan missed entirely before.
 - **Batch 2 — 9 more vendors pre-audited.** Etsy, BigCommerce, WooCommerce, Magento, Kogan, Trade Me,
   Tradevine, Marketplacer, **Firebase FCM** tracked-current. 4 refused as honest "unverified" (Rakuten,

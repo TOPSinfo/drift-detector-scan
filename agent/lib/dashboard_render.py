@@ -59,9 +59,15 @@ def _project_action(a: dict) -> dict:
 
 
 # The coverage lifecycle: where a detected endpoint sits on the way to being tracked. It resolves,
-# it is not a dead-end. `queued` = an API service we haven't researched yet (the research loop's
-# work-list); `needs-human`/`blocked` are set once research runs and can't auto-resolve (a low-
-# confidence verdict, or a doc site that refused the fetch).
+# it is not a dead-end. `queued` = an API service we haven't researched yet (the resolution
+# pass's / research loop's work-list); `needs-human`/`blocked` are set once research runs and
+# can't auto-resolve (a low-confidence verdict, or a doc site that refused the fetch).
+#
+# This FIELD NAME does not change under the no-queue design
+# (docs/superpowers/specs/2026-08-13-no-queue-design.md) — `agent/resolve.py`'s work-list is
+# still every endpoint at `coverage == "queued"`. What changes is presentation only:
+# `agent/lib/tree.py` no longer renders a node called `queued` (see its `unresolved` node) —
+# that rename is scoped to the tree, not to this data model.
 COVERAGE = ("tracked", "queued", "needs-human", "blocked", "na")
 
 
@@ -131,7 +137,8 @@ def _permalink(remote_url, head_sha, loc, gitlab_hosts=frozenset()) -> str | Non
     return None
 
 
-def _build_projection(inventory: dict, audit: dict, gitlab_hosts=frozenset()) -> dict:
+def _build_projection(inventory: dict, audit: dict, gitlab_hosts=frozenset(), *,
+                      resolved: bool = False) -> dict:
     repo_meta = {r.get("path"): {"remote_url": r.get("remote_url"), "head_sha": r.get("head_sha")}
                  for r in inventory.get("repos", [])}
     actions = [_project_action(a) for a in _actions_of(audit)]
@@ -222,6 +229,13 @@ def _build_projection(inventory: dict, audit: dict, gitlab_hosts=frozenset()) ->
         # it is reading against docs/schema/
         "schemaVersion": "drift/v1",
         "generated": audit.get("generated", ""),
+        # No-queue design (docs/superpowers/specs/2026-08-13-no-queue-design.md): whether the AI
+        # resolution pass ran AND applied this session — `run.py`'s own record of `--resolve`,
+        # threaded through `build_payload`'s `resolved` param, never re-derived here. This is
+        # what lets `agent/lib/tree.py` tell "everything settled" apart from "nobody looked yet"
+        # once the `queued` node stops existing: an empty lifecycle only means resolved if this
+        # is True. Defaults False — an unset signal must never be read as proof the pass ran.
+        "resolutionRan": bool(resolved),
         "counts": counts,
         "delta": audit.get("delta"),
         "actions": actions,
@@ -257,7 +271,7 @@ def _blob(projection: dict) -> str:
 
 
 def build_payload(inventory: dict, audit: dict, *, diff: dict | None = None,
-                  gitlab_hosts=frozenset()) -> dict:
+                  gitlab_hosts=frozenset(), resolved: bool = False) -> dict:
     """The dashboard's DATA — everything the page displays, before any HTML exists.
 
     This is the contract. `drift.json` is this dict and the page embeds this same
@@ -265,8 +279,14 @@ def build_payload(inventory: dict, audit: dict, *, diff: dict | None = None,
     verified by anything that does not have eyes: two bugs shipped this week — a tile
     reading `Sunsets 1` over twelve findings, then twelve rows all labelled "eBay" —
     both passed their unit tests because the tests ran a layer below the artifact.
+
+    `resolved`: whether the AI resolution pass ran and applied THIS session (`run.py` passes
+    `resolve_result is not None and resolve_result["status"] == "applied"` — its own existing
+    record of `--resolve`, not a value this function derives). Defaults False, so a caller that
+    never passes it — every caller before this parameter existed — gets the honest default: no
+    evidence the pass ran. See `agent/lib/tree.py`'s `unresolved` node, the one consumer.
     """
-    projection = _build_projection(inventory, audit, gitlab_hosts)
+    projection = _build_projection(inventory, audit, gitlab_hosts, resolved=resolved)
     if diff is not None:                 # the inventory drift DRIFT.md used to carry
         projection["inventoryDrift"] = diff
     return projection
@@ -324,6 +344,11 @@ def render_payload(projection: dict, now: str, *, bundle: dict | None = None,
          '<title>Drift Detector — DevSecOps Cockpit</title>',
          "<style>" + CSS_SRC + "</style></head><body>",
          TEMPLATE_SRC,
+         # The coverage tree lives on its OWN page now (agent/lib/summary_render.py,
+         # summary.html) — not here. It used to be injected as a `#coverage-tree` section
+         # after TEMPLATE_SRC, but that placed it at the BOTTOM of this Vue application,
+         # under the very tile strip it was meant to replace. The tree's whole value is being
+         # readable in seconds; a heavy cockpit is the wrong home for it. One tree per surface.
          '<script id="drift-data" type="application/json">' + _blob(projection) + "</script>",
          _blob_script("sbom-data", bundle["sbom"]),
          _blob_script("spdx-data", bundle["spdx"]),
