@@ -183,10 +183,17 @@ def _build_projection(inventory: dict, audit: dict, gitlab_hosts=frozenset()) ->
         "detected": len(endpoints),
         # the coverage lifecycle — a partition of every detected endpoint (sums to `detected`)
         "coverage": {s: sum(1 for e in endpoints if e["coverage"] == s) for s in COVERAGE},
-        "integrations": sum(1 for e in endpoints if host_class.is_integration(e["hostClass"])),
-        "excluded": sum(1 for e in endpoints if not host_class.is_integration(e["hostClass"])),
+        # M1: a token-claimed own-infra host (ownInfraReason names the WEAK repo-name signal, not
+        # the strong git-remote org-domain one) is kept `queued` by _coverage above precisely
+        # because it might be a real third party — so it must count as an integration/unknown
+        # here too, or the tile reads "0 unknown" while `research` hands the user a queued host.
+        "integrations": sum(1 for e in endpoints
+                             if host_class.is_integration(e["hostClass"], e.get("ownInfraReason"))),
+        "excluded": sum(1 for e in endpoints
+                        if not host_class.is_integration(e["hostClass"], e.get("ownInfraReason"))),
         "unknown": sum(1 for e in endpoints
-                       if host_class.is_integration(e["hostClass"]) and not e["classified"]),
+                       if host_class.is_integration(e["hostClass"], e.get("ownInfraReason"))
+                       and not e["classified"]),
         "reposAffected": (audit.get("counts") or {}).get("reposAffected", 0),
         # "1 repos" read as "it only scanned one". Both numbers, or neither.
         "reposScanned": (inventory.get("scope") or {}).get("reposScanned", 0),

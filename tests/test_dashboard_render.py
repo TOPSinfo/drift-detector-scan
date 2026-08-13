@@ -111,6 +111,11 @@ def test_token_claimed_own_infra_host_stays_queued_not_na():
     rec = next(e for e in data["endpoints"] if e["domain"] == "api.hubspot.com")
     assert rec["coverage"] == "queued"
     assert rec["ownInfraReason"] == "repo token 'hubspot'"
+    # M1: the headline counters must agree with the work-list — a queued host is an
+    # integration AND unknown, never silently 0/0 while research hands it out as a lead.
+    c = data["counts"]
+    assert c["integrations"] == 1 and c["excluded"] == 0 and c["unknown"] == 1
+    assert c["unknown"] >= c["coverage"]["queued"]
 
 
 def test_domain_claimed_own_infra_host_stays_na():
@@ -123,6 +128,10 @@ def test_domain_claimed_own_infra_host_stays_na():
     rec = next(e for e in data["endpoints"] if e["domain"] == "anything.topsdemo.in")
     assert rec["coverage"] == "na"
     assert rec["hostClass"] == "own-infra"                 # still marked own-infra for display
+    # M1: the STRONG domain claim keeps the original behaviour — excluded, not unknown — so
+    # the fix for the weak token-claim case above must not also sweep this one into the count.
+    c = data["counts"]
+    assert c["integrations"] == 0 and c["excluded"] == 1 and c["unknown"] == 0
 
 
 def test_reference_case_promoteplus_crm_still_marked_own_infra():
