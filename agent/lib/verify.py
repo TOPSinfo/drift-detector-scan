@@ -16,6 +16,7 @@ Deterministic and dependency-free: pure Python over a dict.
 """
 from __future__ import annotations
 
+import html as _html
 import re
 from collections import Counter
 
@@ -567,6 +568,155 @@ def check_ai_firewall(payload: dict) -> None:
                     "ai-firewall",
                     f"catalog[] record for {rec.get('vendor')!r} claims by={rec.get('by')!r} — a "
                     f"catalog verdict may only come from a gate-validated attestation")
+
+
+_TREE_LI = re.compile(r'<li\b(?P<attrs>[^>]*)>')
+_TREE_ATTR = re.compile(r'data-(?P<k>node|n|unit)="(?P<v>[^"]*)"')
+
+
+def _tree_nodes(html: str) -> list:
+    """[(key, n|None, unit)] in document order, from the emitted <li> attributes."""
+    out = []
+    for m in _TREE_LI.finditer(html):
+        a = {mm.group("k"): mm.group("v") for mm in _TREE_ATTR.finditer(m.group("attrs"))}
+        if "node" not in a:
+            continue                      # an <li> outside the tree (the page has others)
+        n = None if a.get("n") in (None, "null") else int(a["n"])
+        out.append((a["node"], n, a.get("unit")))
+    return out
+
+
+def check_tree_matches_payload(html: str, payload: dict) -> None:
+    """The coverage tree agrees with the payload it was rendered from, and adds up.
+
+    The tile strip this replaces did NOT add up — `Tracked` counted distinct vendors while its
+    neighbours counted endpoint rows, so it summed to 67 against a Detected of 73 with nothing on
+    screen declaring the unit change. It survived because a rendered page cannot be checked by
+    anything without eyes, and nobody on this project has them. Server-rendering the tree moves
+    its numbers to a layer that CAN be checked, and this is the check.
+
+    Three failures, each a real class:
+      • tree-units   — a node with no declared unit (how the original bug hid);
+      • tree-sums    — children that do not sum to their parent;
+      • tree-payload — a node that disagrees with drift.json, i.e. self-consistent but false.
+    """
+    from agent.lib import tree as _tree
+    nodes = _tree_nodes(html)
+    if not nodes:
+        raise Violation("tree-payload", "no coverage tree found in the rendered page")
+    for key, _n, unit in nodes:
+        if not unit:
+            raise Violation("tree-units",
+                            f"tree node {key!r} declares no data-unit — the strip this replaced "
+                            f"mixed vendors and rows in one row of numbers, unlabelled")
+
+    expected = {}
+
+    def _walk(ns):
+        for node in ns:
+            expected[node["key"]] = node["n"]
+            if node["children"]:
+                kids = [c["n"] for c in node["children"]]
+                if node["n"] is not None and all(k is not None for k in kids):
+                    if sum(kids) != node["n"]:
+                        raise Violation(
+                            "tree-sums",
+                            f"{node['key']}={node['n']} but its children sum to {sum(kids)}")
+            _walk(node["children"])
+
+    _walk(_tree.build(payload))
+
+    # Re-derive the sums from the RENDERED attributes BEFORE the per-node payload comparison
+    # below, so a hand-edit that breaks BOTH at once (any tampered `data-n` breaks the sum its
+    # node participates in, and — trivially — also disagrees with the payload for that same
+    # node) is reported as the arithmetic failure it is, not as a same-node payload mismatch.
+    # This is what the tile strip actually shipped as: numbers that individually looked like
+    # plausible counts but did not add up.
+    rendered = {k: n for k, n, _ in nodes}
+    for parent, kids in (("detected", ("integrations", "assets")),
+                         ("integrations", ("tracked", "queued", "needs-human", "blocked"))):
+        pv = rendered.get(parent)
+        kv = [rendered[k] for k in kids if k in rendered]
+        if pv is not None and kv and all(v is not None for v in kv) and sum(kv) != pv:
+            raise Violation("tree-sums",
+                            f"rendered {parent}={pv} but its children sum to {sum(kv)}")
+
+    for key, n, _u in nodes:
+        if key in expected and expected[key] != n:
+            raise Violation("tree-payload",
+                            f"tree node {key!r} renders {n}, but drift.json says "
+                            f"{expected[key]} — the tree is a projection, not a decoration")
+
+
+# Captures each <li>'s rendered TEXT (the `.tc` span, plus its `.tnote` if present, folded into
+# one string the same way both renderers place it) rather than any label the writer chose to use
+# for a node's key. An earlier draft of this check matched literal text like `f"{n} {key}"`
+# against drift.md — that breaks the moment a label isn't the key with dashes turned to spaces
+# (an asset hostClass like `social-widget` keeps its hyphen; it is not in tree._LABELS, so its
+# label IS the raw key) and it silently skips null-count nodes (`n` is None, so there is no
+# number to search for) even though a null node still renders real, comparable text ("not counted
+# (integrations)"). Comparing the actual rendered strings, positionally, sidesteps both: it needs
+# no knowledge of tree.py's label vocabulary and it treats a null node exactly like any other.
+_TREE_LI_TEXT = re.compile(
+    r'<li data-node="(?P<node>[^"]*)" data-n="[^"]*" data-unit="[^"]*">'
+    r'<span class="tc">(?P<tc>.*?)</span>'
+    r'(?: <span class="tnote">(?P<note>.*?)</span>)?'
+)
+# A non-root ASCII tree line: zero or more 3-char depth segments ("│  " or "   "), then exactly
+# one branch marker ("├─ " or "└─ "), then the node's own text — the same shape `tree._line`
+# builds. The root line (from `md_tree`'s `_fmt(root)` call) carries neither and is matched
+# separately, as a bare line.
+_TREE_CHILD_LINE = re.compile(r'^(?:(?:│  |   ))*(?:├─ |└─ )(.*)$', re.S)
+
+
+def _tree_text_nodes(html: str) -> list:
+    """[(key, rendered_text)] in document order — what each <li> actually shows a reader,
+    HTML-unescaped and with its note folded in exactly as `_line` folds notes into the ASCII
+    text, so it can be compared 1:1 against drift.md without knowing any label wording."""
+    out = []
+    for m in _TREE_LI_TEXT.finditer(html):
+        tc = _html.unescape(m.group("tc"))
+        note = m.group("note")
+        text = f"{tc}   ({_html.unescape(note)})" if note else tc
+        out.append((m.group("node"), text))
+    return out
+
+
+def check_tree_parity(html: str, md_text: str) -> None:
+    """The ASCII tree in drift.md and the <ul> tree in the page carry the same numbers.
+
+    Both come from one builder, so a divergence means a RENDERER is lying — which is exactly the
+    failure a reader cannot detect, since they will only ever look at one of the two surfaces.
+
+    This locates the ASCII tree inside `md_text` by finding the HTML root node's exact rendered
+    line, then walks forward one line per remaining node — the same document order both `_li`
+    and `_line` use — and requires each ASCII line's content (branch markers stripped) to equal
+    the corresponding HTML node's text byte-for-byte. That is a real comparison of what each
+    renderer produced, not a guess at how a label is spelled, so it cannot be fooled by a
+    hyphen-vs-space mismatch and it does not skip null-count nodes.
+    """
+    nodes = _tree_text_nodes(html)
+    if not nodes:
+        raise Violation("tree-parity", "no coverage tree found in the rendered page")
+    root_key, root_text = nodes[0]
+    lines = md_text.splitlines()
+    if root_text not in lines:
+        raise Violation("tree-parity",
+                        f"the HTML tree's root renders {root_text!r}, which does not appear "
+                        f"as a line in drift.md — one renderer disagrees with the other")
+    start = lines.index(root_text)
+    for i, (key, text) in enumerate(nodes):
+        line = lines[start + i] if start + i < len(lines) else ""
+        if i == 0:
+            content = line
+        else:
+            m = _TREE_CHILD_LINE.match(line)
+            content = m.group(1) if m else None
+        if content != text:
+            raise Violation("tree-parity",
+                            f"tree node {key!r} renders {text!r} in the HTML tree, but the "
+                            f"corresponding line in drift.md is {line!r} — one renderer "
+                            f"disagrees with the other")
 
 
 def verify_payload(payload: dict, findings: list) -> list:
