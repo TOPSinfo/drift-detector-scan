@@ -45,6 +45,23 @@ def test_leads_refuses_a_date_in_a_lead(tmp_path):
     assert not (tmp_path / "leads.json").exists()
 
 
+def test_leads_refuses_a_date_hidden_in_another_field(tmp_path):
+    """F2: the date guard used to apply _DATEISH only to `retired`, but `retired` is already a
+    strict tri-state (yes/no/unknown) — a date could never legally live there anyway. The real
+    leak was a free-text field like `note`: {"retired":"yes","note":"Sunset on 2026-03-01 per the
+    changelog"} sailed straight through and rendered in the dashboard's Evidence column. The
+    guard must inspect every string value of the record, not just one field."""
+    _state(tmp_path)
+    bad = tmp_path / "bad3.json"
+    bad.write_text(json.dumps({"meta": {}, "repos": [{"repo": "r1", "integrations": [
+        {"vendor": "Kogan", "host": "api.kgn.io", "retired": "yes",
+         "note": "Sunset on 2026-03-01 per the changelog"}]}]}))
+    rc = cli.main(["leads", "--state", str(tmp_path), "--ai-results", str(bad),
+                   "--now", "2026-08-12"])
+    assert rc == 2
+    assert not (tmp_path / "leads.json").exists()
+
+
 def test_leads_refuses_a_non_tristate_retired(tmp_path):
     _state(tmp_path)
     bad = tmp_path / "bad2.json"
