@@ -42,6 +42,29 @@ def test_real_payload_conforms_to_the_published_schema():
     jsonschema.validate(instance=payload, schema=_load_schema())
 
 
+def test_schema_documents_own_infra_reason():
+    """M4: ownInfraReason is a real drift.json field (agent/lib/endpoints.py,
+    agent/lib/dashboard_render.py) with no runtime enforcement of its own — this is the only
+    place it is described, so 'the one contract' stays true even without jsonschema installed."""
+    s = _load_schema()
+    prop = s["properties"]["endpoints"]["items"]["properties"]["ownInfraReason"]
+    assert "repo token" in prop["description"] and "git remote org domain" in prop["description"]
+
+
+def test_an_endpoint_carrying_own_infra_reason_conforms_to_the_schema():
+    jsonschema = pytest.importorskip("jsonschema")
+    payload = {"schemaVersion": "drift/v1", "generated": "2026-08-13",
+               "counts": {"fixes": 0, "sunsets": 0, "eol": 0, "critical": 0, "unaudited": 0,
+                         "reposScanned": 1, "reposAffected": 0},
+               "actions": [],
+               "endpoints": [{"repo": "rev-hubspot-connector", "domain": "api.hubspot.com",
+                              "vendor": "Unknown", "version": None, "classified": False,
+                              "hostClass": "own-infra", "coverage": "queued",
+                              "ownInfraReason": "repo token 'hubspot'",
+                              "file_count": 1, "files": ["a.php:1"]}]}
+    jsonschema.validate(instance=payload, schema=_load_schema())
+
+
 def test_schema_rejects_a_bad_status_enum():
     """Proof the schema actually constrains — an action with an invalid status fails."""
     jsonschema = pytest.importorskip("jsonschema")
