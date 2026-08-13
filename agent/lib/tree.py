@@ -168,3 +168,62 @@ def html_tree(nodes: list) -> str:
     no framework bindings: it must be readable with JavaScript off.
     """
     return f'<ul class="tree">{"".join(_li(n) for n in nodes)}</ul>'
+
+
+# Every node key `build()` can produce needs an entry here — `verify.check_tree_definitions`
+# enforces that the pairing between the rendered tree and this glossary can never silently drift
+# apart, and `tests/test_tree_definitions.py::test_every_node_has_a_definition` enforces that the
+# CONTENT is actually complete (see `html_definitions` below for why the runtime check can't be
+# the one to enforce completeness). Written for someone who has been away a week and can no
+# longer remember what `queued` or `unaudited` mean.
+DEFINITIONS = {
+    "detected": "Every outbound endpoint the scan read. The complete inventory — everything "
+               "below is a filter over this, never a gate that hides a row.",
+    "integrations": "Third-party services this code actually calls.",
+    "tracked": "The vendor is recognised and its retirements are monitored. Counted in endpoint "
+              "rows; the distinct-vendor figure is the annotation beside it.",
+    "queued": "A real integration the scan detected but cannot yet name. It is IN the audit "
+             "backlog — this is work outstanding, not a clean result.",
+    "needs-human": "Research ran and could not reach a confident verdict.",
+    "blocked": "Research could not fetch the vendor's page at all.",
+    "assets": "Not third-party services: bundled libraries, CDNs, spec and documentation links, "
+             "social embeds, and this repo's own infrastructure.",
+    "boilerplate": "Schema, namespace and documentation hosts — links, never a runtime call.",
+    "social-widget": "Share, embed and follow destinations.",
+    "vendored-lib": "Front-end libraries the app bundles or links its own copy of.",
+    "asset-cdn": "Fonts, icons, images and generic static-asset CDNs.",
+    "own-infra": "This project's own hosts, derived from the repo's name and git remote.",
+    "analytics": "Trackers and tag managers with no first-class API to audit.",
+    # Not reachable via _endpoints_of today (a null hostClass is coerced to "api"/"unclassified"
+    # before it ever reaches a payload endpoint — see dashboard_render._endpoints_of), but
+    # `_NULL_HOST_CLASS` above exists precisely because the schema does not forbid it, so this
+    # stays defined defensively rather than leaving a reachable-in-principle key undocumented.
+    _NULL_HOST_CLASS: "An endpoint recorded with no hostClass at all.",
+}
+
+
+def html_definitions(nodes: list) -> str:
+    """A <details> glossary keyed to the tree's rendered nodes. Not tooltips: those are neither
+    discoverable nor checkable from source, and this page cannot be checked any other way.
+
+    Emits a `data-def` for every KEY the tree actually renders, even one `DEFINITIONS` has no
+    prose for (`.get(k, "")` — an empty <dd>, never a missing <dt>). That is deliberate: a future
+    hostClass a classifier emits before anyone has written its glossary entry must not turn a
+    real repo's `verify` red (see `verify.check_tree_definitions`, which only asserts this
+    pairing, not that the text is non-empty). Completeness of the prose itself is a dev-time
+    concern, covered by a plain pytest test over `DEFINITIONS`, not a runtime gate over
+    someone else's scan.
+    """
+    keys: list = []
+
+    def walk(ns):
+        for n in ns:
+            if n["key"] not in keys:
+                keys.append(n["key"])
+            walk(n["children"])
+    walk(nodes)
+    items = "".join(
+        f'<dt data-def="{_html.escape(k)}">{_html.escape(k)}</dt>'
+        f'<dd>{_html.escape(DEFINITIONS.get(k, ""))}</dd>' for k in keys)
+    return ('<details class="defs"><summary>What these mean</summary>'
+            f'<dl>{items}</dl></details>')

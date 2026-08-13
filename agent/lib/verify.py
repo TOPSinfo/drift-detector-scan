@@ -895,6 +895,33 @@ def check_tree_parity(html: str, md_text: str) -> None:
                             f"disagrees with the other")
 
 
+def check_tree_definitions(html: str) -> None:
+    """Every tree node rendered on the page has a matching glossary entry on the same page.
+
+    `queued` and `unaudited` carry this tool's entire honesty argument — "0 findings here is not
+    evidence of clean" — and shipped as bare numbers. A definition that silently stops matching
+    its node is the same failure one step later, so the pairing is asserted rather than trusted.
+
+    This is a PAIRING check, not a completeness check: it compares the tree's rendered node keys
+    (via `_tree_nodes`, the same parse every other tree.* check in this module uses) against the
+    `data-def` attributes `tree.html_definitions` emits — which it emits for every key regardless
+    of whether `tree.DEFINITIONS` has prose for it. So an unmapped hostClass a future classifier
+    invents cannot turn a real repo's `verify` red on its own; the glossary would render an empty
+    description for it, but the pairing this check polices still holds. Completeness of the
+    prose is a separate, dev-time concern — see `tests/test_tree_definitions.py`.
+    """
+    nodes = {k for k, _n, _u in _tree_nodes(html)}
+    # `html_definitions` escapes the key into `data-def` the same way `_li` escapes it into
+    # `data-node` (see tree.py); unescape back to the raw key here for the same reason
+    # `_tree_nodes` does — otherwise a key containing `&`/`<`/`>`/`"` would never match its own
+    # definition and this check would false-flag an honest render.
+    defined = {_html.unescape(m) for m in re.findall(r'data-def="([^"]*)"', html)}
+    missing = sorted(nodes - defined)
+    if missing:
+        raise Violation("tree-definitions",
+                        f"tree node(s) {missing} have no definition on the page")
+
+
 def verify_payload(payload: dict, findings: list) -> list:
     """Run every payload invariant. Returns the violations rather than raising, so
     `drift verify` can report all of them in one pass instead of one per run."""
