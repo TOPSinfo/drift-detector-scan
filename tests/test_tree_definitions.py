@@ -10,8 +10,9 @@ def _payload():
 
 
 def test_every_node_has_a_definition():
-    """The page's two load-bearing words — `queued` and `unaudited` — carried the whole honesty
-    argument as bare numbers. The owner came back after a week and could not remember them."""
+    """The page's two load-bearing words — `unresolved` and `unaudited` — carried the whole
+    honesty argument as bare numbers. The owner came back after a week and could not remember
+    them."""
     nodes = tree.build(_payload())
     keys = set()
 
@@ -26,13 +27,13 @@ def test_every_node_has_a_definition():
 def test_definitions_render_as_a_details_block():
     html = tree.html_definitions(tree.build(_payload()))
     assert "<details" in html and "What these mean" in html
-    assert 'data-def="queued"' in html
+    assert 'data-def="unresolved"' in html
 
 
 def test_a_node_without_a_definition_is_a_violation():
     html = tree.html_tree(tree.build(_payload())) + tree.html_definitions(tree.build(_payload()))
     verify.check_tree_definitions(html)
-    broken = html.replace('data-def="queued"', 'data-def="quued"')
+    broken = html.replace('data-def="unresolved"', 'data-def="unresovled"')
     with pytest.raises(verify.Violation) as e:
         verify.check_tree_definitions(broken)
     assert e.value.check == "tree-definitions"

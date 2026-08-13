@@ -729,7 +729,7 @@ def check_tree_matches_payload(html: str, payload: dict) -> None:
                             f"mixed vendors and rows in one row of numbers, unlabelled")
 
     # Keyed on PATH, not `node["key"]`: with a repo level, the same semantic key (`tracked`,
-    # `queued`, …) exists once per repo, so a key-keyed dict would let one repo's entry
+    # `unresolved`, …) exists once per repo, so a key-keyed dict would let one repo's entry
     # silently overwrite another's — precisely the identity collision Task 5d exists to close.
     expected = {}
     expected_full = {}
@@ -917,9 +917,10 @@ def check_tree_parity(html: str, md_text: str) -> None:
 def check_tree_definitions(html: str) -> None:
     """Every tree node rendered on the page has a matching glossary entry on the same page.
 
-    `queued` and `unaudited` carry this tool's entire honesty argument — "0 findings here is not
-    evidence of clean" — and shipped as bare numbers. A definition that silently stops matching
-    its node is the same failure one step later, so the pairing is asserted rather than trusted.
+    `unresolved` and `unaudited` carry this tool's entire honesty argument — "0 findings here is
+    not evidence of clean" — and shipped as bare numbers. A definition that silently stops
+    matching its node is the same failure one step later, so the pairing is asserted rather than
+    trusted.
 
     This is a PAIRING check, not a completeness check: it compares the tree's rendered node keys
     (via `_tree_nodes`, the same parse every other tree.* check in this module uses) against the
@@ -978,7 +979,7 @@ def _leaf_row_spans(html: str) -> dict:
 
 
 def check_tree_rows(html: str, payload: dict) -> None:
-    """Every tree leaf that renders rows — `tracked`/`queued`/`needs-human`/`blocked`, and each
+    """Every tree leaf that renders rows — `tracked`/`unresolved`/`needs-human`/`blocked`, and each
     asset hostClass under `assets` — renders EXACTLY as many rows as its own `data-n`, and every
     rendered host is a real endpoint from `drift.json` in that leaf's own bucket AND own repo.
 

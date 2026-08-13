@@ -51,8 +51,25 @@ _NULL_REPO = "(unknown repo)"
 
 _LABELS = {
     "detected": "detected", "integrations": "integrations", "assets": "assets",
-    "tracked": "tracked", "queued": "queued", "needs-human": "needs human", "blocked": "blocked",
+    "tracked": "tracked", "unresolved": "unresolved", "needs-human": "needs human",
+    "blocked": "blocked",
 }
+
+# No-queue design (docs/superpowers/specs/2026-08-13-no-queue-design.md): `queued` — "we have
+# not looked yet" — no longer has anywhere to render. A host the deterministic scan cannot
+# classify now renders under `unresolved`, the SAME underlying data (`coverage: "queued"` in
+# drift.json; that field name does not change, only this tree's node key for it does) — because
+# an "unknown" AI verdict is legitimate and leaves a host genuinely unclassified even after a
+# resolution pass runs (agent/resolve.py's `apply`: "unknown" lands nothing in any catalog).
+#
+# Deleting the node outright would have been dishonest in the OTHER direction: an empty
+# lifecycle (tracked=N, needs-human=0, blocked=0) reads as "everything is settled", and that
+# reading is only true if a resolution pass actually ran. `build()` decides which note this
+# node carries from `payload["resolutionRan"]` — the one place `run.py` already records whether
+# `--resolve` applied this session (see `dashboard_render.build_payload`'s `resolved` param) —
+# never a second, invented signal.
+_UNRESOLVED_NOTE = ("resolution pass did not run this scan — not yet confirmed clean or "
+                    "third-party; run with --resolve to settle it")
 
 
 def _node(key, n, *, note="", children=None, unit="rows", rows=None, has_rows=False,
@@ -60,7 +77,7 @@ def _node(key, n, *, note="", children=None, unit="rows", rows=None, has_rows=Fa
     return {"key": key, "label": label if label is not None else _LABELS.get(key, key), "n": n,
             "unit": unit, "note": note, "children": children or [], "rows": rows or [],
             # `has_rows` is a distinct flag from `bool(rows)`: a bucket that is a legitimate
-            # row-bearing leaf (tracked/queued/needs-human/blocked, or an asset hostClass) but
+            # row-bearing leaf (tracked/unresolved/needs-human/blocked, or an asset hostClass) but
             # happens to have zero matching endpoints must still assert "0 rows rendered" — an
             # empty `rows` list alone can't tell a real zero apart from "this node never carries
             # rows at all" (detected/integrations/assets, which are sums, not row buckets).
@@ -108,18 +125,22 @@ def _row(e: dict, catalog_by_vendor: dict, bucket: str) -> dict:
         # — no attestation on file for this vendor either way — and UNAUDITED is the honesty
         # signal this row exists to surface, so it is the fallback, not a blank.
         row["verdict"] = catalog_by_vendor.get(vendor, "UNAUDITED") if vendor else "UNAUDITED"
-    elif bucket == "queued":
+    elif bucket == "unresolved":
         row["reason"] = e.get("ownInfraReason")
     return row
 
 
-def _lifecycle_and_assets_from_endpoints(endpoints, catalog_by_vendor):
+def _lifecycle_and_assets_from_endpoints(endpoints, catalog_by_vendor, resolved: bool):
     """The `integrations`/`assets` subtree derived ENTIRELY from a list of endpoint rows, no
     `counts` involved. Used for a repo's own subtree in a multi-repo tree: `payload["counts"]`
     is a whole-scan aggregate with no per-repo split, so a repo's lifecycle/asset numbers can
     only come from its own rows — mirroring the same partition the single-repo branch of
     `build` computes from `counts.coverage`/`na_by_class`, just sourced locally instead of
     from the payload's aggregate tally.
+
+    `resolved` is the whole-scan `payload["resolutionRan"]` flag, threaded down from `build()`
+    — a repo's own subtree does not know on its own whether a resolution pass ran this session,
+    since that is a property of the RUN, not of any one repo's rows.
     """
     by_coverage: dict = {"tracked": [], "queued": [], "needs-human": [], "blocked": []}
     na_rows_by_class: dict = {}
@@ -137,8 +158,9 @@ def _lifecycle_and_assets_from_endpoints(endpoints, catalog_by_vendor):
                     if tracked_eps else "")
     life = [_node("tracked", len(tracked_eps), note=tracked_note, has_rows=True,
                   rows=[_row(e, catalog_by_vendor, "tracked") for e in tracked_eps]),
-            _node("queued", len(by_coverage["queued"]), has_rows=True,
-                  rows=[_row(e, catalog_by_vendor, "queued") for e in by_coverage["queued"]])]
+            _node("unresolved", len(by_coverage["queued"]),
+                  note="" if resolved else _UNRESOLVED_NOTE, has_rows=True,
+                  rows=[_row(e, catalog_by_vendor, "unresolved") for e in by_coverage["queued"]])]
     # needs-human / blocked are part of the partition and render even at 0: they are real
     # states a scan can be in, and hiding them would make a stuck repo look like a clean one.
     for k in ("needs-human", "blocked"):
@@ -177,6 +199,12 @@ def build(payload: dict) -> list:
     cov = counts.get("coverage")
     catalog_by_vendor = {c.get("vendor"): c.get("verdict")
                          for c in (payload.get("catalog") or []) if c.get("vendor")}
+    # No-queue design: whether the AI resolution pass ran and applied THIS session — the one
+    # signal that decides whether the `unresolved` leaf below may read as "settled" or must say
+    # it never got a chance. Absent (the shape of a plain `drift-scan run` with no `--resolve`,
+    # and of every payload built before this field existed) reads as False, never True — a
+    # missing signal must never be read as proof the pass ran (see `_UNRESOLVED_NOTE`).
+    resolved = bool(payload.get("resolutionRan"))
     # `have_endpoints` distinguishes "the payload never carried per-endpoint detail" (a legacy
     # shape, or a caller that only ever populated counts) from "it did, and there are zero" — the
     # same distinction `test_assets_render_childless_rather_than_wrong_without_endpoints` already
@@ -199,7 +227,7 @@ def build(payload: dict) -> list:
         repo_children = []
         for repo_name in sorted(repo_groups):        # fixed alphabetical order, never by count
             integrations, assets = _lifecycle_and_assets_from_endpoints(
-                repo_groups[repo_name], catalog_by_vendor)
+                repo_groups[repo_name], catalog_by_vendor, resolved)
             repo_children.append(_node("repo", integrations["n"] + assets["n"],
                                        label=repo_name, repo=repo_name,
                                        children=[integrations, assets]))
@@ -220,7 +248,7 @@ def build(payload: dict) -> list:
             na_rows_by_class.setdefault(e.get("hostClass") or _NULL_HOST_CLASS, []).append(e)
     # The asset breakdown comes from the ENDPOINT ROWS, never from counts.hostClasses.
     # hostClasses tallies all 73 endpoints, so its asset-class entries sum to 45 against an
-    # assets total of 43: a token-claimed `own-infra` row is kept QUEUED (it might be a real
+    # assets total of 43: a token-claimed `own-infra` row is kept UNRESOLVED (it might be a real
     # third party), which makes it an integration, not an asset. Deriving from hostClasses
     # would put the tree out by exactly that difference — the arithmetic failure this tree
     # exists to make impossible.
@@ -236,8 +264,10 @@ def build(payload: dict) -> list:
                         if vendors is not None else "")
         life = [_node("tracked", cov.get("tracked", 0), note=tracked_note, has_rows=have_endpoints,
                       rows=[_row(e, catalog_by_vendor, "tracked") for e in by_coverage["tracked"]]),
-                _node("queued", cov.get("queued", 0), has_rows=have_endpoints,
-                      rows=[_row(e, catalog_by_vendor, "queued") for e in by_coverage["queued"]])]
+                _node("unresolved", cov.get("queued", 0),
+                      note="" if resolved else _UNRESOLVED_NOTE, has_rows=have_endpoints,
+                      rows=[_row(e, catalog_by_vendor, "unresolved")
+                            for e in by_coverage["queued"]])]
         # needs-human / blocked are part of the partition and render even at 0: they are real
         # states a scan can be in, and hiding them would make a stuck repo look like a clean one.
         for k in ("needs-human", "blocked"):
@@ -400,7 +430,7 @@ def html_tree(nodes: list) -> str:
 # apart, and `tests/test_tree_definitions.py::test_every_node_has_a_definition` enforces that the
 # CONTENT is actually complete (see `html_definitions` below for why the runtime check can't be
 # the one to enforce completeness). Written for someone who has been away a week and can no
-# longer remember what `queued` or `unaudited` mean.
+# longer remember what `unresolved` or `unaudited` mean.
 DEFINITIONS = {
     "detected": "Every outbound endpoint the scan read. The complete inventory — everything "
                "below is a filter over this, never a gate that hides a row.",
@@ -412,8 +442,15 @@ DEFINITIONS = {
     "integrations": "Third-party services this code actually calls.",
     "tracked": "The vendor is recognised and its retirements are monitored. Counted in endpoint "
               "rows; the distinct-vendor figure is the annotation beside it.",
-    "queued": "A real integration the scan detected but cannot yet name. It is IN the audit "
-             "backlog — this is work outstanding, not a clean result.",
+    # No-queue design (docs/superpowers/specs/2026-08-13-no-queue-design.md): replaces the old
+    # `queued` node — same underlying rows (drift.json still calls the field `coverage: "queued"`),
+    # renamed because "queued" implied a backlog someone would clear later, and this project no
+    # longer has one: a scan resolves every host it can in the same run. What's left is whatever a
+    # resolution pass genuinely could not settle (an "unknown" verdict is legitimate) — or, if the
+    # NOTE on this node says the pass did not run this scan, hosts nobody has looked at yet.
+    "unresolved": "A real integration the scan detected but cannot yet name. If its note says a "
+                 "resolution pass did not run this scan, nobody has looked yet — this is not a "
+                 "clean result.",
     "needs-human": "Research ran and could not reach a confident verdict.",
     "blocked": "Research could not fetch the vendor's page at all.",
     "assets": "Not third-party services: bundled libraries, CDNs, spec and documentation links, "

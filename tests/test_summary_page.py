@@ -58,7 +58,7 @@ def test_no_javascript_whatsoever():
 
 def test_the_glossary_is_present():
     page = render_summary(_payload(), "2026-08-13")
-    for key in ("detected", "integrations", "tracked", "queued", "assets"):
+    for key in ("detected", "integrations", "tracked", "unresolved", "assets"):
         assert f'data-def="{key}"' in page
 
 

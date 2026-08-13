@@ -298,14 +298,14 @@ def _swap_li(html: str, key_a: str, key_b: str) -> str:
 
 def test_reordering_two_sibling_nodes_is_a_violation():
     """Neither a sum check nor a per-key value check cares about ORDER — a dict lookup by key
-    finds `tracked` and `queued` wherever they sit, and children summing to their parent does
+    finds `tracked` and `unresolved` wherever they sit, and children summing to their parent does
     not depend on which one comes first. Swapping two siblings, individually correct values
     and all, is invisible to every check except one that compares the rendered SEQUENCE to
     the payload's own pre-order sequence."""
     p = _payload_with_assets()
     nodes = tree.build(p)
     html = tree.html_tree(nodes)
-    swapped = _swap_li(html, "tracked", "queued")
+    swapped = _swap_li(html, "tracked", "unresolved")
     assert swapped != html
     with pytest.raises(verify.Violation) as e:
         verify.check_tree_matches_payload(swapped, p)
