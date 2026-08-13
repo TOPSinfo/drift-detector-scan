@@ -17,6 +17,7 @@ Pure: a dict in, a list out. No I/O, no clock.
 """
 from __future__ import annotations
 
+import html as _html
 from collections import Counter
 
 # Assets are grouped by hostClass. This is an ORDERING preference, not a filter: classes
@@ -122,3 +123,29 @@ def md_tree(nodes: list) -> list:
         for i, k in enumerate(kids):
             _line(k, "", i == len(kids) - 1, out)
     return out
+
+
+def _li(node) -> str:
+    n = "null" if node["n"] is None else str(node["n"])
+    # `_fmt` is the SAME wording md_tree uses ("73 detected" / "not counted (integrations)"),
+    # so the two projections never drift apart on how they phrase a null count. `_fmt` already
+    # runs the label through `_sanitize` (a fence-breaking concern); `html.escape` on top of
+    # that is the HTML-specific concern (<, >, &, ") — a different hazard, both needed here.
+    text = _html.escape(_fmt(node))
+    note = (f' <span class="tnote">{_html.escape(_sanitize(node["note"]))}</span>'
+            if node["note"] else "")
+    kids = f"<ul>{''.join(_li(k) for k in node['children'])}</ul>" if node["children"] else ""
+    return (f'<li data-node="{_html.escape(node["key"])}" data-n="{n}" '
+            f'data-unit="{_html.escape(node["unit"])}">'
+            f'<span class="tc">{text}</span>{note}{kids}</li>')
+
+
+def html_tree(nodes: list) -> str:
+    """The tree as structured markup — a <ul>, never a <pre>.
+
+    The attributes are the contract: `verify` parses `data-n` and asserts children sum to their
+    parent, and that each `data-node` matches drift.json. A <pre> could only be grepped, which is
+    how a wrong number would survive on a page nobody involved can see rendered. Plain markup,
+    no framework bindings: it must be readable with JavaScript off.
+    """
+    return f'<ul class="tree">{"".join(_li(n) for n in nodes)}</ul>'
