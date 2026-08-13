@@ -1,3 +1,5 @@
+import re
+
 import pytest
 from agent.lib import tree, verify
 
@@ -8,6 +10,22 @@ def _payload():
                                     "blocked": 0, "na": 43},
                        "hostClasses": {"boilerplate": 20, "social-widget": 12,
                                        "vendored-lib": 5, "asset-cdn": 3, "own-infra": 5}}}
+
+
+def _payload_with_assets():
+    """`_payload()` has no `endpoints`, so `tree.build` renders `assets` CHILDLESS (see
+    `test_assets_render_childless_rather_than_wrong_without_endpoints` in test_tree.py) — the
+    assets→hostClass level of the tree is never exercised by any existing verify test. This
+    fixture wires in real endpoint rows so that level actually has children (20+12+5+3+3=43,
+    matching counts.excluded), which is the exact level Finding 1's hardcoded pair list never
+    summed from the markup at all."""
+    p = _payload()
+    p["endpoints"] = ([{"hostClass": "boilerplate", "coverage": "na"} for _ in range(20)] +
+                      [{"hostClass": "social-widget", "coverage": "na"} for _ in range(12)] +
+                      [{"hostClass": "vendored-lib", "coverage": "na"} for _ in range(5)] +
+                      [{"hostClass": "asset-cdn", "coverage": "na"} for _ in range(3)] +
+                      [{"hostClass": "own-infra", "coverage": "na"} for _ in range(3)])
+    return p
 
 
 def test_a_faithful_tree_passes():
@@ -107,3 +125,97 @@ def test_null_count_node_parity():
     with pytest.raises(verify.Violation) as e:
         verify.check_tree_parity(html, bad_md)
     assert e.value.check == "tree-parity"
+
+
+# ---------------------------------------------------------------------------------------
+# Finding 1 (CRITICAL, review round 1): a trailing run of deleted <li>s was a false green.
+# The hardcoded pair list in check_tree_matches_payload only knew about
+# detected->(integrations,assets) and integrations->(tracked,queued,needs-human,blocked); the
+# assets->hostClass level was never summed from the rendered markup at all, and
+# check_tree_parity indexed HTML nodes into the ASCII lines positionally, so an HTML tree that
+# simply stopped early ran out of nodes to compare before the leftover ASCII lines were ever
+# looked at. Reproduced end-to-end through the real CLI (see task-4-report.md, "Fix round 1").
+# ---------------------------------------------------------------------------------------
+
+def test_a_faithful_tree_with_asset_children_still_passes():
+    """Positive control for the fix: once assets->hostClass actually HAS children (a real
+    scan's endpoints), the new nested, every-depth sum derivation must still pass on an honest
+    render. A fix that closes the hole must not open a false RED in its place."""
+    p = _payload_with_assets()
+    nodes = tree.build(p)
+    verify.check_tree_matches_payload(tree.html_tree(nodes), p)
+    verify.check_tree_parity(tree.html_tree(nodes), "\n".join(tree.md_tree(nodes)))
+
+
+def test_deleting_the_trailing_asset_child_breaks_the_assets_level_sum():
+    """The exact reproduction: deleting ONE trailing <li> (`own-infra`, the last node in the
+    whole document — last child of `assets`, itself the second and final child of `detected`)
+    leaves `assets` displaying 43 while its four remaining children sum to 40. The OLD
+    hardcoded pair list had no entry for this level at all, so this was a false green; the
+    rendered-nesting-derived sum check must catch it at ANY depth, not just the two levels the
+    pair list happened to name."""
+    p = _payload_with_assets()
+    html = tree.html_tree(tree.build(p))
+    trimmed = re.sub(r'<li data-node="own-infra"[^>]*><span class="tc">[^<]*</span></li>',
+                     "", html, count=1)
+    assert trimmed != html, "the test's own regex did not remove the trailing <li>"
+    with pytest.raises(verify.Violation) as e:
+        verify.check_tree_matches_payload(trimmed, p)
+    assert e.value.check == "tree-sums"
+
+
+def test_deleting_all_asset_children_is_caught_by_node_count_parity():
+    """The other half of the same reproduction: deleting ALL FIVE asset children (not just
+    one) leaves `assets`'s own <li> untouched — still `data-n="43"` — with no children left to
+    sum against at all, so the sum check has nothing to compare. What must catch it is
+    check_tree_parity's node-count assertion: the HTML tree now has 5 fewer nodes than the
+    (untouched, honest) ASCII tree in drift.md, and that truncation has to fail loudly instead
+    of the parity loop simply running out of HTML nodes to index against."""
+    p = _payload_with_assets()
+    nodes = tree.build(p)
+    html = tree.html_tree(nodes)
+    good_md = "\n".join(tree.md_tree(nodes))
+    for hc in ("boilerplate", "social-widget", "vendored-lib", "asset-cdn", "own-infra"):
+        html, n = re.subn(rf'<li data-node="{hc}"[^>]*><span class="tc">[^<]*</span></li>',
+                          "", html, count=1)
+        assert n == 1, f"the test's own regex did not remove the {hc!r} <li>"
+    with pytest.raises(verify.Violation) as e:
+        verify.check_tree_parity(html, good_md)
+    assert e.value.check == "tree-parity"
+
+
+def test_deleting_a_whole_ul_subtree_is_caught_by_node_count_parity():
+    """A structurally different deletion from the one above: removing the entire wrapping
+    `<ul>...</ul>` for assets' children in one cut (as a stack-based `<li>`/`<ul>` parse would
+    see it — a whole subtree popped at once) rather than five individual `<li>` removals. Must
+    be caught the same way: the rendered tree has fewer nodes than the ASCII tree names."""
+    p = _payload_with_assets()
+    nodes = tree.build(p)
+    html = tree.html_tree(nodes)
+    good_md = "\n".join(tree.md_tree(nodes))
+    gutted, n = re.subn(
+        r'(<li data-node="assets"[^>]*><span class="tc">[^<]*</span>)<ul>.*?</ul>(</li>)',
+        r"\1\2", html, count=1, flags=re.S)
+    assert n == 1, "the test's own regex did not remove the assets subtree"
+    with pytest.raises(verify.Violation) as e:
+        verify.check_tree_parity(gutted, good_md)
+    assert e.value.check == "tree-parity"
+
+
+# ---------------------------------------------------------------------------------------
+# Finding 2 (Minor, review round 1): visible text was never bound to data-n.
+# ---------------------------------------------------------------------------------------
+
+def test_visible_text_disagreeing_with_data_n_is_a_violation():
+    """Editing the displayed text in BOTH surfaces consistently ('73 detected' -> '999
+    detected') while `data-n="73"` stays honest passed every prior check: blob-parity never
+    looks at this markup, tree-sums and tree-payload both compare the `data-n` ATTRIBUTE, never
+    the digits a reader actually sees. Only a check binding the visible text to its own node's
+    data-n + known label catches it."""
+    p = _payload()
+    html = tree.html_tree(tree.build(p))
+    tampered = html.replace(">73 detected<", ">999 detected<", 1)
+    assert tampered != html
+    with pytest.raises(verify.Violation) as e:
+        verify.check_tree_matches_payload(tampered, p)
+    assert e.value.check == "tree-text-mismatch"

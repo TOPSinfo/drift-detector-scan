@@ -586,6 +586,77 @@ def _tree_nodes(html: str) -> list:
     return out
 
 
+_TREE_ROOT_OPEN = re.compile(r'<ul class="tree">')
+_TREE_UL_TAG = re.compile(r'<ul\b[^>]*>|</ul>')
+_TREE_TAG = re.compile(r'<(?P<slash>/)?(?P<tag>ul|li)\b(?P<attrs>[^>]*)>')
+
+
+def _tree_region(html: str) -> str:
+    """The exact substring spanning the coverage tree's own `<ul class="tree">...</ul>`, found
+    by counting nested `<ul>` open/close tags to its matching close. Scoping to this substring
+    is what lets the structural parse below trust that EVERY `<li>` inside it belongs to the
+    tree (each carries `data-node` — see `_li`) — the rest of the page has `<li>`s of its own
+    (nav, tables, …) that a naive open/close stack could mismatch against."""
+    m = _TREE_ROOT_OPEN.search(html)
+    if not m:
+        return ""
+    depth = 1
+    for tm in _TREE_UL_TAG.finditer(html, m.end()):
+        depth += 1 if tm.group(0).startswith("<ul") else -1
+        if depth == 0:
+            return html[m.end():tm.start()]
+    return html[m.end():]
+
+
+def _parse_rendered_tree(html: str) -> list:
+    """The rendered `<ul>`/`<li>` markup as the ACTUAL nested structure — [{key, n, children}]
+    — recovered with a stack over `<li>`/`</li>` open/close tags, rather than a hardcoded list
+    of parent/child key pairs.
+
+    The pair list this replaces named exactly two levels (detected->(integrations,assets) and
+    integrations->(tracked,queued,needs-human,blocked)); it had no idea the assets->hostClass
+    level even existed, so a deleted or shortened run of hostClass <li>s never touched a sum
+    check at all. Parsing the real nesting means EVERY parent, at every depth, is checked
+    against its own rendered children — a new level added to the tree tomorrow is covered for
+    free, the same way `tree.build` itself never needs a hardcoded list of levels.
+    """
+    region = _tree_region(html)
+    roots: list = []
+    stack: list = []                      # currently-open <li> node dicts, outermost last
+    for m in _TREE_TAG.finditer(region):
+        if m.group("tag") == "ul":
+            continue                      # <ul> only groups; the <li> stack carries the nesting
+        if m.group("slash"):
+            if stack:
+                stack.pop()
+            continue
+        a = {mm.group("k"): mm.group("v") for mm in _TREE_ATTR.finditer(m.group("attrs"))}
+        n = None if a.get("n") in (None, "null") else int(a["n"])
+        node = {"key": a.get("node", ""), "n": n, "children": []}
+        (stack[-1]["children"] if stack else roots).append(node)
+        stack.append(node)
+    return roots
+
+
+def _check_rendered_sums(html: str) -> None:
+    """Every parent in the RENDERED tree, at every depth, whose children are all present with a
+    number, must have those children sum to its own `data-n`. This is Finding 1's fix: the
+    previous version only re-derived sums for two hardcoded (parent, children) key pairs and
+    never looked at the assets->hostClass level at all."""
+    def walk(node):
+        kids = node["children"]
+        if kids:
+            kv = [k["n"] for k in kids]
+            if node["n"] is not None and all(v is not None for v in kv) and sum(kv) != node["n"]:
+                raise Violation("tree-sums",
+                                f"rendered {node['key']}={node['n']} but its children sum to "
+                                f"{sum(kv)}")
+        for k in kids:
+            walk(k)
+    for root in _parse_rendered_tree(html):
+        walk(root)
+
+
 def check_tree_matches_payload(html: str, payload: dict) -> None:
     """The coverage tree agrees with the payload it was rendered from, and adds up.
 
@@ -595,10 +666,16 @@ def check_tree_matches_payload(html: str, payload: dict) -> None:
     anything without eyes, and nobody on this project has them. Server-rendering the tree moves
     its numbers to a layer that CAN be checked, and this is the check.
 
-    Three failures, each a real class:
-      • tree-units   — a node with no declared unit (how the original bug hid);
-      • tree-sums    — children that do not sum to their parent;
-      • tree-payload — a node that disagrees with drift.json, i.e. self-consistent but false.
+    Four failures, each a real class:
+      • tree-units        — a node with no declared unit (how the original bug hid);
+      • tree-sums         — RENDERED children that do not sum to their RENDERED parent, at any
+                            depth (Finding 1 — a trailing run of deleted <li>s used to escape
+                            this entirely; see `_check_rendered_sums`);
+      • tree-payload      — a node that disagrees with drift.json, i.e. self-consistent but false;
+      • tree-text-mismatch — the VISIBLE text a reader sees disagrees with the node's own
+                            `data-n` + known label (Finding 2 — editing the displayed digits in
+                            both surfaces consistently, leaving `data-n` honest, used to pass
+                            every check because nothing bound the text to the attribute).
     """
     from agent.lib import tree as _tree
     nodes = _tree_nodes(html)
@@ -611,10 +688,12 @@ def check_tree_matches_payload(html: str, payload: dict) -> None:
                             f"mixed vendors and rows in one row of numbers, unlabelled")
 
     expected = {}
+    expected_full = {}
 
     def _walk(ns):
         for node in ns:
             expected[node["key"]] = node["n"]
+            expected_full[node["key"]] = node
             if node["children"]:
                 kids = [c["n"] for c in node["children"]]
                 if node["n"] is not None and all(k is not None for k in kids):
@@ -626,26 +705,44 @@ def check_tree_matches_payload(html: str, payload: dict) -> None:
 
     _walk(_tree.build(payload))
 
-    # Re-derive the sums from the RENDERED attributes BEFORE the per-node payload comparison
-    # below, so a hand-edit that breaks BOTH at once (any tampered `data-n` breaks the sum its
-    # node participates in, and — trivially — also disagrees with the payload for that same
-    # node) is reported as the arithmetic failure it is, not as a same-node payload mismatch.
-    # This is what the tile strip actually shipped as: numbers that individually looked like
-    # plausible counts but did not add up.
-    rendered = {k: n for k, n, _ in nodes}
-    for parent, kids in (("detected", ("integrations", "assets")),
-                         ("integrations", ("tracked", "queued", "needs-human", "blocked"))):
-        pv = rendered.get(parent)
-        kv = [rendered[k] for k in kids if k in rendered]
-        if pv is not None and kv and all(v is not None for v in kv) and sum(kv) != pv:
-            raise Violation("tree-sums",
-                            f"rendered {parent}={pv} but its children sum to {sum(kv)}")
+    # Re-derive the sums from the RENDERED markup's ACTUAL nesting BEFORE the per-node payload
+    # comparison below, so a hand-edit that breaks BOTH at once (any tampered `data-n` breaks
+    # the sum its node participates in, and — trivially — also disagrees with the payload for
+    # that same node) is reported as the arithmetic failure it is, not as a same-node payload
+    # mismatch. This is what the tile strip actually shipped as: numbers that individually
+    # looked like plausible counts but did not add up. Parsed from the real `<ul>`/`<li>`
+    # nesting (`_check_rendered_sums`/`_parse_rendered_tree`), not a hardcoded list of
+    # (parent, children) key pairs — that list only named two of the tree's levels and had no
+    # way to see the assets->hostClass level at all, which is exactly how a deleted or
+    # shortened run of hostClass <li>s (Finding 1) escaped every check.
+    _check_rendered_sums(html)
 
     for key, n, _u in nodes:
         if key in expected and expected[key] != n:
             raise Violation("tree-payload",
                             f"tree node {key!r} renders {n}, but drift.json says "
                             f"{expected[key]} — the tree is a projection, not a decoration")
+
+    # Finding 2: bind the VISIBLE text to the node's own data-n + known label. Everything above
+    # this point reasons about `data-n`/`data-node` ATTRIBUTES — a page that edits the digits a
+    # reader actually sees (in both drift.md and dashboard.html, consistently) while leaving the
+    # attribute honest passes all of it. `_tree._fmt` is the single source of truth both
+    # renderers already use for this wording, so re-running it here — fed the RENDERED n and the
+    # label `tree.build` assigned that key — and comparing to what the markup actually shows is
+    # not a second guess at the wording, it's the same formatter.
+    for m in _TREE_LI_TEXT.finditer(html):
+        key = m.group("node")
+        exp_node = expected_full.get(key)
+        if exp_node is None:
+            continue                      # already reported above (tree-payload / unknown node)
+        n = None if m.group("n") in (None, "null") else int(m.group("n"))
+        tc = _html.unescape(m.group("tc"))
+        want = _tree._fmt({"n": n, "label": exp_node["label"]})
+        if tc != want:
+            raise Violation("tree-text-mismatch",
+                            f"tree node {key!r} shows {tc!r} but its own data-n={n!r} and "
+                            f"label {exp_node['label']!r} render as {want!r} — the visible text "
+                            f"has drifted from the attribute a reader cannot see")
 
 
 # Captures each <li>'s rendered TEXT (the `.tc` span, plus its `.tnote` if present, folded into
@@ -658,7 +755,7 @@ def check_tree_matches_payload(html: str, payload: dict) -> None:
 # (integrations)"). Comparing the actual rendered strings, positionally, sidesteps both: it needs
 # no knowledge of tree.py's label vocabulary and it treats a null node exactly like any other.
 _TREE_LI_TEXT = re.compile(
-    r'<li data-node="(?P<node>[^"]*)" data-n="[^"]*" data-unit="[^"]*">'
+    r'<li data-node="(?P<node>[^"]*)" data-n="(?P<n>[^"]*)" data-unit="[^"]*">'
     r'<span class="tc">(?P<tc>.*?)</span>'
     r'(?: <span class="tnote">(?P<note>.*?)</span>)?'
 )
@@ -705,6 +802,29 @@ def check_tree_parity(html: str, md_text: str) -> None:
                         f"the HTML tree's root renders {root_text!r}, which does not appear "
                         f"as a line in drift.md — one renderer disagrees with the other")
     start = lines.index(root_text)
+
+    # Finding 1: count the ASCII tree's full extent BEFORE comparing positionally. The loop
+    # below walks `nodes` (the HTML side) and indexes into `lines` — if the HTML tree simply
+    # STOPS EARLY (a trailing run of deleted <li>s, or a whole <ul> subtree removed), the loop
+    # runs out of HTML nodes before it ever reaches the ASCII lines that are still sitting
+    # there in drift.md, and a truncation this large was never compared against anything. A
+    # mid-list deletion shifts every later node out of position and IS caught by the loop below;
+    # only a trailing (or otherwise position-preserving) truncation escaped it. Counting how
+    # many consecutive tree-shaped lines follow the root in drift.md — the same branch-marker
+    # shape `_line` emits, so it stops at the first line that isn't part of the tree — and
+    # requiring it to equal the HTML side's node count catches BOTH directions: an HTML tree
+    # shorter than the ASCII one, or the reverse.
+    md_count = 1
+    j = start + 1
+    while j < len(lines) and _TREE_CHILD_LINE.match(lines[j]):
+        md_count += 1
+        j += 1
+    if md_count != len(nodes):
+        raise Violation("tree-parity",
+                        f"the HTML tree has {len(nodes)} node(s) but drift.md's ASCII tree "
+                        f"(starting at {root_text!r}) has {md_count} — one renderer stopped "
+                        f"early, truncating the tree without the other noticing")
+
     for i, (key, text) in enumerate(nodes):
         line = lines[start + i] if start + i < len(lines) else ""
         if i == 0:
