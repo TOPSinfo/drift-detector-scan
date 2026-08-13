@@ -37,15 +37,53 @@ _ASSET_CLASSES = ("boilerplate", "social-widget", "vendored-lib", "asset-cdn", "
 # counted honestly rather than silently dropped to make the crash go away.
 _NULL_HOST_CLASS = "(no hostClass)"
 
+# Same problem, one level down: `domain` is nullable too (schema: ["string", "null"]), and a
+# row's host becomes both its visible text and its `data-row` attribute. A bare None there
+# would hit the same crash `_NULL_HOST_CLASS` exists to avoid, one layer later.
+_NULL_DOMAIN = "(unknown host)"
+
 _LABELS = {
     "detected": "detected", "integrations": "integrations", "assets": "assets",
     "tracked": "tracked", "queued": "queued", "needs-human": "needs human", "blocked": "blocked",
 }
 
 
-def _node(key, n, *, note="", children=None, unit="rows"):
+def _node(key, n, *, note="", children=None, unit="rows", rows=None, has_rows=False):
     return {"key": key, "label": _LABELS.get(key, key), "n": n, "unit": unit,
-            "note": note, "children": children or []}
+            "note": note, "children": children or [], "rows": rows or [],
+            # `has_rows` is a distinct flag from `bool(rows)`: a bucket that is a legitimate
+            # row-bearing leaf (tracked/queued/needs-human/blocked, or an asset hostClass) but
+            # happens to have zero matching endpoints must still assert "0 rows rendered" — an
+            # empty `rows` list alone can't tell a real zero apart from "this node never carries
+            # rows at all" (detected/integrations/assets, which are sums, not row buckets).
+            "has_rows": has_rows}
+
+
+def _row(e: dict, catalog_by_vendor: dict, bucket: str) -> dict:
+    """One row for a single endpoint record: the host, its call-site count, and — only for the
+    buckets where it is load-bearing — the catalog join (`tracked`) or the own-infra heuristic's
+    reasoning (`queued`). `files[]` can be TRUNCATED relative to `file_count` (measured on the
+    reference repo: 16 of 73 endpoints carry fewer locations than their file_count), so this
+    records both numbers rather than just the list — rendering the short list unqualified would
+    claim completeness while silently hiding the rest.
+    """
+    files = list(e.get("files") or [])
+    file_count = e.get("file_count")
+    shown = len(files)
+    row = {"host": e.get("domain") or _NULL_DOMAIN, "count": file_count, "locs": files,
+          "shown": shown, "total": file_count if file_count is not None else shown,
+          "truncated": file_count is not None and file_count > shown,
+          "vendor": None, "version": None, "verdict": None, "reason": None}
+    if bucket == "tracked":
+        vendor = e.get("vendor")
+        row["vendor"], row["version"] = vendor, e.get("version")
+        # Absent from payload["catalog"] reads the same as an explicit UNAUDITED verdict would
+        # — no attestation on file for this vendor either way — and UNAUDITED is the honesty
+        # signal this row exists to surface, so it is the fallback, not a blank.
+        row["verdict"] = catalog_by_vendor.get(vendor, "UNAUDITED") if vendor else "UNAUDITED"
+    elif bucket == "queued":
+        row["reason"] = e.get("ownInfraReason")
+    return row
 
 
 def build(payload: dict) -> list:
@@ -56,15 +94,35 @@ def build(payload: dict) -> list:
     """
     counts = payload.get("counts") or {}
     cov = counts.get("coverage")
+    catalog_by_vendor = {c.get("vendor"): c.get("verdict")
+                         for c in (payload.get("catalog") or []) if c.get("vendor")}
+    # `have_endpoints` distinguishes "the payload never carried per-endpoint detail" (a legacy
+    # shape, or a caller that only ever populated counts) from "it did, and there are zero" — the
+    # same distinction `test_assets_render_childless_rather_than_wrong_without_endpoints` already
+    # draws for the asset breakdown. Without it, a lifecycle leaf whose `n` comes from
+    # `counts.coverage` (never from the endpoint list) would claim rows it has no data to back,
+    # which is exactly the "cannot see" rendered as "clean" failure this tool exists to refuse —
+    # so absent endpoints means no row claim at all, not a row claim of zero.
+    have_endpoints = payload.get("endpoints") is not None
+    endpoints = payload.get("endpoints") or ()
+    # One pass over the endpoints: bucket by coverage state (the lifecycle leaves' rows) and,
+    # for `na` rows, by hostClass (the asset breakdown's rows) — the SAME source
+    # `na_by_class`'s count already came from, now keeping the records themselves too.
+    by_coverage: dict = {"tracked": [], "queued": [], "needs-human": [], "blocked": []}
+    na_rows_by_class: dict = {}
+    for e in endpoints:
+        c = e.get("coverage")
+        if c in by_coverage:
+            by_coverage[c].append(e)
+        elif c == "na":
+            na_rows_by_class.setdefault(e.get("hostClass") or _NULL_HOST_CLASS, []).append(e)
     # The asset breakdown comes from the ENDPOINT ROWS, never from counts.hostClasses.
     # hostClasses tallies all 73 endpoints, so its asset-class entries sum to 45 against an
     # assets total of 43: a token-claimed `own-infra` row is kept QUEUED (it might be a real
     # third party), which makes it an integration, not an asset. Deriving from hostClasses
     # would put the tree out by exactly that difference — the arithmetic failure this tree
     # exists to make impossible.
-    na_by_class = Counter((e.get("hostClass") or _NULL_HOST_CLASS)
-                          for e in (payload.get("endpoints") or ())
-                          if e.get("coverage") == "na")
+    na_by_class = Counter({k: len(v) for k, v in na_rows_by_class.items()})
 
     if cov is None:
         integrations = _node("integrations", None,
@@ -74,19 +132,24 @@ def build(payload: dict) -> list:
         vendors = counts.get("apis")
         tracked_note = (f"{cov.get('tracked', 0)} classified rows → {vendors} distinct vendors"
                         if vendors is not None else "")
-        life = [_node("tracked", cov.get("tracked", 0), note=tracked_note),
-                _node("queued", cov.get("queued", 0))]
+        life = [_node("tracked", cov.get("tracked", 0), note=tracked_note, has_rows=have_endpoints,
+                      rows=[_row(e, catalog_by_vendor, "tracked") for e in by_coverage["tracked"]]),
+                _node("queued", cov.get("queued", 0), has_rows=have_endpoints,
+                      rows=[_row(e, catalog_by_vendor, "queued") for e in by_coverage["queued"]])]
         # needs-human / blocked are part of the partition and render even at 0: they are real
         # states a scan can be in, and hiding them would make a stuck repo look like a clean one.
         for k in ("needs-human", "blocked"):
-            life.append(_node(k, cov.get(k, 0)))
+            life.append(_node(k, cov.get(k, 0), has_rows=have_endpoints,
+                              rows=[_row(e, catalog_by_vendor, k) for e in by_coverage[k]]))
         integrations = _node("integrations", counts.get("integrations"), children=life)
         # Every OBSERVED class becomes a child — the tuple only decides the order. Known
         # classes first (in _ASSET_CLASSES order), then any unmapped ones alphabetically, so
         # a new hostClass added to the classifier is never dropped and ordering stays stable.
         known = [c for c in _ASSET_CLASSES if c in na_by_class]
         unknown = sorted(c for c in na_by_class if c not in _ASSET_CLASSES)
-        kids = [_node(c, na_by_class[c]) for c in known + unknown]
+        kids = [_node(c, na_by_class[c], has_rows=True,
+                      rows=[_row(e, catalog_by_vendor, c) for e in na_rows_by_class[c]])
+                for c in known + unknown]
         assets = _node("assets", cov.get("na", counts.get("excluded")), children=kids)
 
     return [_node("detected", counts.get("detected"), children=[integrations, assets])]
@@ -144,6 +207,51 @@ def md_tree(nodes: list) -> list:
     return out
 
 
+def _row_html(r: dict) -> str:
+    """One host's row: its call-site count, and — only when load-bearing — the catalog join or
+    the own-infra reasoning, plus (if it has any) a nested, native `<details>` of its own
+    file:line locations. Never a `<li>`/`<ul>`: rows must stay outside the vocabulary
+    `verify._tree_nodes`/`_parse_rendered_tree` walk, so a row can never be mistaken for a tree
+    node (see `check_tree_rows`'s docstring) — that boundary is what keeps tree-parity and
+    tree-node-set unaffected by rows existing at all.
+    """
+    host = _html.escape(str(r["host"]))
+    count = "—" if r["count"] is None else str(r["count"])
+    extra = ""
+    if r["verdict"] is not None:
+        vendor = _html.escape(str(r["vendor"])) if r["vendor"] else "(vendor unknown)"
+        version = f" v{_html.escape(str(r['version']))}" if r.get("version") else ""
+        verdict = _html.escape(str(r["verdict"]))
+        extra = (f' <span class="rvendor">{vendor}{version}</span>'
+                f' <span class="verdict">{verdict}</span>')
+    elif r["reason"]:
+        extra = f' <span class="rreason">{_html.escape(str(r["reason"]))}</span>'
+    locs_html = ""
+    if r["locs"]:
+        items = "".join(f'<div data-loc="{_html.escape(loc)}">{_html.escape(loc)}</div>'
+                        for loc in r["locs"])
+        # Requirement 5: files[] can be a TRUNCATED sample of file_count. Showing the short
+        # list with no caveat would read as "here is where it is called" while silently
+        # hiding the rest — exactly the "cannot see" rendered as "clean" this tool refuses.
+        trunc = (f'<div class="rtrunc">showing {r["shown"]} of {r["total"]}</div>'
+                 if r["truncated"] else "")
+        locs_html = (f'<details class="locs"><summary>{r["shown"]} location(s)</summary>'
+                    f'{items}{trunc}</details>')
+    return (f'<div class="row" data-row="{host}">'
+            f'<span class="rhost">{host}</span> <span class="rcount">{count}</span>'
+            f'{extra}{locs_html}</div>')
+
+
+def _rows_html(rows: list) -> str:
+    """A node's own hosts, native-collapsible. Emits nothing for zero rows — a claimed-but-empty
+    bucket has no hosts to expand to, so there is nothing to disclose beyond the count already on
+    the node's own line."""
+    if not rows:
+        return ""
+    return (f'<details class="rows"><summary>{len(rows)} host(s)</summary>'
+            f'{"".join(_row_html(r) for r in rows)}</details>')
+
+
 def _li(node) -> str:
     n = "null" if node["n"] is None else str(node["n"])
     # `_fmt` is the SAME wording md_tree uses ("73 detected" / "not counted (integrations)"),
@@ -154,9 +262,14 @@ def _li(node) -> str:
     note = (f' <span class="tnote">{_html.escape(_sanitize(node["note"]))}</span>'
             if node["note"] else "")
     kids = f"<ul>{''.join(_li(k) for k in node['children'])}</ul>" if node["children"] else ""
+    # Rows are appended AFTER kids, never inserted between the opening `<li ...>` tag and the
+    # `<span class="tc">`/`<span class="tnote">` pair immediately following it —
+    # `verify._TREE_LI_TEXT` anchors on that exact adjacency (tree-parity/tree-text-mismatch),
+    # and it does not require the `<li>` to end there, so appending after is invisible to it.
+    rows_html = _rows_html(node["rows"]) if node["has_rows"] else ""
     return (f'<li data-node="{_html.escape(node["key"])}" data-n="{n}" '
             f'data-unit="{_html.escape(node["unit"])}">'
-            f'<span class="tc">{text}</span>{note}{kids}</li>')
+            f'<span class="tc">{text}</span>{note}{kids}{rows_html}</li>')
 
 
 def html_tree(nodes: list) -> str:

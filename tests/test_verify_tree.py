@@ -156,8 +156,11 @@ def test_deleting_the_trailing_asset_child_breaks_the_assets_level_sum():
     pair list happened to name."""
     p = _payload_with_assets()
     html = tree.html_tree(tree.build(p))
-    trimmed = re.sub(r'<li data-node="own-infra"[^>]*><span class="tc">[^<]*</span></li>',
-                     "", html, count=1)
+    # DOTALL + non-greedy: own-infra's <li> now carries its own rows (task 5c) after the `.tc`
+    # span, but a leaf's rows are emitted as `<div>`s, never `<li>` (see tree.py's `_row_html`),
+    # so the first `</li>` reached after own-infra's OPEN tag is still, unambiguously, its own.
+    trimmed = re.sub(r'<li data-node="own-infra"[^>]*>.*?</li>',
+                     "", html, count=1, flags=re.S)
     assert trimmed != html, "the test's own regex did not remove the trailing <li>"
     with pytest.raises(verify.Violation) as e:
         verify.check_tree_matches_payload(trimmed, p)
@@ -176,8 +179,10 @@ def test_deleting_all_asset_children_is_caught_by_node_count_parity():
     html = tree.html_tree(nodes)
     good_md = "\n".join(tree.md_tree(nodes))
     for hc in ("boilerplate", "social-widget", "vendored-lib", "asset-cdn", "own-infra"):
-        html, n = re.subn(rf'<li data-node="{hc}"[^>]*><span class="tc">[^<]*</span></li>',
-                          "", html, count=1)
+        # DOTALL + non-greedy: each leaf now carries its own rows (task 5c) as `<div>`s (never
+        # `<li>`), so the first `</li>` after a leaf's OPEN tag is still, unambiguously, its own.
+        html, n = re.subn(rf'<li data-node="{hc}"[^>]*>.*?</li>',
+                          "", html, count=1, flags=re.S)
         assert n == 1, f"the test's own regex did not remove the {hc!r} <li>"
     with pytest.raises(verify.Violation) as e:
         verify.check_tree_parity(html, good_md)
@@ -243,8 +248,11 @@ def test_symmetric_deletion_of_all_asset_children_is_caught_by_matches_payload_a
     nodes = tree.build(p)
     html = tree.html_tree(nodes)
     for hc in ("boilerplate", "social-widget", "vendored-lib", "asset-cdn", "own-infra"):
-        html, n = re.subn(rf'<li data-node="{hc}"[^>]*><span class="tc">[^<]*</span></li>',
-                          "", html, count=1)
+        # DOTALL + non-greedy: see the comment in the node-count-parity version of this tamper
+        # above — a leaf's own rows (task 5c) are `<div>`s, never `<li>`, so this still removes
+        # exactly one node's own markup, nothing more.
+        html, n = re.subn(rf'<li data-node="{hc}"[^>]*>.*?</li>',
+                          "", html, count=1, flags=re.S)
         assert n == 1, f"the test's own regex did not remove the {hc!r} <li>"
     with pytest.raises(verify.Violation) as e:
         verify.check_tree_matches_payload(html, p)
@@ -260,14 +268,15 @@ def test_symmetric_insertion_of_a_phantom_node_is_caught_by_matches_payload_alon
     p = _payload_with_assets()
     nodes = tree.build(p)
     html = tree.html_tree(nodes)
-    own_infra_li = ('<li data-node="own-infra" data-n="3" data-unit="rows">'
-                    '<span class="tc">3 own-infra</span></li>')
-    assert own_infra_li in html, "fixture drifted from the renderer's actual own-infra markup"
+    # own-infra now carries its own rows (task 5c) — located by regex rather than a hand-typed
+    # literal, since the exact rows markup (three "(unknown host)" rows, this fixture's
+    # endpoints carry no `domain`) is tree.py's to own, not this test's to duplicate.
+    m = re.search(r'<li data-node="own-infra"[^>]*>.*?</li>', html, re.S)
+    assert m, "fixture drifted from the renderer's actual own-infra markup"
+    own_infra_li = m.group(0)
     phantom = ('<li data-node="phantom" data-n="3" data-unit="rows">'
               '<span class="tc">3 phantom</span></li>')
-    tampered = own_infra_li.replace(
-        "<span class=\"tc\">3 own-infra</span></li>",
-        f'<span class="tc">3 own-infra</span><ul>{phantom}</ul></li>')
+    tampered = own_infra_li[:-len("</li>")] + f'<ul>{phantom}</ul></li>'
     html = html.replace(own_infra_li, tampered, 1)
     assert html != tree.html_tree(nodes)
     with pytest.raises(verify.Violation) as e:
