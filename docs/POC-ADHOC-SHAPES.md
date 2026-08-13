@@ -18,7 +18,7 @@ config-driven-url SP-API SDK, 105 blind paths) — the **full payoff, including 
 | `absorb --check` (the gate) | attributed **5 → 8 (+3)**, 3/3 claims met, ✓ passes |
 | Ephemeral re-scan | 3 `/catalog/v0` call-sites attributed the certified scan never saw |
 | **Dated by the catalog** | **Amazon SP-API `/catalog/v0` → RETIRES 2026-06-30** (sourced, human-curated) |
-| `adhoc-report` | `adhoc.json` (`drift-adhoc/v1`, hash-bound) + `adhoc.html` (amber, "AI-shaped · gate-validated (this run)") |
+| `adhoc-report` | `adhoc.json` (`drift-adhoc/v1`, hash-bound) — rendered in the dashboard's **AI Frontier** tab, badged `GATE-VALIDATED` (amber, "AI-shaped · gate-validated (this run)") |
 | **Certified `drift.json` sha** | **UNCHANGED** — the middle tier cannot contaminate the certified tier |
 
 This is the whole thesis on one repo: **AI supplied the *where* (3 blind call-sites), the reviewed
@@ -29,7 +29,10 @@ because its paths aren't Walmart's retiring operations.)
 ## What was built
 - `agent/lib/adhoc.py` — `compare()` (restrict shaped actions to claimed locs, surface gate problems)
   + `bundle()` (the `drift-adhoc/v1` sibling doc, hash-bound). Pure, unit-tested.
-- `agent/lib/adhoc_render.py` — standalone amber `adhoc.html` (never folded into `dashboard.html`).
+- `agent/lib/adhoc_render.py` — standalone amber `adhoc.html` at the time of this PoC (superseded:
+  `adhoc.json` is now embedded as its own blob in `dashboard.html`'s **AI Frontier** tab by
+  `agent/lib/dashboard_render.py::render_payload`; `adhoc_render.py` and `adhoc.html` no longer
+  exist).
 - `agent/cli.py::adhoc-report` — assembles the artifact from the certified drift.json + the ad-hoc
   re-scan + staged idioms/claims + the gate DELTA. `drift.json`/`verify`/the schema are untouched.
 - `agent/absorb.py::check_claims_in_scope` — the anti-gaming guard (claims ⊆ the brief's residue),
@@ -40,8 +43,11 @@ because its paths aren't Walmart's retiring operations.)
 ## Deliberately NOT built (PoC scope, per Fable)
 No federation, no persistence changes, **no `drift-v1` schema change, no `verify` change**, no
 `endpoints.py` provenance plumbing (provenance = the claims set, from the gate), no IR cache-key work
-(separate state dir sidesteps it), local-path roots only. Folding `adhoc-data` into `dashboard.html`
-(a fourth `_blob_script` + sub-tab, + two new verify invariants) is the post-PoC step.
+(separate state dir sidesteps it), local-path roots only.
+
+**Post-PoC step, now done (later branch):** `adhoc-data` (plus `leads` and `research`) folded into
+`dashboard.html` as separate blobs in the **AI Frontier** tab, and `verify` gained the
+`ai-firewall` invariant asserting no AI-derived record reaches the certified payload.
 
 ## To reproduce the acceptance
 ```

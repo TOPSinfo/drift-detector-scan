@@ -233,3 +233,34 @@ Cheap tightening while there: gitignore `audit.json` / `chart.html` / `rules.gen
 
 **Fallback (no runner):** stay on GitHub Actions, keep two repos, just publish the Cockpit to GitLab
 Pages from the persist step — a ~2-line change, strictly better than merging.
+
+---
+
+## Banked from the AI-surface + queue branch (0.19.0-beta, 2026-08-13)
+
+Three items the merge-gate review recorded as follow-up rather than blockers. Each is a real
+gap, verified end-to-end, and each fails in a *safe* direction today — which is why they were
+banked instead of rushed.
+
+**1 · The lead date-gate still admits two date shapes.** `agent/cli.py` `_DATEISH` refuses
+`YYYY-MM-DD`, `YYYY/MM/DD`, month-name forms and `DD/MM/YYYY`, but `note: "Sunset in March 2026"`
+(month + year, no day) and `note: "sunset 01.03.2026"` (dotted European) both still pass and land
+in the dashboard's Evidence column as ungated WHEN claims — the harm principle 2 exists to prevent,
+one shape narrower. **This needs a product call, not a reflex widening:** the obvious fix
+(`_MONTHISH\s+\d{4}`) would also refuse honest evidence like *"the May 2026 release notes mention
+it"*. An over-eager gate is worse than the hole, because users route around a gate that rejects
+true statements. Decide deliberately, and pin the decision with a false-refusal test.
+
+**2 · `_tag_own_infra` is the same bug class the branch just fixed, one layer down.**
+`agent/lib/endpoints.py` retags any registrable domain with ≥2 *unclassified* hosts as own-infra —
+with no `ownInfraReason`, so `_coverage` drops it to `na` and it leaves the audit backlog unnamed.
+A repo calling `graph.somevendor.com` and `files.somevendor.com` (neither `api.`-labelled) loses a
+real third party silently. This predates the branch. The fix is the one already proven on the
+repo-token signal: give it a reason string and keep it `queued`, or scope it to hosts that already
+share the repo's own token/domain.
+
+**3 · The `isIntegration` mirror in `dashboard.app.js` disagrees with the server for an
+out-of-vocab `hostClass`** — the JS returns true where `host_class.is_integration` returns False.
+Unreachable today (the schema enum and `host_class.VOCAB` both close the vocabulary), but it is the
+last place the client and server can disagree about what counts as an integration, and the branch
+already shipped one bug of exactly that shape.

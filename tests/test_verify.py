@@ -46,6 +46,52 @@ def test_host_class_invariant_every_endpoint_classed_and_counts_agree():
         verify.check_host_classes(bad_count)
 
 
+def test_unknown_must_cover_the_queued_worklist():
+    """M1: `research`'s work-list is every endpoint at `coverage: queued`; the headline
+    `unknown` tile must never be smaller than that work-list, or the tile undercounts hosts
+    `research` is actively handing the user. Isolated from the hostClass-derived-count check
+    (which this payload deliberately satisfies on its own terms — hostClasses/detected all
+    agree with the endpoints, and asset-cdn correctly derives to 0 unknown) so this proves the
+    NEW cross-field check independently, not as a side effect of the derived-count check firing
+    first. (The realistic shape of the bug this exists for — a token-claimed own-infra host
+    whose `coverage` says `queued` while the OLD hostClass-only counter said 0 unknown — is
+    covered below in test_token_claimed_own_infra_counts_as_unknown_and_integration, and is
+    now ALSO caught by the derived-count check once host_class.is_integration takes the
+    ownInfraReason; this check remains the one that would have caught it before that fix.)"""
+    bad = {"endpoints": [{"domain": "cdn.example.com", "hostClass": "asset-cdn", "classified": False,
+                          "coverage": "queued"}],
+           "counts": {"hostClasses": {"asset-cdn": 1}, "detected": 1,
+                      "integrations": 0, "excluded": 1, "unknown": 0,
+                      "coverage": {"tracked": 0, "queued": 1, "needs-human": 0, "blocked": 0, "na": 0}}}
+    with pytest.raises(Violation) as exc:
+        verify.check_host_classes(bad)
+    assert exc.value.check == "unknown-lt-queued"
+
+    good = {**bad, "counts": {**bad["counts"], "coverage": {**bad["counts"]["coverage"], "queued": 0, "na": 1}},
+            "endpoints": [{**bad["endpoints"][0], "coverage": "na"}]}
+    verify.check_host_classes(good)   # no raise — queued (0) <= unknown (0)
+
+
+def test_token_claimed_own_infra_counts_as_unknown_and_integration():
+    """M1 reconstruction: the exact payload `rev-hubspot-connector` produced before the counter
+    fix — api.hubspot.com is claimed own-infra by a repo-name TOKEN (the weak signal), so
+    `research`'s work-list keeps it `coverage: queued`, but the OLD hostClass-only counters
+    called it 0 integrations / 0 unknown / 1 excluded, which every check (including the old
+    derived-count recompute — verify counted the SAME wrong way) accepted. Both the
+    unknown-lt-queued check above and the fixed derived-count check now reject the old numbers;
+    the corrected numbers (integrations=1, unknown=1, excluded=0) pass everything."""
+    bad = {"endpoints": [{"domain": "api.hubspot.com", "hostClass": "own-infra", "classified": False,
+                          "coverage": "queued", "ownInfraReason": "repo token 'hubspot'"}],
+           "counts": {"hostClasses": {"own-infra": 1}, "detected": 1,
+                      "integrations": 0, "excluded": 1, "unknown": 0,
+                      "coverage": {"tracked": 0, "queued": 1, "needs-human": 0, "blocked": 0, "na": 0}}}
+    with pytest.raises(Violation):
+        verify.check_host_classes(bad)
+
+    good = {**bad, "counts": {**bad["counts"], "integrations": 1, "excluded": 0, "unknown": 1}}
+    verify.check_host_classes(good)   # no raise
+
+
 def _sunset_finding(op, date, rec, files, domain=None):
     return {"repo": "ebayapi", "ref": "eBay", "kind": "sunset", "severity": "SUNSET",
             "status": "DEPRECATED", "operation": op, "domain": domain, "version": None,

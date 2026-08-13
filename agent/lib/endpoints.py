@@ -11,7 +11,7 @@ import os
 import re
 from pathlib import Path
 
-from agent.lib import classify_url, host_class, scope_edges
+from agent.lib import classify_url, host_class, own_infra, scope_edges
 
 UNKNOWN = "Unknown"
 
@@ -110,6 +110,26 @@ def scan_endpoints(matches: list, repo_root: str, vendors: list, *, max_files: i
     groups: dict = {}
     seen_known: set = set()
 
+    # This repo's own-infrastructure signals, derived once (pure; see agent/lib/own_infra.py).
+    # vendor_tokens: the catalog's own vendor names, tokenised the way own_infra expects — so a
+    # repo named after the vendor it integrates with (acme-mailgun-sync) cannot suppress that
+    # vendor's uncatalogued hosts (its status page, a second domain) as own-infra. A multi-word
+    # vendor ("Global Payments", "Amazon SP-API") also contributes its CONCATENATED form
+    # ("globalpayments", "amazonspapi") alongside the per-word tokens: own_infra._tokens()
+    # splits a repo name only on [-_.]+, so a repo literally named `acme-globalpayments-sync`
+    # yields the single token "globalpayments", which never equals either per-word vendor token
+    # ("global", "payments") and so was never dropped — the vendor's own host was silently
+    # claimed as own-infra. This was a Critical review finding: 19 of 68 vendors are multi-word.
+    vendor_tokens = set()
+    for name in by_name:
+        words = [w for w in re.split(r"[^a-z0-9]+", name.lower()) if w]
+        vendor_tokens.update(words)
+        if len(words) > 1:
+            vendor_tokens.add("".join(words))
+    vendor_tokens = frozenset(vendor_tokens)
+    own_sig = own_infra.signals(repo_path=repo_root, repo_id=repo_id or "",
+                                vendor_tokens=vendor_tokens)
+
     def add(vendor, techKey, host, version, example, rel, lineno, operation=None,
             inferred=False, line=""):
         loc = f"{rel}:{lineno}"
@@ -146,7 +166,18 @@ def scan_endpoints(matches: list, repo_root: str, vendors: list, *, max_files: i
             # typed (api-lead / social / analytics / asset-cdn / library / reference / unclassified)
             # so the cockpit can show found integrations and exclude bundled assets. Never a date.
             rec["hostClass"] = "api" if rec["classified"] else host_class.classify(
-                host, url=rec["example"], in_call=_looks_like_call(line), file_ext=_ext_of(rel))
+                host, url=rec["example"], in_call=_looks_like_call(line), file_ext=_ext_of(rel),
+                own=own_sig)
+            # WHY this host was claimed as own-infra — the signal and the value that matched
+            # (F1: a silent own-infra tag is how a real third party like api.hubspot.com used to
+            # vanish from the research backlog). None when own_sig didn't cause the tag (e.g. the
+            # _OWN_CLOUD cloud-backend rule fired instead), so the field is absent rather than
+            # misleading. dashboard_render's coverage lifecycle reads this to decide whether the
+            # host may drop out of the backlog (a domain claim) or must stay queued (a token claim).
+            if rec["hostClass"] == "own-infra":
+                own_reason = own_infra.reason(host, own_sig)
+                if own_reason:
+                    rec["ownInfraReason"] = own_reason
             groups[key] = rec
         rec["file_count"] += 1
         if loc not in rec["files"]:        # collect all unique locs; sort + cap at the end

@@ -331,6 +331,7 @@
       <!-- AI-RESEARCH tier: the record of the tool teaching itself — vendors it researched in the
            wild, sunsets it found (sourced), verdicts needing a human. -->
       <template v-if="hasResearch">
+        <h3>AI research <span class="orig" data-origin="sourced">SOURCED</span></h3>
         <div class="tierlead">
           <b>The tool taught itself.</b> An AI pass looked up each detected-but-untracked vendor's own
           deprecation docs — <b>{{ researchedCount }} researched</b>,
@@ -351,13 +352,15 @@
         </table>
       </template>
       <!-- honest empty-state when NO AI pass ran: the plane is always present, said plainly. -->
-      <div v-if="!hasShaped && !hasResearch" class="planehero">
-        <p><b>No AI pass has run on this scan.</b> The AI Frontier fills in two ways: an AI
+      <div v-if="!hasShaped && !hasResearch && !leadRows.length" class="planehero">
+        <p><b>No AI pass has run on this scan.</b> The AI Frontier fills in three ways: an AI
            <b>researches</b> a detected-but-untracked vendor's retirement docs (untracked → tracked),
-           or <b>shapes</b> a repo the deterministic scan couldn't read. Run the research/absorb pass,
-           re-scan, and it lands here — gate-validated.</p>
+           <b>shapes</b> a repo the deterministic scan couldn't read, or <b>cross-checks</b> a repo
+           against the certified endpoints as unverified leads. Run the research/absorb/leads pass,
+           re-scan, and it lands here.</p>
       </div>
       <template v-if="hasShaped">
+        <h3>AI-shaped call-sites <span class="orig" data-origin="shaped">GATE-VALIDATED</span></h3>
         <div class="tierlead">
           <b>Found by AI, re-checked by the tool.</b> These are real call-sites in code the tool
           couldn't read on its own — an AI pointed them out, and the tool then confirmed each one is
@@ -380,6 +383,28 @@
           </tbody>
         </table>
       </template>
+      <!-- The three AI tiers share ONE tab but never one pile: each row states its provenance, because
+           a gate-validated shape, a sourced research verdict and an unverified lead carry different
+           trust. Collapsing that distinction is how a model's guess becomes indistinguishable from a
+           fetched fact. -->
+      <section v-if="leadRows.length" class="ai-tier">
+        <h3>Cross-check leads <span class="orig" data-origin="lead">UNVERIFIED LEAD</span></h3>
+        <p class="muted">Read by an AI agent this session. Corroborated by nothing else — a lead says
+           <em>whether</em>, never <em>when</em>. Promote one through <code>/drift-absorb</code> to make
+           it a certified finding.</p>
+        <table>
+          <thead><tr><th>Vendor</th><th>Host</th><th>Where</th><th>Retired?</th><th>Evidence</th></tr></thead>
+          <tbody>
+            <tr v-for="(r, li) in leadRows" :key="'lr' + li">
+              <td>{{ r.vendor }}</td>
+              <td>{{ r.host }}</td>
+              <td><code>{{ r.file }}<span v-if="r.line">:{{ r.line }}</span></code></td>
+              <td><span class="tri" :data-tri="r.retired">{{ r.retired }}</span></td>
+              <td class="muted">{{ r.note }}</td>
+            </tr>
+          </tbody>
+        </table>
+      </section>
     </section>
     <section v-show="plane === 'supply' && sub === 'sbom'" class="panel active">
       <div class="subbar">

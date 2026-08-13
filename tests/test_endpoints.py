@@ -51,6 +51,93 @@ def test_own_domain_multi_subdomain_is_tagged_own_infra(tmp_path):
     assert by["api.keepa.com"] == "api-lead"      # single-host third party is NOT swept into own-infra
 
 
+def test_repo_token_own_infra_claim_records_a_reason(tmp_path):
+    """F1 reproduction: `rev-hubspot-connector` -> api.hubspot.com. The repo-name TOKEN signal is
+    a heuristic, not the strong git-remote org-domain signal, so the endpoint must carry
+    `ownInfraReason` naming it — the field dashboard_render reads to keep the host queued rather
+    than silently dropping a real third party out of the research backlog."""
+    _write(tmp_path, "a.php", '$r = $client->get("https://api.hubspot.com/crm/v3/objects");\n')
+    out = scan_endpoints([_url("a.php", 1)], str(tmp_path), _VENDORS,
+                         repo_id="git@git.example.com:example-org/rev-hubspot-connector.git")
+    rec = next(e for e in out["endpoints"] if e["domain"] == "api.hubspot.com")
+    assert rec["hostClass"] == "own-infra"          # still marked own-infra for display
+    assert rec.get("ownInfraReason") == "repo token 'hubspot'"
+
+
+def test_org_domain_own_infra_claim_records_a_different_reason(tmp_path):
+    """The strong signal (a self-hosted forge remote) gets its own distinguishable reason, so a
+    reader — or dashboard_render's coverage decision — can tell the two claims apart."""
+    _write(tmp_path, "a.php", '$x=file_get_contents("https://anything.topsdemo.in/x");\n')
+    out = scan_endpoints([_url("a.php", 1)], str(tmp_path), _VENDORS,
+                         repo_id="https://git.topsdemo.in/root/promoteplus-crm.git")
+    rec = next(e for e in out["endpoints"] if e["domain"] == "anything.topsdemo.in")
+    assert rec["hostClass"] == "own-infra"
+    assert rec.get("ownInfraReason") == "git remote org domain 'topsdemo.in'"
+
+
+_MAILGUN = Vendor("Mailgun", "api:mailgun", ("mailgun.net",), DEFAULT_VERSION_REGEX)
+
+
+def test_vendor_named_repo_does_not_swallow_the_vendor_as_own_infra(tmp_path):
+    """A repo named after the vendor it integrates with (acme-mailgun-sync) must not have that
+    vendor's own name suppress an UNCATALOGUED Mailgun host (e.g. its status page, a different
+    domain than the one catalogued) as own-infra. This is the Critical bug the review caught:
+    own_infra.signals() drops any derived token that collides with a `vendor_tokens` entry, but
+    only if the caller actually passes that set — scan_endpoints must derive it from the vendor
+    catalog it already has and wire it through, or the protection is inert."""
+    _write(tmp_path, "a.php", '// see https://mailgun-status.io/incidents for outages\n')
+    out = scan_endpoints([_url("a.php", 1)], str(tmp_path), [_MAILGUN],
+                         repo_id="git@git.example.com:example-org/acme-mailgun-sync.git")
+    by = {e["domain"]: e["hostClass"] for e in out["endpoints"]}
+    assert by["mailgun-status.io"] != "own-infra"
+
+
+_GLOBAL_PAYMENTS = Vendor("Global Payments", "api:global-payments", ("globalpayments.com",),
+                          DEFAULT_VERSION_REGEX)
+
+
+def test_multiword_vendor_name_protects_against_concatenated_repo_token(tmp_path):
+    """Critical bug: vendor_tokens only carried PER-WORD tokens ('global', 'payments'), but
+    own_infra._tokens() splits repo names on [-_.]+ only, so a repo literally named
+    'acme-globalpayments-sync' produces the single token 'globalpayments', which never equals
+    either per-word vendor token and so was NOT dropped -- silently claiming the vendor's own
+    (uncatalogued) host as own-infra. scan_endpoints must also contribute the CONCATENATED form
+    of each multi-word vendor name.
+
+    The status host deliberately does NOT match the catalogued domain (globalpayments.com), so
+    the endpoint is un-catalogued and must fall through to host_class.classify(own=own_sig) --
+    exactly the path the bug lives on."""
+    _write(tmp_path, "a.php", '// status page https://globalpayments-status.io/health\n')
+    out = scan_endpoints([_url("a.php", 1)], str(tmp_path), [_GLOBAL_PAYMENTS],
+                         repo_id="git@git.example.com:example-org/acme-globalpayments-sync.git")
+    by = {e["domain"]: e["hostClass"] for e in out["endpoints"]}
+    assert by["globalpayments-status.io"] != "own-infra"
+
+
+def test_repo_token_superset_of_vendor_token_does_not_claim_the_vendor(tmp_path):
+    """A repo token that CONTAINS a vendor token ('globalpaymentsapi' contains 'globalpayments')
+    is still that vendor's name. Exact equality alone under-protects the concatenated-form fix
+    above; own_infra must also drop a repo token that merely contains a vendor token.
+
+    The host itself must be a substring hit on the REPO token (`globalpaymentsapi`), not just the
+    vendor token, or the test would pass by accident without ever exercising the contains-check."""
+    _write(tmp_path, "a.php", '// status page https://globalpaymentsapi-status.io/health\n')
+    out = scan_endpoints([_url("a.php", 1)], str(tmp_path), [_GLOBAL_PAYMENTS],
+                         repo_id="git@git.example.com:example-org/acme-globalpaymentsapi-bridge.git")
+    by = {e["domain"]: e["hostClass"] for e in out["endpoints"]}
+    assert by["globalpaymentsapi-status.io"] != "own-infra"
+
+
+def test_hyphenated_vendor_name_concatenated_form_is_also_protected(tmp_path):
+    """'Amazon SP-API' concatenates to 'amazonspapi'; a repo named acme-amazonspapi-bridge must
+    not suppress an uncatalogued Amazon SP-API host (its docs subdomain) as own-infra."""
+    _write(tmp_path, "a.php", '// see https://developer-docs.amazonspapi.com/status\n')
+    out = scan_endpoints([_url("a.php", 1)], str(tmp_path), [_SP],
+                         repo_id="git@git.example.com:example-org/acme-amazonspapi-bridge.git")
+    by = {e["domain"]: e["hostClass"] for e in out["endpoints"]}
+    assert by["developer-docs.amazonspapi.com"] != "own-infra"
+
+
 def test_boilerplate_hosts_are_bucketed_not_silently_dropped(tmp_path):
     """The honesty change: formerly-_IGNORE hosts (fonts / CDNs / schemas / doc links) are no longer
     deleted from the stream — they appear as endpoints with a NON-integration hostClass, so 'N

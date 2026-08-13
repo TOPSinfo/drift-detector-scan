@@ -99,6 +99,69 @@ def test_projection_carries_hostclass_and_integration_counts():
     assert set(c["hostClasses"]) <= host_class.VOCAB
 
 
+def test_token_claimed_own_infra_host_stays_queued_not_na():
+    """F1: api.hubspot.com from rev-hubspot-connector is own-infra by a repo-name TOKEN heuristic
+    only — it must stay hostClass own-infra (for display) but COVERAGE must stay 'queued', the
+    exact field `research`'s work-list filters on, so a real third party never silently vanishes
+    from the backlog."""
+    eps = [{"domain": "api.hubspot.com", "vendor": "Unknown", "version": None,
+            "classified": False, "file_count": 1, "files": ["a.php:1"],
+            "hostClass": "own-infra", "ownInfraReason": "repo token 'hubspot'"}]
+    data = _blob(render_dashboard(_inv(eps), _audit([]), "2026-07-15"))
+    rec = next(e for e in data["endpoints"] if e["domain"] == "api.hubspot.com")
+    assert rec["coverage"] == "queued"
+    assert rec["ownInfraReason"] == "repo token 'hubspot'"
+    # M1: the headline counters must agree with the work-list — a queued host is an
+    # integration AND unknown, never silently 0/0 while research hands it out as a lead.
+    c = data["counts"]
+    assert c["integrations"] == 1 and c["excluded"] == 0 and c["unknown"] == 1
+    assert c["unknown"] >= c["coverage"]["queued"]
+
+
+def test_domain_claimed_own_infra_host_stays_na():
+    """A git-remote org-domain claim keeps the pre-existing behaviour: out of the backlog
+    entirely (unlike the weaker token claim above)."""
+    eps = [{"domain": "anything.topsdemo.in", "vendor": "Unknown", "version": None,
+            "classified": False, "file_count": 1, "files": ["a.php:1"],
+            "hostClass": "own-infra", "ownInfraReason": "git remote org domain 'topsdemo.in'"}]
+    data = _blob(render_dashboard(_inv(eps), _audit([]), "2026-07-15"))
+    rec = next(e for e in data["endpoints"] if e["domain"] == "anything.topsdemo.in")
+    assert rec["coverage"] == "na"
+    assert rec["hostClass"] == "own-infra"                 # still marked own-infra for display
+    # M1: the STRONG domain claim keeps the original behaviour — excluded, not unknown — so
+    # the fix for the weak token-claim case above must not also sweep this one into the count.
+    c = data["counts"]
+    assert c["integrations"] == 0 and c["excluded"] == 1 and c["unknown"] == 0
+
+
+def test_reference_case_promoteplus_crm_still_marked_own_infra():
+    """The reference case (promoteplus-crm -> crm.promoteplus.ai): own_infra derives a TOKEN
+    ("promoteplus") for this repo, so it is displayed as own-infra AND, per F1, stays queued —
+    the token claim alone must not silently retire it from the backlog either."""
+    from agent.lib import own_infra
+    sig = own_infra.signals(repo_path="/srv/promoteplus-crm",
+                            repo_id="https://git.topsdemo.in/root/promoteplus-crm.git")
+    reason = own_infra.reason("crm.promoteplus.ai", sig)
+    assert reason == "repo token 'promoteplus'"
+    eps = [{"domain": "crm.promoteplus.ai", "vendor": "Unknown", "version": None,
+            "classified": False, "file_count": 1, "files": ["a.php:1"],
+            "hostClass": "own-infra", "ownInfraReason": reason}]
+    data = _blob(render_dashboard(_inv(eps), _audit([]), "2026-07-15"))
+    rec = next(e for e in data["endpoints"] if e["domain"] == "crm.promoteplus.ai")
+    assert rec["hostClass"] == "own-infra"
+
+
+def test_untagged_own_infra_host_stays_na():
+    """An own-infra host with no ownInfraReason at all (the _OWN_CLOUD rule, or the unrelated
+    multi-host heuristic in endpoints._tag_own_infra) keeps the pre-existing behaviour unchanged."""
+    eps = [{"domain": "myapp.herokuapp.com", "vendor": "Unknown", "version": None,
+            "classified": False, "file_count": 1, "files": ["a.php:1"], "hostClass": "own-infra"}]
+    data = _blob(render_dashboard(_inv(eps), _audit([]), "2026-07-15"))
+    rec = next(e for e in data["endpoints"] if e["domain"] == "myapp.herokuapp.com")
+    assert rec["coverage"] == "na"
+    assert "ownInfraReason" not in rec
+
+
 def test_eol_action_tile_and_no_command():
     eol = {"repo": "r", "ref": "php", "kind": "eol", "version": "^7.4", "fixed": "8.5.8",
            "severity": "EOL", "status": "DEPRECATED", "first_seen": "2026-07-15",

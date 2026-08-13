@@ -13,11 +13,40 @@
   // the AI-RESEARCH tier — what the research loop found in the wild (vendors researched, sunsets
   // discovered + sourced, verdicts needing a human). Separate blob; null when no research has run.
   var RESEARCH = document.getElementById("research-data") ? blob("research-data") : null;
+  // the AI-LEADS tier (drift-leads/v1) — the rawest of the three: what an AI agent read in the
+  // repo, corroborated only by that session. `retired` is a tri-state, NEVER a date. Separate
+  // blob; null when no cross-check has run, so the tier is hidden rather than shown as 0.
+  var LEADS = document.getElementById("leads-data") ? blob("leads-data") : null;
   // generic scan methodology (Sources / Versions / Parked tiers / catalog note) is boilerplate,
   // identical every scan — it goes to its own "methodology" footer, NOT mixed into the
   // data-specific coverage warnings (unaudited vendors, unreachable sources, …).
   var GENERIC_NOTE = [/^Sources:/, /^Versions are/, /^Parked:/, /^Vendor API sunsets:/];
   function isGenericNote(n){ return GENERIC_NOTE.some(function(r){ return r.test(n); }); }
+
+  // A truthiness guard (`x || []`) only substitutes when x is falsy — a blob that parsed as
+  // valid JSON of the WRONG shape (a bare string/number in `repos`, say) is truthy and flows
+  // straight into .reduce/.forEach, throwing inside a Vue computed and breaking the whole page
+  // render. Guard on the actual type instead.
+  function arrOr(x){ return Array.isArray(x) ? x : []; }
+
+  // arrOr only guards the CONTAINER's type — a well-typed array can still hold null (or other
+  // non-object) ELEMENTS: a crashed prior pass, a hand-edited state dir, a bare `null` slot.
+  // Property access on those (`el.integrations`, `el.vendor`) throws same as it would on a
+  // non-array container, just one level deeper (a non-null primitive like a number/string is
+  // harmless here — `(5).prop`/`("x").prop` is merely `undefined`, autoboxing does not throw;
+  // only null/undefined elements do). objArr drops the bad elements outright rather than
+  // neutralising them in place, so a null sibling disappears from the count/rows instead of
+  // surfacing as a blank row — and it does NOT discard the array's valid siblings the way
+  // bailing out to [] on the first bad element would.
+  function objArr(x){
+    // `typeof [] === "object"` too, so a stray array ELEMENT (a hand-edited/half-written state
+    // dir: {"repos":[{"integrations":[[]]}]}) passed the old check and flowed through as a
+    // "record" with every property undefined — one garbage all-undefined row instead of being
+    // dropped like any other malformed element. Array.isArray excludes it explicitly.
+    return arrOr(x).filter(function(el){
+      return el !== null && typeof el === "object" && !Array.isArray(el);
+    });
+  }
 
   // Deterministic "YYYY-MM-DD" -> a comparable day-ordinal, used ONLY to place the Retirement
   // Timeline's points and its "today" line. Pure integer arithmetic (Howard Hinnant's
@@ -44,6 +73,7 @@
         SBOM: Vue.markRaw(SBOM), SPDX: Vue.markRaw(SPDX), SARIF: Vue.markRaw(SARIF),
         ADHOC: ADHOC ? Vue.markRaw(ADHOC) : null,
         RESEARCH: RESEARCH ? Vue.markRaw(RESEARCH) : null,
+        LEADS: LEADS ? Vue.markRaw(LEADS) : null,
         generated: DATA.generated || "",
         scope: "",            // global repo scope ("" = all)
         plane: "drift",        // active TOP-LEVEL plane: supply | drift | ai. Opens on Vendor
@@ -132,7 +162,8 @@
             {key:"researched",label:"Researched",n:this.researchedCount},
             {key:"aisunsets",label:"Sunsets found",n:this.sunsetsFoundCount,sev:this.sunsetsFoundCount?"warn":""},
             {key:"needshuman",label:"Need review",n:this.needsHumanCount},
-            {key:"shaped",label:"Shaped",n:this.shapedCount}]}
+            {key:"shaped",label:"Shaped",n:this.shapedCount},
+            {key:"leads",label:"Leads",n:this.leadsCount}]}
         ];
       },
       tileGroups: function(){
@@ -200,6 +231,34 @@
         return out;
       },
       shapedCount: function(){ return this.shaped.length; },
+
+      // ---- the AI-LEADS tier: rawest of the three, corroborated only by the session that read
+      // it. `objArr(LEADS.repos)` / `objArr(r.integrations)` guard against a blob that parsed as
+      // valid JSON of the wrong shape at BOTH levels: a wrong-typed CONTAINER (a bare
+      // list/number/etc from `blob()`'s {} fallback too) falls back to [] via arrOr, and a
+      // wrong-typed ELEMENT inside an otherwise-valid array (a bare `null` repo entry, a `null`
+      // integration entry) is dropped by objArr's element filter rather than dereferenced —
+      // leadsCount/leadRows must degrade the bad element only, never throw and never abandon
+      // that element's valid siblings. Array.isArray, NOT truthiness: a truthy non-array (a
+      // string, a number) must ALSO fall back to [], at both levels. ----
+      leadsCount: function(){
+        if(!LEADS) return 0;
+        return objArr(LEADS.repos).reduce(function(n, r){
+          return n + (objArr(r.integrations).length);
+        }, 0);
+      },
+      leadRows: function(){
+        if(!LEADS) return [];
+        var out = [];
+        objArr(LEADS.repos).forEach(function(r){
+          objArr(r.integrations).forEach(function(i){
+            out.push({repo: r.repo, vendor: i.vendor, host: i.host, endpoint: i.endpoint,
+                      file: i.file, line: i.line, retired: i.retired, note: i.note,
+                      origin: "lead"});
+          });
+        });
+        return out;
+      },
 
       // ---- JSON views: drift.json / CycloneDX / SPDX / SARIF, pretty-printed for the
       // read-only "view / copy" panels. Same DATA/SBOM/SPDX/SARIF the tables above render
@@ -470,7 +529,7 @@
           if(!self.matchesRepo(e.repo)) return false;
           // pending-audit hero shows only REAL found integrations we have not audited — never the
           // excluded asset/lib/schema noise (that is what surfaced w3.org's 298 schema refs here).
-          return wantUnknown ? (self.isIntegration(e.hostClass) && !e.classified) : !!e.classified;
+          return wantUnknown ? (self.isIntegration(e.hostClass, e.ownInfraReason) && !e.classified) : !!e.classified;
         });
         var byKey = {}, order = [];
         eps.forEach(function(e){
@@ -583,8 +642,8 @@
           // "Pending audit" = found integrations we have not audited (NOT the asset/lib noise);
           // "Assets" = the excluded non-integrations; "APIs" = the audited/catalogued ones.
           if(!f || f==="detected") return true;   // COMPLETE inventory — every endpoint, every kind
-          if(f==="excluded") return !self.isIntegration(e.hostClass);
-          if(f==="unknown")  return self.isIntegration(e.hostClass) && !e.classified;
+          if(f==="excluded") return !self.isIntegration(e.hostClass, e.ownInfraReason);
+          if(f==="unknown")  return self.isIntegration(e.hostClass, e.ownInfraReason) && !e.classified;
           if(f==="apis")     return e.classified;
           return true;
         });
@@ -628,8 +687,15 @@
       // had a click handler in the vanilla engine either. ----
       // A found integration (a third-party service the code calls) vs. an excluded non-integration
       // (a bundled asset/library or a schema host). Mirrors host_class.is_integration on the server;
-      // the verify hostClass invariant keeps the two in agreement.
-      isIntegration: function(hc){ return !!hc && !{"asset-cdn":1,"vendored-lib":1,"boilerplate":1,"own-infra":1}[hc]; },
+      // the verify hostClass invariant keeps the two in agreement. M1: an own-infra host claimed
+      // only by the WEAK repo-name-token signal (reason starts with "repo token '", mirroring
+      // own_infra.is_token_claim) still counts as an integration — otherwise clicking the
+      // "unknown" tile would show fewer rows than the tile's own count.
+      isIntegration: function(hc, reason){
+        if(!hc) return false;
+        if(!{"asset-cdn":1,"vendored-lib":1,"boilerplate":1,"own-infra":1}[hc]) return true;
+        return hc === "own-infra" && !!reason && reason.indexOf("repo token '") === 0;
+      },
       hostLabel: function(hc){
         return {"api":"audited","api-lead":"API lead","unclassified":"pending audit",
                 "social-widget":"social","analytics":"analytics","asset-cdn":"asset/CDN",

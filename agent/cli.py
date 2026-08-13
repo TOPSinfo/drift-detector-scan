@@ -9,6 +9,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import re
 import sys
 import time
 
@@ -641,46 +642,92 @@ def _cmd_probe(args) -> int:
     return result["exit_code"]
 
 
-def _cmd_probabilistic(args) -> int:
-    """Render the probabilistic (AI) cross-check as a SEPARATE, unverified artifact. Reads the
-    certified <state>/drift.json + an --ai-results JSON (produced by the AI driver). Pure +
-    deterministic: no network, no tokens. Refuses malformed ai_results (never fabricates)."""
+_TRISTATE = ("yes", "no", "unknown")
+# M2: numeric ISO/slash forms (2026-03-01, 2026/03/01) were the whole gate — a model that spells
+# the date out in prose ("Sunset on March 1, 2026") or writes it DD/MM/YYYY or MM/DD/YYYY
+# ("01/03/2026") sailed straight through into a free-text field (`note`) and rendered as an
+# ungated date in the dashboard's Evidence column. `_MONTHISH` covers both day-then-month and
+# month-then-day orderings, full and abbreviated month names (Sep/Sept both accepted). Kept
+# deliberately narrow to full day+month+year triples — a bare year ("the 2019 rewrite") or a
+# spec number ("RFC 2606") must still pass, or the gate pushes users to skip it.
+_MONTHISH = (r"(?:Jan(?:uary)?|Feb(?:ruary)?|Mar(?:ch)?|Apr(?:il)?|May|Jun(?:e)?|Jul(?:y)?|"
+            r"Aug(?:ust)?|Sep(?:t(?:ember)?)?|Oct(?:ober)?|Nov(?:ember)?|Dec(?:ember)?)")
+_DATEISH = re.compile(
+    r"\d{4}-\d{2}-\d{2}"                                           # 2026-03-01
+    r"|\d{4}/\d{2}/\d{2}"                                           # 2026/03/01
+    r"|\d{1,2}/\d{1,2}/\d{4}"                                       # 01/03/2026 or 03/01/2026
+    r"|" + _MONTHISH + r"\.?\s+\d{1,2}(?:st|nd|rd|th)?,?\s+\d{4}"   # March 1, 2026 / Mar 1, 2026
+    r"|\d{1,2}(?:st|nd|rd|th)?\s+" + _MONTHISH + r"\.?,?\s+\d{4}",  # 1 March 2026 / 1 Mar 2026
+    re.IGNORECASE)
+
+
+def _cmd_leads(args) -> int:
+    """Validate an AI cross-check pass into <state>/leads.json (drift-leads/v1).
+
+    Replaces the old `probabilistic` subcommand and its side-car HTML: leads now ride in the
+    dashboard's AI Frontier tab as their own blob. Pure + deterministic: no network, no tokens.
+    Refuses malformed input, and refuses a DATE in a lead — a date is a certified-tier claim, and
+    a lead may only say WHETHER (`retired` is the tri-state yes/no/unknown).
+    """
     from agent.lib.probabilistic import compare
-    from agent.lib.probabilistic_render import render_probabilistic
     drift_path = os.path.join(args.state, "drift.json")
     try:
         with open(drift_path, encoding="utf-8") as fh:
             drift = json.load(fh)
     except (OSError, json.JSONDecodeError):
-        print(f"probabilistic: no/unreadable drift.json in {args.state} — run a scan first",
-              file=sys.stderr)
+        print(f"leads: no/unreadable drift.json in {args.state} — run a scan first", file=sys.stderr)
         return 2
     try:
         with open(args.ai_results, encoding="utf-8") as fh:
             ai = json.load(fh)
     except (OSError, json.JSONDecodeError) as exc:
-        print(f"probabilistic: cannot read --ai-results ({exc})", file=sys.stderr)
+        print(f"leads: cannot read --ai-results ({exc})", file=sys.stderr)
         return 2
     if not isinstance(ai, dict) or not isinstance(ai.get("repos"), list):
-        print("probabilistic: --ai-results malformed — expected {meta, repos:[...]}",
-              file=sys.stderr)
+        print("leads: --ai-results malformed — expected {meta, repos:[...]}", file=sys.stderr)
         return 2
+    problems = []
     for entry in ai["repos"]:
         if not isinstance(entry, dict) or "repo" not in entry:
-            print("probabilistic: --ai-results malformed — every repos[] entry needs a \"repo\" key",
+            print('leads: --ai-results malformed — every repos[] entry needs a "repo" key',
                   file=sys.stderr)
             return 2
+        for i in entry.get("integrations") or []:
+            i = i if isinstance(i, dict) else {}
+            host = i.get("host") or i.get("vendor") or "?"
+            # The date guard must cover EVERY string field of the record, not just `retired` —
+            # `retired` is already fully covered by the tri-state check below (anything that
+            # isn't yes/no/unknown is refused there, dates included, making a second date check
+            # on that one field redundant). The actual leak was elsewhere: a free-text field
+            # (`note`, `evidence`, ...) rendered straight into the dashboard's Evidence column,
+            # so `{"retired":"yes","note":"Sunset on 2026-03-01 per the changelog"}` sailed
+            # through untouched and put an ungated date in front of a reader.
+            for field, val in i.items():
+                if isinstance(val, str) and _DATEISH.search(val):
+                    problems.append(f"{host}: {field!r} carries a date ({val!r}) — a lead says "
+                                    f"WHETHER, never WHEN; a dated claim must go through the "
+                                    f"absorb gate")
+            r = str(i.get("retired", "")).strip().lower()
+            if r not in _TRISTATE:
+                problems.append(f"{host}: 'retired' is {r!r}, not one of yes/no/unknown")
+    if problems:
+        print("leads: REFUSED — a lead may not carry a certified-tier claim:", file=sys.stderr)
+        for p in problems:
+            print("  •", p, file=sys.stderr)
+        return 2
     cmp = compare(ai, drift.get("endpoints", []),
                   scanned_repos=[g.get("repo") for g in drift.get("coverageGrades", [])
                                  if g.get("repo")])
-    meta = {"reposRead": (ai.get("meta") or {}).get("reposRead", cmp["tallies"]["reposReadByAI"]),
-            "tokens": (ai.get("meta") or {}).get("tokens", 0), "now": args.now}
-    out = os.path.join(args.state, "probabilistic.html")
-    with open(out, "w", encoding="utf-8") as fh:
-        fh.write(render_probabilistic(cmp, meta))
     tl = cmp["tallies"]
-    print(f"✓ probabilistic (AI · unverified): {tl['aiOnly']} AI-only lead(s), "
-          f"{tl['agree']} agree, {tl['toolOnly']} tool-only · {out}")
+    tally = {"agree": tl["agree"], "aiOnly": tl["aiOnly"], "toolOnly": tl["toolOnly"]}
+    doc = {"schema": "drift-leads/v1", "checked": args.now,
+           "meta": ai.get("meta") or {}, "repos": ai["repos"], "tally": tally}
+    out = os.path.join(args.state, "leads.json")
+    with open(out, "w", encoding="utf-8") as fh:
+        json.dump(doc, fh, indent=1, sort_keys=True)
+    print(f"✓ leads recorded: {tally['agree']} agree · {tally['aiOnly']} AI-only · "
+          f"{tally['toolOnly']} tool-only — written to {out}")
+    print("  re-run `render`/`run` on this state to surface them in the AI Frontier tab.")
     return 0
 
 
@@ -1207,13 +1254,14 @@ def _cmd_notify(args) -> int:
 
 
 def _cmd_adhoc_report(args) -> int:
-    """Assemble the MIDDLE-tier artifact from a validated ad-hoc pass — the certified `drift.json`,
-    the ad-hoc re-scan's `drift.json`, the staged idioms + claims, and the gate's DELTA. Writes
-    `adhoc.json` + `adhoc.html` beside the certified report. `drift.json` is NEVER touched (sibling
-    document, exactly like the probabilistic artifact)."""
+    """Write the ad-hoc (gate-validated) shape record to <state>/adhoc.json — the AI Frontier tab's
+    SHAPED tier. It no longer writes a side-car HTML page: there is one dashboard.
+    Assembles the MIDDLE-tier artifact from a validated ad-hoc pass — the certified `drift.json`,
+    the ad-hoc re-scan's `drift.json`, the staged idioms + claims, and the gate's DELTA. `drift.json`
+    is NEVER touched (sibling document, exactly like `leads.json`, the AI Frontier tab's other tier)."""
     import json as _json
     from agent import absorb as _absorb
-    from agent.lib import adhoc, adhoc_render
+    from agent.lib import adhoc
     try:
         certified = _json.load(open(os.path.join(args.state, "drift.json"), encoding="utf-8"))
         adhoc_drift = _json.load(open(os.path.join(args.adhoc_state, "drift.json"), encoding="utf-8"))
@@ -1227,11 +1275,9 @@ def _cmd_adhoc_report(args) -> int:
     doc = adhoc.bundle(certified, [per], args.now)
     with open(os.path.join(args.state, "adhoc.json"), "w", encoding="utf-8") as fh:
         _json.dump(doc, fh, indent=2, sort_keys=True)
-    with open(os.path.join(args.state, "adhoc.html"), "w", encoding="utf-8") as fh:
-        fh.write(adhoc_render.render_adhoc(doc))
     tier = "✗ over-broad (NOT validated)" if per["problems"] else "✓ gate-validated"
     print(f"adhoc-report: {tier} · {per['attributedNew']} call-site(s) shaped · "
-          f"{per['datedCount']} dated by catalog → {args.state}/adhoc.html")
+          f"{per['datedCount']} dated by catalog → {args.state}/adhoc.json")
     return 3 if per["problems"] else 0
 
 
@@ -1308,7 +1354,7 @@ def main(argv: list[str]) -> int:
     pn.add_argument("--run-url")
     pn.set_defaults(func=_cmd_notify)
 
-    par = sub.add_parser("adhoc-report")  # POC: the ad-hoc / gate-validated middle tier -> adhoc.{json,html}
+    par = sub.add_parser("adhoc-report")  # POC: the ad-hoc / gate-validated middle tier -> adhoc.json
     par.add_argument("--state", required=True)          # certified state (drift.json + where output lands)
     par.add_argument("--adhoc-state", required=True)    # the ad-hoc re-scan's state dir
     par.add_argument("--staged", required=True)         # dir with idioms.yaml + claims.yaml
@@ -1437,11 +1483,11 @@ def main(argv: list[str]) -> int:
     pfr.add_argument("--out", help="write the work-order here (default: stdout)")
     pfr.set_defaults(func=_cmd_freshness)
 
-    ppc = sub.add_parser("probabilistic")   # AI cross-check -> separate UNVERIFIED artifact
-    ppc.add_argument("--state", required=True)
-    ppc.add_argument("--ai-results", required=True, help="ai_results.json from the AI driver")
-    ppc.add_argument("--now", required=True)
-    ppc.set_defaults(func=_cmd_probabilistic)
+    lds = sub.add_parser("leads")           # AI cross-check -> leads.json (AI Frontier tab)
+    lds.add_argument("--state", required=True)
+    lds.add_argument("--ai-results", required=True, help="ai_results.json from the AI driver")
+    lds.add_argument("--now", required=True)
+    lds.set_defaults(func=_cmd_leads)
 
     pa = sub.add_parser("audit")
     pa.add_argument("--in", dest="in_json", required=True)

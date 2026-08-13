@@ -13,7 +13,11 @@
 - **GitLab-native CI** — move the scheduled run from GitHub Actions to GitLab CI (kills the
   cross-host token + egress, makes the private Cockpit free on GitLab Pages). Deferred pending a
   self-hosted runner — details in [TECH_DEBT.md](TECH_DEBT.md).
-- **AI — undecided.** An opt-in probabilistic cross-check exists, but whether AI becomes a
-  first-class feature (leads shown *beside* certified findings, behind a strict
-  certified/unverified firewall) is an open question. The deterministic core is the product; AI
-  stays an experiment until it earns its keep.
+- **AI-surface consolidation — done.** The three AI report surfaces (a separate
+  `probabilistic.html`, a separate `adhoc.html`, and the certified dashboard) are now one
+  dashboard: `dashboard.html`'s **AI Frontier** tab, with leads/shapes/research kept in their own
+  blobs and badged by tier (`UNVERIFIED LEAD`, `GATE-VALIDATED`, `SOURCED`). The CLI subcommand
+  that used to render the side-car page is now `leads` (writes `<state>/leads.json`, a
+  `drift-leads/v1` document; it no longer renders HTML). The certified/unverified firewall is
+  enforced by `verify`'s `ai-firewall` invariant, which asserts no AI-derived record reaches the
+  certified payload.
