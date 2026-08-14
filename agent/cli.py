@@ -629,6 +629,14 @@ def _cmd_verify(args) -> int:
                        (chart, _json.dumps(payload), "chart.html")))
     except OSError:
         pass
+    # adhoc.json is the OPTIONAL shaped tier: absent is fine (most states have none), but if
+    # present it must name THIS drift.json by the sha256 of its bytes on disk.
+    try:
+        adhoc_doc = _json.loads(_slurp("adhoc.json"))
+        with open(os.path.join(state, "drift.json"), "rb") as _fh:
+            checks.append((_verify.check_adhoc_hash_binds_certified, (adhoc_doc, _fh.read())))
+    except OSError:
+        pass
     # sbom.json is the OPTIONAL CycloneDX projection: absent is fine, but if present it must
     # equal a fresh projection of inventory.json + audit.json (never a stale/hand-edited BOM).
     try:
@@ -1383,7 +1391,12 @@ def _cmd_adhoc_report(args) -> int:
     from agent import absorb as _absorb
     from agent.lib import adhoc
     try:
-        certified = _json.load(open(os.path.join(args.state, "drift.json"), encoding="utf-8"))
+        # Read the certified file as BYTES and parse those same bytes. The hash in adhoc.json
+        # binds to the file on disk, so `sha256sum drift.json` reproduces it; re-dumping the
+        # parsed dict would yield a digest matching no file anyone can point at.
+        with open(os.path.join(args.state, "drift.json"), "rb") as fh:
+            certified_bytes = fh.read()
+        certified = _json.loads(certified_bytes.decode("utf-8"))
         adhoc_drift = _json.load(open(os.path.join(args.adhoc_state, "drift.json"), encoding="utf-8"))
         gate = _json.load(open(args.gate_delta, encoding="utf-8"))
     except (OSError, ValueError) as exc:
@@ -1392,7 +1405,7 @@ def _cmd_adhoc_report(args) -> int:
     idioms = _absorb._load(os.path.join(args.staged, "idioms.yaml")) or []
     claims = _absorb._load(os.path.join(args.staged, "claims.yaml")) or []
     per = adhoc.compare(adhoc_drift, claims, gate, idioms, args.repo)
-    doc = adhoc.bundle(certified, [per], args.now)
+    doc = adhoc.bundle(certified, [per], args.now, certified_bytes=certified_bytes)
     with open(os.path.join(args.state, "adhoc.json"), "w", encoding="utf-8") as fh:
         _json.dump(doc, fh, indent=2, sort_keys=True)
     tier = "✗ over-broad (NOT validated)" if per["problems"] else "✓ gate-validated"

@@ -30,16 +30,38 @@ def test_compare_flags_over_broad_shape_as_problem():
 
 
 def test_bundle_hash_binds_to_the_certified_scan():
+    """The hash must be over the BYTES OF drift.json ON DISK, so `sha256sum drift.json` — the
+    tool every other digest in this project is checked with — reproduces it. It used to hash a
+    canonical re-dump of the parsed dict, which matches no file anyone can point at."""
     import hashlib
     import json
     cert = {"counts": {"fixes": 3}, "actions": []}
-    b = adhoc.bundle(cert, [{"repo": "r"}], "2026-08-06")
+    raw = json.dumps(cert, indent=2).encode("utf-8")          # the file, as written
+    b = adhoc.bundle(cert, [{"repo": "r"}], "2026-08-06", certified_bytes=raw)
     assert b["schemaVersion"] == "drift-adhoc/v1"
-    assert b["meta"]["driftJsonSha256"] == hashlib.sha256(
-        json.dumps(cert, sort_keys=True, ensure_ascii=False).encode()).hexdigest()
+    assert b["meta"]["driftJsonSha256"] == hashlib.sha256(raw).hexdigest()
     # a different certified scan → a different hash (the staleness guard)
-    assert (adhoc.bundle({"counts": {"fixes": 4}}, [], "2026-08-06")["meta"]["driftJsonSha256"]
+    other = json.dumps({"counts": {"fixes": 4}}, indent=2).encode("utf-8")
+    assert (adhoc.bundle({"counts": {"fixes": 4}}, [], "2026-08-06",
+                         certified_bytes=other)["meta"]["driftJsonSha256"]
             != b["meta"]["driftJsonSha256"])
+
+
+def test_bundle_hashes_the_file_bytes_not_a_re_serialization():
+    """Pins the exact bug. This pretty file and its canonical re-dump differ byte-wise (indent,
+    key order, trailing newline), so the two digests differ — and only the file-bytes one can be
+    verified by a human with sha256sum."""
+    import hashlib
+    import json
+    cert = {"b": 2, "a": {"nested": "\u00e9"}}
+    raw = (json.dumps(cert, indent=2) + "\n").encode("utf-8")
+    redump = json.dumps(json.loads(raw), sort_keys=True, ensure_ascii=False).encode("utf-8")
+    assert hashlib.sha256(raw).hexdigest() != hashlib.sha256(redump).hexdigest(), \
+        "fixture is not discriminating"
+    got = adhoc.bundle(json.loads(raw), [], "2026-08-14",
+                       certified_bytes=raw)["meta"]["driftJsonSha256"]
+    assert got == hashlib.sha256(raw).hexdigest(), "not the file bytes"
+    assert got != hashlib.sha256(redump).hexdigest(), "still hashing a re-serialization"
 
 
 def test_claims_scope_guard_rejects_the_gaming_vector():

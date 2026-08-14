@@ -69,12 +69,19 @@ def compare(adhoc_drift: dict, claims: list, gate_delta: dict, idioms: list, rep
     }
 
 
-def bundle(certified_drift: dict, per_repo: list, now: str) -> dict:
+def bundle(certified_drift: dict, per_repo: list, now: str, *, certified_bytes: bytes) -> dict:
     """The `adhoc.json` sibling document. Hash-bound to ONE certified scan: leads/shapes rendered
     against a different scan than they were derived from are a stale-data trust bug, and hashing is
     the cheapest guard. `drift.json` itself is NEVER modified — this is a separate document, exactly
-    as `leads.json`/`probabilistic` are."""
-    blob = json.dumps(certified_drift, sort_keys=True, ensure_ascii=False).encode("utf-8")
+    as `leads.json`/`probabilistic` are.
+
+    The digest is over the BYTES OF `drift.json` AS WRITTEN, so `sha256sum drift.json` reproduces
+    it. It used to hash `json.dumps(certified_drift, sort_keys=True, ensure_ascii=False)` — a
+    canonical re-dump of the parsed dict, which differs from the pretty file (indent, key order,
+    trailing newline) and therefore matched no file anyone could point at. A binding that cannot be
+    checked with the same tool as every other hash in this project is not a binding.
+    """
+    blob = bytes(certified_bytes)
     return {
         "schemaVersion": "drift-adhoc/v1",
         "meta": {
