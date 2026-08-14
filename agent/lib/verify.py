@@ -16,6 +16,7 @@ Deterministic and dependency-free: pure Python over a dict.
 """
 from __future__ import annotations
 
+import hashlib
 import html as _html
 import re
 from collections import Counter
@@ -1086,3 +1087,25 @@ def verify_payload(payload: dict, findings: list) -> list:
         except Violation as v:
             out.append(v)
     return out
+
+
+def check_adhoc_hash_binds_certified(adhoc_doc: dict, certified_bytes: bytes) -> None:
+    """`adhoc.json` must name the certified scan it was derived from, by the sha256 of
+    `drift.json`'s BYTES ON DISK.
+
+    The amber ad-hoc tier is only trustworthy if it was computed against the certified data
+    sitting next to it; a mismatch means the shapes are being shown beside a scan they never
+    saw. The digest shipped as a canonical re-dump of the parsed dict, which matched neither
+    the file nor anything `sha256sum` could produce — so the binding existed but could not be
+    checked by anyone. Anchored on file bytes, `sha256sum drift.json` is the check.
+    """
+    got = ((adhoc_doc or {}).get("meta") or {}).get("driftJsonSha256")
+    if not got:
+        raise Violation("adhoc-hash", "adhoc.json has no meta.driftJsonSha256 — the ad-hoc "
+                                      "tier is not bound to any certified scan")
+    want = hashlib.sha256(bytes(certified_bytes)).hexdigest()
+    if got != want:
+        raise Violation("adhoc-hash",
+                        f"adhoc.json meta.driftJsonSha256 {got[:12]}… does not match "
+                        f"sha256(drift.json bytes) {want[:12]}… — the shaped tier was derived "
+                        f"from a different scan than the one it is rendered beside")

@@ -541,3 +541,22 @@ def test_verify_catches_a_stale_or_tampered_sbom():
     tampered = {**good, "components": []}                           # someone dropped the parts list
     with pytest.raises(verify.Violation):
         verify.check_sbom_matches_inventory(tampered, inv, audit)
+
+
+def test_adhoc_hash_must_match_the_certified_file_bytes():
+    """Reproduces the shipped bug: the digest was a canonical re-dump of the parsed dict, so it
+    matched no file and `sha256sum drift.json` could never confirm it."""
+    import hashlib, json as _json
+    raw = (_json.dumps({"counts": {"fixes": 3}}, indent=2) + "\n").encode("utf-8")
+    stale = hashlib.sha256(
+        _json.dumps(_json.loads(raw), sort_keys=True, ensure_ascii=False).encode("utf-8")).hexdigest()
+    with pytest.raises(verify.Violation):
+        verify.check_adhoc_hash_binds_certified({"meta": {"driftJsonSha256": stale}}, raw)
+    # file bytes → passes
+    verify.check_adhoc_hash_binds_certified(
+        {"meta": {"driftJsonSha256": hashlib.sha256(raw).hexdigest()}}, raw)
+
+
+def test_adhoc_hash_missing_field_is_a_violation():
+    with pytest.raises(verify.Violation):
+        verify.check_adhoc_hash_binds_certified({"meta": {}}, b"{}")
