@@ -69,3 +69,61 @@ def test_audit_uses_resolved_version_over_manifest_floor():
     out = audit_inventory(doc, "2026-07-15", http=lambda *a, **k: {},
                           osv_query=fake_osv, eol_check=lambda *a, **k: None)
     assert seen["version"] == "1.7.4"                              # not "0.21.1" (the floor)
+
+
+# ── NuGet: packages.lock.json supplies the resolved version for the csproj sdk row ──
+
+NUGET_LOCK = json.dumps({
+    "version": 1,
+    "dependencies": {
+        ".NETCoreApp,Version=v8.0": {
+            "Newtonsoft.Json": {"type": "Direct", "requested": "[13.0.1, )", "resolved": "13.0.3"},
+            "SomeTransitive": {"type": "Transitive", "resolved": "1.2.3"},
+        },
+        ".NETStandard,Version=v2.0": {
+            "Newtonsoft.Json": {"type": "Direct", "requested": "[12.0.0, )", "resolved": "12.0.9"},
+        },
+    },
+})
+
+
+def test_nuget_lockfile_resolves_a_direct_package():
+    out = lockfile.parse_lockfiles({"packages.lock.json": NUGET_LOCK})
+    assert out[("nuget", "Newtonsoft.Json")] == "13.0.3"
+
+
+def test_nuget_transitives_are_not_in_the_map():
+    """A transitive is not one of THIS repo's declared sdks — the same line cargo draws.
+    Putting it in the map would let it join onto nothing, or worse, onto a same-named
+    direct dependency somewhere else."""
+    out = lockfile.parse_lockfiles({"packages.lock.json": NUGET_LOCK})
+    assert ("nuget", "SomeTransitive") not in out
+
+
+def test_the_first_target_framework_wins_when_a_package_spans_several():
+    """The same package resolves separately per TFM. First-wins matches npm v1's
+    setdefault; picking the max would state a version no single build produced."""
+    out = lockfile.parse_lockfiles({"packages.lock.json": NUGET_LOCK})
+    assert out[("nuget", "Newtonsoft.Json")] == "13.0.3"
+
+
+def test_nuget_ids_keep_their_case():
+    """InventoryRecord.name is `Newtonsoft.Json` verbatim from the csproj, and the join
+    keys on norm(eco, pkg). Lowercasing nuget the way npm-style ecosystems do would make
+    every nuget join miss silently — the sdk would fall back to the manifest floor and
+    look like a repo with no lockfile."""
+    assert lockfile.norm("nuget", "Newtonsoft.Json") == "Newtonsoft.Json"
+
+
+def test_malformed_nuget_lockfile_is_skipped():
+    assert lockfile.parse_lockfiles({"packages.lock.json": "{not json"}) == {}
+
+
+def test_the_nuget_join_key_matches_what_annotate_resolved_looks_up():
+    """The map is only useful if repo_scan._annotate_resolved can find it. That function
+    does `resolved.get((s["eco"], lockfile.norm(s["eco"], s["pkg"])))` — this reproduces
+    that exact lookup against a csproj-shaped sdk row declaring the 13.0.1 floor."""
+    resolved = lockfile.parse_lockfiles({"packages.lock.json": NUGET_LOCK})
+    sdk = {"eco": "nuget", "pkg": "Newtonsoft.Json", "ver": "13.0.1"}
+    exact = resolved.get((sdk["eco"], lockfile.norm(sdk["eco"], sdk["pkg"])))
+    assert exact == "13.0.3", "the csproj sdk row would stay on the manifest floor"

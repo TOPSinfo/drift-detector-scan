@@ -110,8 +110,37 @@ def _requirements(content: str) -> dict:
     return out
 
 
+def _nuget_lock(content: str) -> dict:
+    """NuGet's `packages.lock.json`: `dependencies` keyed by target framework, then by
+    package id.
+
+    Direct only. A `Transitive` entry is not one of this repo's declared sdks — the same
+    line cargo draws — and it would join onto nothing or onto the wrong row.
+
+    Ids keep their case (`Newtonsoft.Json`). `norm` deliberately leaves nuget alone: the
+    csproj extractor records the id verbatim, so lowercasing here would make every nuget
+    join miss and silently drop the sdk back to the manifest floor.
+    """
+    data = json.loads(content)
+    out = {}
+    for by_pkg in (data.get("dependencies") or {}).values():
+        if not isinstance(by_pkg, dict):
+            continue
+        for name, meta in by_pkg.items():
+            meta = meta or {}
+            if str(meta.get("type") or "").lower() != "direct":
+                continue
+            ver = meta.get("resolved")
+            if name and ver:
+                # A package resolves separately per target framework; first wins, as npm
+                # v1 does. Choosing a max would state a version no single build produced.
+                out.setdefault(("nuget", name), _v(ver))
+    return out
+
+
 _PARSERS = {
     "composer.lock": _composer_lock,
+    "packages.lock.json": _nuget_lock,
     "package-lock.json": _package_lock,
     "yarn.lock": _yarn_lock,
     "poetry.lock": _poetry_lock,
