@@ -5,7 +5,7 @@ from pathlib import Path
 
 from agent.lib.extractors import extractor_for
 # Import extractors so they self-register:
-from agent.lib.extractors import npm, composer, python, runtime_pins  # noqa: F401
+from agent.lib.extractors import npm, composer, python, runtime_pins, go, maven, nuget, bundler, cargo  # noqa: F401
 
 _SKIP_DIRS = {".git", "node_modules", "vendor", ".venv", "dist", "build", "target", "__pycache__"}
 

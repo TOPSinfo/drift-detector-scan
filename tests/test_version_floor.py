@@ -27,7 +27,15 @@ def test_osv_ecosystem_mapping():
     assert osv_ecosystem("npm") == "npm"
     assert osv_ecosystem("composer") == "Packagist"
     assert osv_ecosystem("python") == "PyPI"
-    assert osv_ecosystem("go") is None
+    assert osv_ecosystem("go") == "Go"          # go.mod extractor shipped
+    assert osv_ecosystem("maven") == "Maven"    # pom.xml extractor shipped
+    assert osv_ecosystem("nuget") == "NuGet"    # *.csproj extractor shipped
+    assert osv_ecosystem("bundler") == "RubyGems"  # Gemfile.lock extractor shipped
+    assert osv_ecosystem("cargo") == "crates.io"   # Cargo.lock extractor shipped
+    # An ecosystem we do NOT extract must still map to None, so a record we cannot audit
+    # is never handed to OSV as if it could be. `gradle` stands in for the unsupported
+    # set now that `cargo` has left it — this line is the guard, not the example in it.
+    assert osv_ecosystem("gradle") is None
 
 
 @pytest.mark.parametrize("spec,expected", [
