@@ -66,3 +66,23 @@
   base: "$A->API_ENDPOINT"
   evidence: "example-org/ebayapi src/Ebay/src/Ebay_post_order_api.php:64"
   note: eBay Post-Order procedural client — $url = $this->API_ENDPOINT . "post-order/v2/...".
+
+- id: js-baseurl-concat
+  family: url-assembly
+  language: javascript
+  base: "$A.baseURL"
+  evidence: "tests/fixtures/idioms/js-baseurl-concat.js:16"
+  note: >
+    JS clients store the host on the instance and build the path onto it, so the host
+    never shares a string literal with the path and a URL-literal scan sees only a
+    versioned path with no vendor. JavaScript concatenates with `+`; the PHP instances
+    above compile to `.` from the same family.
+
+    This ONE instance emits BOTH JS/TS shapes, because they are the same idiom written two
+    ways and share this `base`:
+      `$A.baseURL + $B`        -> tests/fixtures/idioms/js-baseurl-concat.js:16
+      `` `${$A.baseURL}$$$B` `` -> tests/fixtures/idioms/js-baseurl-template.js:16
+    The template form is a template_string node, invisible to the `+` rule — that second
+    fixture is kept precisely to prove the `+` pattern matches it zero times. A separate
+    instance for it would compile to the identical two patterns and buy nothing.
+

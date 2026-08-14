@@ -23,6 +23,22 @@ _DEFAULT = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__
 FAMILIES = frozenset({"url-assembly", "url-append", "operation-marker", "path-constant"})
 
 # family -> the rule kind its matches carry, i.e. how endpoints.py will read them
+# How each language spells string concatenation. url-assembly used to emit PHP's `.`
+# unconditionally, so a JavaScript instance compiled to a pattern that could never match:
+# the family existed for JS on paper and found nothing in practice. Languages absent here
+# emit no rule at all — see to_rules.
+_CONCAT_OP = {"php": ".", "javascript": "+", "typescript": "+"}
+
+# JS/TS also build URLs with template literals — `${this.baseURL}/v1/charges`. That is a
+# template_string node, NOT a binary `+` expression, so the concat rule above is blind to
+# it: verified against the engine, `$A.baseURL + $B` matches the template fixture zero
+# times. `$$$` is ast-grep's multi-node metavariable, needed because a real URL often
+# interpolates twice (`${base}/v1/refunds/${id}`); the single-node `$B` form catches only
+# the first shape. Anchored on the instance's own `base`, so it does not match the
+# repo's unrelated templates — checked against `hello ${name}`, `${count} items`, and
+# `${config.apiKey}/v1/x`, all of which it correctly ignores.
+_TEMPLATE_LANGS = ("javascript", "typescript")
+
 KIND_BY_FAMILY = {"url-assembly": "path-assembly", "url-append": "path-assembly",
                   "operation-marker": "operation-marker", "path-constant": "path-constant"}
 
@@ -96,8 +112,18 @@ def to_rules(inst: dict, literal_rule, languages: list) -> list:
     docs = []
     if fam == "url-assembly":
         for lang in langs:
+            op = _CONCAT_OP.get(lang)
+            if not op:
+                # Emitting PHP's `.` on python or go would ship a rule that cannot match,
+                # and a rule that cannot match is indistinguishable from a repo with
+                # nothing to find. Say nothing rather than say it wrongly.
+                continue
             docs.append({"id": f"{rid}@{lang}", "language": lang, "metadata": dict(kind),
-                         "rule": {"pattern": f'{inst["base"]} . $B'}})
+                         "rule": {"pattern": f'{inst["base"]} {op} $B'}})
+            if lang in _TEMPLATE_LANGS:
+                docs.append({"id": f"{rid}@{lang}-template", "language": lang,
+                             "metadata": dict(kind),
+                             "rule": {"pattern": f'`${{{inst["base"]}}}$$$B`'}})
     elif fam == "url-append":
         # assemble-then-append: `$base = $this->ENDPOINT;` ... `$base .= $path;`
         # The two statements are not one expression, so url-assembly's `base . $B`
