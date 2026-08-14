@@ -96,3 +96,68 @@ def test_prescan_census_recommendation_needs_no_engine():
     assert shapes.recommend_from_census({"php": 40}, kinds)[0] == shapes.AUTO
     assert shapes.recommend_from_census({"go": 40}, kinds)[0] == shapes.MANUAL
     assert shapes.recommend_from_census({}, kinds)[0] == shapes.AUTO      # nothing to scan
+
+
+# ── Honesty regressions: repos the scanner cannot actually read must say UNKNOWN ──
+# Found by an independent inspection. All three are the same failure in different
+# clothes: the tool reporting a clean bill for a repo it never really saw.
+
+def test_real_ruleset_sdk_only_js_is_not_silently_known():
+    """`signal_coverage` answers "do we SHIP a rule for this language", not "did this
+    scan produce signal". Commit 26fe4a2 gave all 8 languages a sink rule, so against
+    the REAL ruleset `no-egress-signal` can never fire — and a JS repo that resolved
+    nothing and left no residue reports KNOWN.
+
+    The existing guard passed only because it used a hand-written fixture in which Go
+    had no sink. Pointing it at `rule_kinds_by_language(load_vendors())` is the point.
+    """
+    from agent.lib.vendors import load_vendors
+    from agent.lib.vendor_rules import rule_kinds_by_language
+    rk = rule_kinds_by_language(load_vendors())
+    assert "sink" in rk.get("javascript", []), "precondition: the shipped ruleset has a JS sink"
+
+    cov = shapes.signal_coverage(["javascript"], rk)
+    v, reasons = shapes.verdict(0, {"pathLiterals": [], "sinks": []}, cov)
+    assert v == "UNKNOWN", (
+        f"a JS repo that attributed nothing and left no residue reported {v} "
+        f"against the real ruleset — 'cannot see' rendering as 'clean'")
+
+
+def test_a_jsx_only_repo_is_not_a_green_all_clear(tmp_path):
+    """`.jsx`/`.vue`/`.svelte`/`.astro` are in neither _LANG_BY_EXT nor _CODE_ISH, so a
+    React/Vue repo censuses EMPTY — no language to check coverage for, no unmodeled
+    files to count — and sails through as KNOWN. Verified on a real scan: 3 vendor
+    calls across .jsx and .vue, 2 detected, grade HIGH."""
+    (tmp_path / "App.jsx").write_text("fetch('https://api.example-vendor.io/v1/x')\n")
+    (tmp_path / "Cart.vue").write_text("<script>fetch('https://api.other.io/v1/y')</script>\n")
+    counts, unmodeled = shapes.census(str(tmp_path))
+    assert counts or unmodeled, (
+        "a repo of .jsx/.vue files censused as nothing at all — neither modelled nor "
+        "counted as unreadable")
+    cov = shapes.signal_coverage(shapes.meaningful_languages(counts), {})
+    v, _ = shapes.verdict(0, {"pathLiterals": [], "sinks": []}, cov, unmodeled=unmodeled)
+    assert v == "UNKNOWN"
+
+
+def test_a_repo_half_unreadable_is_not_known_just_because_the_other_half_read():
+    """`unmodeled` was only held against a repo when coverage was EMPTY. A repo that is
+    half Vue and half JS reads the JS, cannot read the Vue at all, and still reported
+    KNOWN — the unreadable half silently written off because some other language
+    happened to parse.
+
+    Measured on a real scan: 1 modelled file + 1 unreadable .vue file, one vendor call
+    found and one missed, verdict KNOWN, grade HIGH."""
+    cov = {"javascript": ["sink", "url"]}
+    v, reasons = shapes.verdict(1, {"pathLiterals": [], "sinks": []}, cov,
+                                unmodeled=1, modeled=1)
+    assert v == "UNKNOWN", "half the repo was unreadable and the verdict was still KNOWN"
+    assert shapes.UNMODELED_LANGUAGE in reasons
+
+
+def test_one_stray_unreadable_file_does_not_condemn_a_readable_repo():
+    """The mirror: unmodeled files must clear the same meaningful-share bar languages do,
+    or a single .vue snippet in a 200-file PHP app would cry wolf."""
+    cov = {"php": ["sink", "url"]}
+    v, _ = shapes.verdict(50, {"pathLiterals": [], "sinks": []}, cov,
+                          unmodeled=1, modeled=200)
+    assert v == "KNOWN"

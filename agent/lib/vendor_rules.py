@@ -151,7 +151,11 @@ def build_astgrep_ruleset(vendors: list | None = None,
             docs.append(_ast_literal_rule(f"{vendor_slug(v.vendor)}-endpoint", rx, lang, meta))
     for lang in langs:
         docs.append(_ast_literal_rule(
-            "path-literal", r"/(v[0-9][0-9.]*|[0-9]{4}-[0-9]{2}-[0-9]{2})/", lang,
+            # Derived from classify_url._VERSION_SEG, never restated: the two had
+            # drifted (this one required a trailing slash and lacked YYYY-MM), so a
+            # literal the classifier called versioned was matched by no rule at all —
+            # invisible to the scan rather than merely unattributed.
+            "path-literal", _engine_version_regex(), lang,
             {"kind": "path-literal"}))
     # egress sinks — HTTP-unambiguous calls only
     for lang in langs:
@@ -192,6 +196,20 @@ def write_ruleset(vendors: list | None, path: str, languages: list = DEFAULT_LAN
         _SERIALIZED[key] = text
     with open(path, "w", encoding="utf-8") as fh:
         fh.write(text)
+
+
+def _engine_version_regex() -> str:
+    """`classify_url._VERSION_SEG` as an ast-grep regex string.
+
+    ast-grep matches against the string literal's inner text, so the classifier's
+    `(/|$)` end-anchor becomes an optional trailing slash here. Everything else —
+    including the `YYYY-MM` calendar form — comes straight from the classifier, so the
+    engine cannot silently see less than the classifier claims to.
+    """
+    from agent.lib.classify_url import _VERSION_SEG
+    body = _VERSION_SEG.pattern
+    assert body.endswith("(/|$)"), f"_VERSION_SEG shape changed: {body!r}"
+    return body[: -len("(/|$)")] + "/?"
 
 
 def rule_kinds_by_language(vendors: list | None = None,
