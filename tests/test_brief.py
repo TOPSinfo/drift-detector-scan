@@ -43,6 +43,9 @@ def test_the_three_families_and_their_required_fields_are_documented():
     assert "url-assembly" in md and "`base`" in md
     assert "url-append" in md and "`target`" in md
     assert "operation-marker" in md and "`marker`" in md
+    # client-base: a family an absorbing agent can only use if the brief names it and its
+    # required field. An undocumented family is one nobody will ever propose an instance for.
+    assert "client-base" in md and "`pattern`" in md
 
 
 def test_rails_name_the_overlay_and_the_gate():

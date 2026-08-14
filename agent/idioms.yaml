@@ -86,3 +86,65 @@
     fixture is kept precisely to prove the `+` pattern matches it zero times. A separate
     instance for it would compile to the identical two patterns and buy nothing.
 
+
+- id: js-axios-create
+  family: client-base
+  language: javascript
+  pattern: "axios.create({baseURL: $B})"
+  evidence: "tests/fixtures/idioms/js-axios-create.js:12"
+  note: >
+    The host is handed to a client factory once and every later call passes only a path
+    (`api.get('/v1/charges')`), so the host and the path never share an expression and both
+    url-assembly rules match this shape zero times. The file still carries the host as a URL
+    literal, so a vendor IS classified; what was missing is any signal that the file
+    assembles URLs, which endpoints.py requires before attributing a bare path literal.
+    This marks the file. It does not pair create() with the later .get() — no dataflow is
+    claimed, and a create() in a different file from the call remains a miss.
+
+    KNOWN MISS: extra option keys. `axios.create({baseURL, timeout})` is not matched — the
+    pattern requires baseURL to be the sole key. `axios.create($OPTS)` would reach it and is
+    clean against Object.create, but drops the baseURL requirement, so a client created with
+    no base would mark its file as assembling and bare paths there would be attributed to
+    whatever host the file mentions. Manufacturing attributions is worse than this gap.
+
+- id: py-httpx-client
+  family: client-base
+  language: python
+  pattern: "httpx.$M(base_url=$B)"
+  evidence: "tests/fixtures/idioms/py-httpx-client.py:12"
+  note: >
+    The Python spelling of js-axios-create: the host goes to a client factory once and
+    every later call passes only a path, so the host and the path never share an
+    expression and nothing emits path-assembly. The file still classifies a vendor from
+    the host literal; what was missing is the signal that it assembles URLs at all. Marks
+    the file only — no pairing of the factory with the later .get(), no dataflow claimed.
+
+    `$M` covers Client and AsyncClient from one instance. That was decided from engine
+    output, not preference: it matches both (2 hits) and matches none of the negative
+    controls, because requiring the `base_url=` keyword is what excludes `httpx.get(...)`,
+    a local class named Client, requests.Session, and a bare `httpx.Client()` holding no
+    host.
+
+    KNOWN MISS: extra kwargs. `httpx.Client(base_url=..., timeout=10.0)` is not reached —
+    the pattern requires base_url to be the sole argument. Widening to `httpx.$M($$$)`
+    would reach it but drops the base_url requirement, so a client holding no host would
+    mark its file as assembling and bare paths there would be attributed to whatever host
+    the file mentions. Same ruling as the axios instance.
+    KNOWN MISS: `from httpx import Client; Client(base_url=...)` — no `httpx.` prefix.
+
+- id: py-base-url-concat
+  family: url-assembly
+  language: python
+  base: "$A.base_url"
+  evidence: "tests/fixtures/idioms/py-base-url-concat.py:19"
+  note: >
+    Python concatenates with `+`. Until this instance the family emitted NOTHING for
+    python — _CONCAT_OP knew php/javascript/typescript only, and to_rules skips a language
+    it has no operator for — so a Python client that assembles URLs looked exactly like a
+    repo with nothing to find.
+
+    KNOWN MISS: f-strings. `f"{self.base_url}/v1/charges"` is a different AST node and
+    matches this rule zero times. Python is deliberately absent from _TEMPLATE_LANGS: the
+    JS template pattern is backtick syntax, not an f-string, and copying it here would ship
+    a rule that can never match.
+    KNOWN MISS: `self.baseURL + path` — no case-folding, same ruling as JS baseUrl.
