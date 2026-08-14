@@ -27,11 +27,16 @@ def test_ruleset_has_path_literal_sink_and_assembly_rules():
     # path-assembly: one rule per url-assembly idiom instance (not a single hardcoded one)
     docs = build_astgrep_ruleset(vendors=[])
     asm = [d for d in docs if (d.get("metadata") or {}).get("kind") == "path-assembly"]
-    # url-assembly compiles to `base . $B`; url-append to `$target .= $B`
-    assert asm and all(d["rule"]["pattern"].endswith(("$B",)) for d in asm)
+    # Every path-assembly rule must capture the path in a trailing metavariable, but the
+    # spelling is per-language: PHP `base . $B`, JS/TS `base + $B`, and the JS template
+    # form closes its backtick after the capture (`` `${base}$$$B` ``). This assertion
+    # used to require a literal `$B` ending, which assumed PHP-only.
+    assert asm and all(d["rule"]["pattern"].rstrip("`").endswith("$B") for d in asm)
     pats = " ".join(d["rule"]["pattern"] for d in asm)
     assert "getHost()" in pats and "serviceUrl" in pats
     assert ".= $B" in pats          # the assemble-then-append shape
+    assert "+ $B" in pats           # the JS/TS concat shape
+    assert "`${$A.baseURL}$$$B`" in pats    # the JS/TS template-literal shape
 
 
 def test_ruleset_has_broad_url_rule_plus_one_per_vendor_per_language():
