@@ -403,3 +403,30 @@
   note: >-
     FedEx legacy Web Services (SOAP) retire 2026-06-01 — complete migration to the REST APIs.
     Flags ONLY the SOAP host ws.fedex.com.
+# Amazon Ads API — path-scoped retirements from the vendor's own deprecations page,
+# fetched 2026-08-14; each date was verified verbatim in the fetched excerpt and each
+# entry deep-links to the section that states it. HELD, not catalogued: the July 2026
+# and June 2026 sections give a month and year with no day — an undated guess is
+# exactly what this gate exists to stop.
+- vendor: Amazon Ads API
+  path: /v2/stores
+  retires: '2026-06-01'
+  source: https://advertising.amazon.com/API/docs/en-us/release-notes/deprecations#v2-stores-deprecation
+  note: V2 Stores shuts off 2026-06-01; deprecated January 2026.
+  replacement: /brand/stores/v1/storePages/list
+- vendor: Amazon Ads API
+  path: /diagnostics/campaigns/issues
+  retires: '2025-12-01'
+  source: https://advertising.amazon.com/API/docs/en-us/release-notes/deprecations#deprecation-of-campaign-diagnostics-apis
+  note: 'Campaign Diagnostics: new users blocked as of June 20; all access shut off
+    December 1, 2025.'
+- vendor: Amazon Ads API
+  path: /ads/export
+  retires: '2024-12-15'
+  source: https://advertising.amazon.com/API/docs/en-us/release-notes/deprecations#past-shutoffs
+  note: Snapshots/export API shut off 2024-12-15 (already past).
+- vendor: Amazon Ads API
+  path: /sd/campaigns/{campaignId}/budgetRules/budgetHistory
+  retires: '2023-08-31'
+  source: https://advertising.amazon.com/API/docs/en-us/release-notes/deprecations#past-shutoffs
+  note: Budget-rules history endpoint shut off 8/31/2023 (already past).
