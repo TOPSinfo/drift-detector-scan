@@ -5,9 +5,9 @@ PURLs are the standard component identifier used by CycloneDX and most SCA tooli
 from __future__ import annotations
 
 # our inventory ecosystem -> OSV.dev ecosystem name
-OSV_ECOSYSTEM = {"npm": "npm", "composer": "Packagist", "python": "PyPI"}
+OSV_ECOSYSTEM = {"npm": "npm", "composer": "Packagist", "python": "PyPI", "go": "Go", "maven": "Maven", "nuget": "NuGet", "bundler": "RubyGems", "cargo": "crates.io"}
 # our inventory ecosystem -> PURL type
-_PURL_TYPE = {"npm": "npm", "composer": "composer", "python": "pypi"}
+_PURL_TYPE = {"npm": "npm", "composer": "composer", "python": "pypi", "go": "golang", "maven": "maven", "nuget": "nuget", "bundler": "gem", "cargo": "cargo"}
 
 
 def osv_ecosystem(eco: str) -> str | None:
@@ -24,6 +24,11 @@ def to_purl(eco: str, name: str, version: str | None) -> str | None:
         n = n.lower().replace("_", "-")
     if ptype == "npm" and n.startswith("@"):  # scoped npm: encode the leading @
         n = "%40" + n[1:]
+    if ptype == "maven":
+        # Our inventory name is `groupId:artifactId`; the PURL spec separates them with a
+        # SLASH (pkg:maven/org.foo/bar@1). The colon form does not match in OSV, so a
+        # record would look audited while never being looked up.
+        n = n.replace(":", "/", 1)
     purl = f"pkg:{ptype}/{n}"
     if version:
         purl += f"@{version}"
