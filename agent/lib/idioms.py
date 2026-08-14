@@ -40,6 +40,16 @@ _CONCAT_OP = {"php": ".", "javascript": "+", "typescript": "+", "python": "+"}
 # `${config.apiKey}/v1/x`, all of which it correctly ignores.
 _TEMPLATE_LANGS = ("javascript", "typescript")
 
+# Python interpolates too, but with an f-string — a different node from a JS template
+# literal, and NOT spelled with backticks. So python is deliberately absent from
+# _TEMPLATE_LANGS above and gets its own branch: putting it in that tuple would emit
+# `` `${base}$$$B` `` on Python, a rule that can never match. `$$$` for the same reason as
+# JS: a real URL interpolates twice (f"{base}/v1/refunds/{id}"), and the single-node form
+# caught only the simpler shape.
+# KNOWN MISSES, deliberately not chased with four more patterns: f'...' (single quotes),
+# rf"..."/F"..." (prefixes), and triple-quoted f-strings.
+_FSTRING_LANGS = ("python",)
+
 KIND_BY_FAMILY = {"url-assembly": "path-assembly", "url-append": "path-assembly",
                   "operation-marker": "operation-marker", "path-constant": "path-constant",
                   # client-base: a factory stores the host once (axios.create({baseURL})) and
@@ -137,6 +147,10 @@ def to_rules(inst: dict, literal_rule, languages: list) -> list:
                 docs.append({"id": f"{rid}@{lang}-template", "language": lang,
                              "metadata": dict(kind),
                              "rule": {"pattern": f'`${{{inst["base"]}}}$$$B`'}})
+            if lang in _FSTRING_LANGS:
+                docs.append({"id": f"{rid}@{lang}-fstring", "language": lang,
+                             "metadata": dict(kind),
+                             "rule": {"pattern": f'f"{{{inst["base"]}}}$$$B"'}})
     elif fam == "url-append":
         # assemble-then-append: `$base = $this->ENDPOINT;` ... `$base .= $path;`
         # The two statements are not one expression, so url-assembly's `base . $B`

@@ -5,9 +5,12 @@ javascript and typescript only, and `to_rules` skips a language it has no operat
 Emitting nothing is indistinguishable from a repo with nothing to find, which is the
 failure mode this project exists to refuse.
 
-f-strings are NOT covered. `f"{self.base_url}/v1/x"` is a different AST node and Python is
-deliberately absent from `_TEMPLATE_LANGS` — the JS template pattern is backtick syntax,
-not an f-string. That miss is pinned below, not papered over.
+f-strings ARE covered, by a second rule from the same instance — the JS template change,
+one language later. Python stays out of `_TEMPLATE_LANGS` regardless: that tuple means
+"emit a JS backtick template", which on Python could never match. It has its own branch.
+
+Still missed, deliberately: f'...' (single quotes), rf"..."/F"..." prefixes, and
+triple-quoted f-strings. Four more patterns to chase quote styles is not worth it.
 """
 import os
 import subprocess
@@ -43,7 +46,7 @@ def test_python_url_assembly_compiles_to_plus():
     inst = {"id": "py-base", "family": "url-assembly",
             "language": "python", "base": "$A.base_url"}
     pats = _patterns(idioms.to_rules(inst, _literal_rule, ["python"]))
-    assert pats == ["$A.base_url + $B"]
+    assert "$A.base_url + $B" in pats
     assert not any(" . $B" in p for p in pats), "python compiled to the PHP concat operator"
 
 
@@ -62,15 +65,33 @@ def test_a_language_still_absent_from_the_operator_map_emits_nothing():
     assert idioms.to_rules(inst, _literal_rule, ["go"]) == []
 
 
-def test_python_gets_no_template_rule():
-    """A backticked JS template pattern on Python would be a rule that can never match. An
-    f-string is a different node and would need its own pattern, which this order does not
-    ship."""
+def test_python_gets_an_fstring_rule_and_never_a_backtick_one():
+    """Python gets a SECOND rule, but it is an f-string — not the JS backtick template.
+    Copying `` `${base}$$$B` `` onto Python would ship a rule that can never match, which is
+    why python stays out of _TEMPLATE_LANGS even though it now has two rules."""
     assert "python" not in idioms._TEMPLATE_LANGS
     inst = {"id": "py-base", "family": "url-assembly",
             "language": "python", "base": "$A.base_url"}
     pats = _patterns(idioms.to_rules(inst, _literal_rule, ["python"]))
-    assert not any("`" in p for p in pats)
+    assert not any("`" in p for p in pats), "JS backtick template copied onto python"
+    assert 'f"{$A.base_url}$$$B"' in pats
+
+
+def test_python_url_assembly_emits_both_shapes_with_unique_ids():
+    inst = {"id": "py-base", "family": "url-assembly",
+            "language": "python", "base": "$A.base_url"}
+    docs = idioms.to_rules(inst, _literal_rule, ["python"])
+    assert _patterns(docs) == ["$A.base_url + $B", 'f"{$A.base_url}$$$B"']
+    assert len({d["id"] for d in docs}) == len(docs) == 2
+    assert {d["metadata"]["kind"] for d in docs} == {"path-assembly"}
+
+
+def test_php_gets_neither_an_fstring_nor_a_backtick_rule():
+    inst = {"id": "php-gethost", "family": "url-assembly",
+            "language": "php", "base": "$A->getHost()"}
+    pats = _patterns(idioms.to_rules(inst, _literal_rule, ["php"]))
+    assert pats == ["$A->getHost() . $B"]
+    assert not any("`" in p or p.startswith("f\"") for p in pats)
 
 
 def test_the_shipped_instance_and_its_evidence_line():
@@ -104,17 +125,50 @@ def test_the_shipped_pattern_matches_none_of_the_negative_controls():
 
 
 @_needs_engine
-def test_f_strings_are_a_known_miss_not_a_silent_one():
-    """The noise file contains `f"{self.base_url}/v1/charges"` and the concat rule matches
-    it zero times. Recorded here so the boundary is a documented fact rather than an
-    assumed capability."""
+def test_concat_is_blind_to_f_strings_which_is_why_the_second_rule_exists():
+    """The gap the f-string rule closes. If `+` ever matches this fixture, the second rule
+    is redundant and should be removed rather than kept for tidiness."""
     by_id = {i["id"]: i for i in idioms.load_idioms()}
-    inst = by_id["py-base-url-concat"]
-    pat = _patterns(idioms.to_rules(inst, _literal_rule, ["python"]))[0]
-    assert _matches(pat, "py-base-url-concat-noise.py") == 0
-    assert "known miss" in inst["note"].lower()
+    pats = _patterns(idioms.to_rules(by_id["py-base-url-concat"], _literal_rule, ["python"]))
+    assert _matches(pats[0], "py-base-url-fstring.py") == 0
+
+
+@_needs_engine
+def test_the_fstring_rule_covers_both_interpolation_shapes():
+    """2 = `f"{base}/v1/charges"` and `f"{base}/v1/refunds/{id}"`. The single-`$B` form
+    matched only the first, which is why the pattern uses `$$$B`."""
+    by_id = {i["id"]: i for i in idioms.load_idioms()}
+    pats = _patterns(idioms.to_rules(by_id["py-base-url-concat"], _literal_rule, ["python"]))
+    assert _matches(pats[1], "py-base-url-fstring.py") == 2
+
+
+@_needs_engine
+def test_the_fstring_rule_matches_none_of_the_negative_controls():
+    """`f"hello {name}"`, `f"{count} items"`, `f"{self.api_key}/v1/x"`, and an httpx client
+    covered by another family. Widening to `f"$A"` would catch every f-string in the repo."""
+    by_id = {i["id"]: i for i in idioms.load_idioms()}
+    pats = _patterns(idioms.to_rules(by_id["py-base-url-concat"], _literal_rule, ["python"]))
+    assert _matches(pats[1], "py-base-url-fstring-noise.py") == 0
+    assert _matches(pats[1], "py-base-url-concat.py") == 0
+
+
+@_needs_engine
+def test_the_fstring_fixture_survives_without_being_cited_as_evidence():
+    """No instance names this file in `evidence:` — it is the only proof the second rule is
+    needed, so a `+` creeping into it would silently destroy that proof."""
+    path = os.path.join(_FIXTURES, "py-base-url-fstring.py")
+    assert os.path.isfile(path)
+    with open(path, encoding="utf-8") as fh:
+        body = fh.read()
+    assert "base_url + " not in body, "the f-string fixture is no longer concat-free"
 
 
 def test_python_is_in_the_operator_map_but_not_the_template_map():
+    """_TEMPLATE_LANGS means "emit a JS backtick template". Python's second rule is an
+    f-string emitted by its own branch, so python having two rules must NOT be spelled by
+    joining that tuple."""
     assert idioms._CONCAT_OP["python"] == "+"
     assert "python" not in idioms._TEMPLATE_LANGS
+    inst = {"id": "py-base", "family": "url-assembly",
+            "language": "python", "base": "$A.base_url"}
+    assert 'f"{$A.base_url}$$$B"' in _patterns(idioms.to_rules(inst, _literal_rule, ["python"]))

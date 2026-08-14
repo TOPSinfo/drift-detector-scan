@@ -143,8 +143,13 @@
     it has no operator for — so a Python client that assembles URLs looked exactly like a
     repo with nothing to find.
 
-    KNOWN MISS: f-strings. `f"{self.base_url}/v1/charges"` is a different AST node and
-    matches this rule zero times. Python is deliberately absent from _TEMPLATE_LANGS: the
-    JS template pattern is backtick syntax, not an f-string, and copying it here would ship
-    a rule that can never match.
+    This ONE instance emits BOTH Python shapes from the same `base`, exactly as
+    js-baseurl-concat does for JS:
+      `$A.base_url + $B`        -> tests/fixtures/idioms/py-base-url-concat.py:19
+      `f"{$A.base_url}$$$B"`    -> tests/fixtures/idioms/py-base-url-fstring.py
+    The f-string is a different AST node and `+` matches that fixture zero times — the
+    fixture is kept precisely to prove the second rule is needed. Python still stays out of
+    _TEMPLATE_LANGS: that tuple emits a JS backtick template, which could never match here.
+
+    KNOWN MISS: f'...' (single quotes), rf"..."/F"..." prefixes, triple-quoted f-strings.
     KNOWN MISS: `self.baseURL + path` — no case-folding, same ruling as JS baseUrl.

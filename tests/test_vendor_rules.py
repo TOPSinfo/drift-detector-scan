@@ -47,8 +47,11 @@ def test_ruleset_has_path_literal_sink_and_assembly_rules():
     def _is_client_base(doc):
         return doc["id"].rsplit("@", 1)[0] in client_base_ids
     assert asm and all("$" in d["rule"]["pattern"] for d in asm)
+    # Strip the closing delimiter before checking the capture: JS templates end with a
+    # backtick, Python f-strings with a double quote. Both still capture the path in a
+    # trailing $B — only the quoting differs.
     capturing = [d["rule"]["pattern"] for d in asm if not _is_client_base(d)]
-    assert capturing and all(p.rstrip("`").endswith("$B") for p in capturing), capturing
+    assert capturing and all(p.rstrip('`"').endswith("$B") for p in capturing), capturing
     assert any(_is_client_base(d) for d in asm), "no client-base rule compiled"
     pats = " ".join(d["rule"]["pattern"] for d in asm)
     assert "getHost()" in pats and "serviceUrl" in pats
@@ -57,6 +60,7 @@ def test_ruleset_has_path_literal_sink_and_assembly_rules():
     assert "`${$A.baseURL}$$$B`" in pats    # the JS/TS template-literal shape
     assert "axios.create({baseURL: $B})" in pats   # the JS client-base shape
     assert "httpx.$M(base_url=$B)" in pats         # the Python client-base shape
+    assert 'f"{$A.base_url}$$$B"' in pats          # the Python f-string shape
 
 
 def test_ruleset_has_broad_url_rule_plus_one_per_vendor_per_language():
