@@ -2,6 +2,10 @@
 
 Matching any of these would mark an unrelated file as URL-assembling, and endpoints.py
 would then attribute its bare path literals to whatever host the file mentions.
+
+`+` negatives only. The f-string shape moved to py-base-url-fstring.py once it stopped
+being a miss — leaving it here would make this file a false negative control, since the
+f-string rule is SUPPOSED to match it.
 """
 import httpx
 
@@ -18,8 +22,6 @@ class Client:
     def signed(self, suffix):
         return self.api_key + suffix            # a different attribute entirely
 
-    def charges(self):
-        return f"{self.base_url}/v1/charges"     # f-string: a different AST, KNOWN MISS
 
 
 # Already covered by the client-base family — concat must not also require this shape.
