@@ -93,3 +93,18 @@ resurfaces; and the tests' *comments* (each pins a real shipped bug — keep the
 Tagline: *Know before it breaks.* Accent color: ember-crimson. Keep it plain and professional —
 **no mascot or codename** (earlier mascot/codename experiments were retired as too informal for a
 company tool).
+
+## Navigator / Worker protocol
+
+When work is split between a planning agent and this one, the full protocol is in
+`docs/NAVIGATOR-WORKER.md`. It exists because a fix once landed in the wrong clone —
+tests green, report "done", nothing shipped. **This** repo is the shipping tree; product
+fixes belong here, not in the orchestrator workspace.
+
+**Worker standing orders:**
+
+- Work ONLY in the absolute path the navigator names. If it is missing, STOP and report.
+- FAILING test first → paste the failure → fix → paste the pass. No fix before red.
+- Done report MUST include: `pwd`, `git log -1 --oneline`, test command + exit code, files changed.
+- No scope expansion. No fixing a second tree unasked.
+- No completion claims without those four evidence fields.
