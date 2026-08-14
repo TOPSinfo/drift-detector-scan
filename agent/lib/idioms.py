@@ -20,14 +20,15 @@ from agent.lib import catalog_overlay
 _DEFAULT = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
                         "idioms.yaml")
 
-FAMILIES = frozenset({"url-assembly", "url-append", "operation-marker", "path-constant"})
+FAMILIES = frozenset({"url-assembly", "url-append", "operation-marker", "path-constant",
+                      "client-base"})
 
 # family -> the rule kind its matches carry, i.e. how endpoints.py will read them
 # How each language spells string concatenation. url-assembly used to emit PHP's `.`
 # unconditionally, so a JavaScript instance compiled to a pattern that could never match:
 # the family existed for JS on paper and found nothing in practice. Languages absent here
 # emit no rule at all — see to_rules.
-_CONCAT_OP = {"php": ".", "javascript": "+", "typescript": "+"}
+_CONCAT_OP = {"php": ".", "javascript": "+", "typescript": "+", "python": "+"}
 
 # JS/TS also build URLs with template literals — `${this.baseURL}/v1/charges`. That is a
 # template_string node, NOT a binary `+` expression, so the concat rule above is blind to
@@ -40,7 +41,13 @@ _CONCAT_OP = {"php": ".", "javascript": "+", "typescript": "+"}
 _TEMPLATE_LANGS = ("javascript", "typescript")
 
 KIND_BY_FAMILY = {"url-assembly": "path-assembly", "url-append": "path-assembly",
-                  "operation-marker": "operation-marker", "path-constant": "path-constant"}
+                  "operation-marker": "operation-marker", "path-constant": "path-constant",
+                  # client-base: a factory stores the host once (axios.create({baseURL})) and
+                  # later calls pass only a path. The host and the path never share an
+                  # expression, so url-assembly's base+concat shape cannot express it — but the
+                  # FILE is assembling URLs, and path-assembly is the kind endpoints.py reads to
+                  # decide that. It marks the file; it claims no dataflow between the two lines.
+                  "client-base": "path-assembly"}
 
 
 class IdiomError(ValueError):
@@ -57,6 +64,11 @@ def _validate(inst: dict, where: str) -> None:
     if fam not in FAMILIES:
         raise IdiomError(f"{where}: unknown family {fam!r} — families are a closed set "
                          f"({', '.join(sorted(FAMILIES))}); a new one is a code change")
+    if fam == "client-base":
+        for req in ("pattern", "language"):
+            if not inst.get(req):
+                raise IdiomError(f"{where}: client-base needs `{req}` — the pattern is matched "
+                                 f"verbatim by the engine, and it is language-specific")
     if fam == "url-append" and not inst.get("target"):
         raise IdiomError(f"{where}: url-append needs `target` — the NAME of the variable "
                          "appended to (e.g. \"serviceURL\" for `$serviceURL .= $path`). "
@@ -114,9 +126,10 @@ def to_rules(inst: dict, literal_rule, languages: list) -> list:
         for lang in langs:
             op = _CONCAT_OP.get(lang)
             if not op:
-                # Emitting PHP's `.` on python or go would ship a rule that cannot match,
-                # and a rule that cannot match is indistinguishable from a repo with
-                # nothing to find. Say nothing rather than say it wrongly.
+                # Emitting PHP's `.` on a language that concatenates some other way (go,
+                # java, csharp) would ship a rule that cannot match, and a rule that cannot
+                # match is indistinguishable from a repo with nothing to find. Say nothing
+                # rather than say it wrongly.
                 continue
             docs.append({"id": f"{rid}@{lang}", "language": lang, "metadata": dict(kind),
                          "rule": {"pattern": f'{inst["base"]} {op} $B'}})
@@ -139,6 +152,12 @@ def to_rules(inst: dict, literal_rule, languages: list) -> list:
             else:
                 docs.append({"id": f"{rid}@{lang}", "language": lang, "metadata": dict(kind),
                              "rule": {"pattern": inst["pattern"]}})
+    elif fam == "client-base":
+        # The instance's pattern is emitted verbatim, like operation-marker's pattern branch.
+        # `language` is required, so langs is always the single declared language.
+        for lang in langs:
+            docs.append({"id": f"{rid}@{lang}", "language": lang, "metadata": dict(kind),
+                         "rule": {"pattern": inst["pattern"]}})
     elif fam == "path-constant":
         # A string-literal rule matching the instance's path shape, carrying the BOUND vendor
         # in metadata (the engine passes `vendor` through, exactly as it does for the per-vendor

@@ -44,11 +44,16 @@ def test_php_url_assembly_still_compiles_to_dot_concat():
 
 
 def test_a_language_with_no_known_concat_operator_emits_nothing():
-    """Emitting PHP's `.` on python or go would ship a rule that cannot match, and a rule
-    that cannot match is indistinguishable from a repo with nothing to find."""
-    inst = {"id": "py-base", "family": "url-assembly",
-            "language": "python", "base": "$A.base_url"}
-    assert idioms.to_rules(inst, _literal_rule, ["python"]) == []
+    """Emitting PHP's `.` on a language that concatenates some other way would ship a rule
+    that cannot match, and a rule that cannot match is indistinguishable from a repo with
+    nothing to find.
+
+    The example was python until python gained `+`; the INVARIANT is what matters, so it
+    moved to go rather than being deleted with the language it happened to name."""
+    assert "go" not in idioms._CONCAT_OP
+    inst = {"id": "go-base", "family": "url-assembly",
+            "language": "go", "base": "$A.BaseURL"}
+    assert idioms.to_rules(inst, _literal_rule, ["go"]) == []
 
 
 def test_the_shipped_js_instance_is_loadable_and_its_evidence_file_exists():

@@ -27,16 +27,36 @@ def test_ruleset_has_path_literal_sink_and_assembly_rules():
     # path-assembly: one rule per url-assembly idiom instance (not a single hardcoded one)
     docs = build_astgrep_ruleset(vendors=[])
     asm = [d for d in docs if (d.get("metadata") or {}).get("kind") == "path-assembly"]
-    # Every path-assembly rule must capture the path in a trailing metavariable, but the
-    # spelling is per-language: PHP `base . $B`, JS/TS `base + $B`, and the JS template
-    # form closes its backtick after the capture (`` `${base}$$$B` ``). This assertion
-    # used to require a literal `$B` ending, which assumed PHP-only.
-    assert asm and all(d["rule"]["pattern"].rstrip("`").endswith("$B") for d in asm)
+    # path-assembly covers two DIFFERENT jobs, and only one of them captures the path.
+    #
+    #   concat / append / template  — the path IS the trailing metavariable:
+    #       `base . $B`, `$var .= $B`, `base + $B`, `` `${base}$$$B` ``
+    #   client-base                 — the factory call `axios.create({baseURL: $B})`
+    #       captures the HOST and ends with `})`. It marks the FILE as assembling URLs;
+    #       endpoints.py then attributes bare path literals found in that file. It reads
+    #       the file, not this metavariable, so demanding a trailing `$B` here would force
+    #       a fake capture that means nothing.
+    #
+    # So: every rule must bind SOME metavariable (a pattern with none matches a fixed
+    # string and is not assembly at all), and the capturing shapes are pinned individually.
+    # Split by FAMILY, read from the idiom catalogue — not by guessing at substrings in
+    # the pattern. A substring list (`create(`, `Client(`, ...) would need extending for
+    # every new client factory and would silently mis-classify the one somebody forgot.
+    from agent.lib.idioms import load_idioms
+    client_base_ids = {i["id"] for i in load_idioms() if i["family"] == "client-base"}
+    def _is_client_base(doc):
+        return doc["id"].rsplit("@", 1)[0] in client_base_ids
+    assert asm and all("$" in d["rule"]["pattern"] for d in asm)
+    capturing = [d["rule"]["pattern"] for d in asm if not _is_client_base(d)]
+    assert capturing and all(p.rstrip("`").endswith("$B") for p in capturing), capturing
+    assert any(_is_client_base(d) for d in asm), "no client-base rule compiled"
     pats = " ".join(d["rule"]["pattern"] for d in asm)
     assert "getHost()" in pats and "serviceUrl" in pats
     assert ".= $B" in pats          # the assemble-then-append shape
     assert "+ $B" in pats           # the JS/TS concat shape
     assert "`${$A.baseURL}$$$B`" in pats    # the JS/TS template-literal shape
+    assert "axios.create({baseURL: $B})" in pats   # the JS client-base shape
+    assert "httpx.$M(base_url=$B)" in pats         # the Python client-base shape
 
 
 def test_ruleset_has_broad_url_rule_plus_one_per_vendor_per_language():

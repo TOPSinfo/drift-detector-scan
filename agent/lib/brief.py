@@ -26,6 +26,14 @@ _FAMILY_DOCS = [
      "`target`: the NAME of the variable appended to, e.g. `serviceURL`.",
      '{id: acme-append, family: url-append, language: php, target: "serviceURL", '
      'evidence: "acme/api src/Client.php:52"}'),
+    ("client-base",
+     "a client factory that stores the host once (`axios.create({baseURL: ...})`), with "
+     "every later call passing only a path. The host and the path never share an "
+     "expression, so url-assembly cannot express it.",
+     "`pattern`: an ast-grep pattern for the factory call, e.g. "
+     "`axios.create({baseURL: $B})`.",
+     '{id: acme-client, family: client-base, language: javascript, '
+     'pattern: "axios.create({baseURL: $B})", evidence: "acme/api src/client.js:12"}'),
     ("operation-marker",
      "an operation named by a marker (XML body root, header literal, SOAPAction, JSON-RPC "
      "method) rather than a URL path — the eBay Trading shape.",
