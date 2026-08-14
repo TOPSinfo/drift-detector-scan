@@ -1,4 +1,4 @@
-"""*.csproj extractor: SDK-style PackageReference + the .NET target framework.
+""".NET manifests: SDK-style `*.csproj` and legacy `packages.config`.
 
 A repo whose only manifest is a project file produced NO inventory records — its Supply
 Chain plane was silently empty. Two things were missing: this extractor, and a registry
@@ -27,6 +27,18 @@ def _tag(el) -> str:
     return _NS.sub("", el.tag)
 
 
+def _child_or_attr(el, name: str) -> str:
+    """MSBuild accepts item metadata as either an attribute or a child element, and the
+    templates emit both forms — reading one place only silently misses the other."""
+    value = (el.get(name) or "").strip()
+    if value:
+        return value
+    for c in el:
+        if _tag(c) == name:
+            return (c.text or "").strip()
+    return ""
+
+
 def _quality(spec: str) -> str:
     if not spec:
         return "best_effort"
@@ -47,13 +59,16 @@ def extract(repo: str, path: str, content: str) -> list:
         name = (el.get("Include") or el.get("Update") or "").strip()
         if not name:
             continue
+        # PrivateAssets="all" severs the package from the project output — analyzers and
+        # build-only tooling. The same exclusion as Maven scope=test, npm devDependencies
+        # and packages.config developmentDependency="true". ONLY `all` qualifies: `runtime`,
+        # `compile`, `analyzers` and their combinations still ship or compile against the
+        # app. Nothing is skipped by NAME — Moq stays, because the file never says it is
+        # test-only, and guessing from names would drop real dependencies.
+        if _child_or_attr(el, "PrivateAssets").lower() == "all":
+            continue
         # Version can be an attribute or a child element in either style.
-        version = (el.get("Version") or "").strip()
-        if not version:
-            for c in el:
-                if _tag(c) == "Version":
-                    version = (c.text or "").strip()
-                    break
+        version = _child_or_attr(el, "Version")
         out.append(InventoryRecord(
             repo=repo, manifest_path=path, ecosystem="nuget",
             tech_key=library_techkey("nuget", name), name=name, kind="library",
@@ -73,4 +88,42 @@ def extract(repo: str, path: str, content: str) -> list:
                     parse_quality="exact" if ";" not in tfm else "best_effort",
                 ))
             break
+    return out
+
+
+@register("packages.config")
+def extract_packages_config(repo: str, path: str, content: str) -> list:
+    """The legacy .NET manifest, pre-SDK-style projects.
+
+    Its own file, not a csproj: `packages.config` is a flat `<packages><package id=.. />`
+    list with no ItemGroups and no ProjectReferences, so parsing it as a csproj would find
+    nothing. Repos still on it had a silently empty Supply Chain plane.
+
+    NO runtime record is emitted. Each `<package>` carries a `targetFramework` saying what
+    THAT PACKAGE was built against — not the project's own TFM. Taking the first one (or
+    any of them) would state a runtime the file never asserts, which is a known miss here
+    rather than a guess.
+    """
+    try:
+        root = ET.fromstring(content)
+    except ET.ParseError as exc:
+        raise ValueError(f"invalid packages.config: {exc}") from exc
+
+    out: list = []
+    for el in root.iter():
+        if _tag(el) != "package":
+            continue
+        # The legacy marker for build-only packages — same exclusion as Maven scope=test
+        # and npm devDependencies: it is tooling, not something the application ships.
+        if (el.get("developmentDependency") or "").strip().lower() == "true":
+            continue
+        name = (el.get("id") or "").strip()
+        if not name:
+            continue
+        version = (el.get("version") or "").strip()
+        out.append(InventoryRecord(
+            repo=repo, manifest_path=path, ecosystem="nuget",
+            tech_key=library_techkey("nuget", name), name=name, kind="library",
+            declared_range=version, parse_quality=_quality(version),
+        ))
     return out
