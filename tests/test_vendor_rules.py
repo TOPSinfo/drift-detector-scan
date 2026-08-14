@@ -102,3 +102,33 @@ def test_domainless_vendor_gets_no_endpoint_rule():
     # a domained vendor is unaffected
     docs2 = build_astgrep_ruleset([Vendor("Stripe", "api:stripe", ("stripe.com",), r"/(v\d+)")])
     assert [d for d in docs2 if d["id"].startswith("stripe-endpoint@")]
+
+
+def test_engine_path_literal_regex_does_not_drift_from_the_classifier():
+    """The engine's path-literal regex and `classify_url._VERSION_SEG` disagreed: the
+    engine required a TRAILING SLASH and lacked the `YYYY-MM` form. A literal the
+    classifier calls versioned but the engine never matches lands in neither endpoints
+    nor residue — invisible, not merely unattributed. The engine pattern is now derived
+    from the classifier, so this asserts they agree on real literals."""
+    import re
+    from agent.lib.vendor_rules import _engine_version_regex
+    from agent.lib.classify_url import _VERSION_SEG
+    engine = re.compile(_engine_version_regex())
+    for literal in ("/admin/api/2024-01/orders.json", "/orders/v0", "/2024-10/products",
+                    "/v1/charges", "/2024-01-15/reports"):
+        assert _VERSION_SEG.search(literal), f"precondition: classifier sees {literal}"
+        assert engine.search(literal), (
+            f"the engine's path-literal regex misses {literal!r} that the classifier "
+            f"treats as versioned — the literal is invisible to the scan")
+    for literal in ("/orders/latest", "/api/products"):
+        assert not engine.search(literal), f"engine over-matches {literal!r}"
+
+
+def test_the_generated_ruleset_carries_the_derived_pattern():
+    """The derivation must actually reach the shipped rules, not just exist."""
+    from agent.lib.vendor_rules import build_astgrep_ruleset, _engine_version_regex
+    pat = _engine_version_regex()
+    rules = [d for d in build_astgrep_ruleset(None)
+             if (d.get("metadata") or {}).get("kind") == "path-literal"]
+    assert rules, "no path-literal rules emitted"
+    assert any(pat in str(d) for d in rules), "the derived pattern never reached the ruleset"

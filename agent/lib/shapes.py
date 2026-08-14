@@ -30,12 +30,19 @@ _LANG_BY_EXT = {
     ".php": "php", ".js": "javascript", ".mjs": "javascript", ".cjs": "javascript",
     ".ts": "typescript", ".tsx": "typescript", ".py": "python", ".rb": "ruby",
     ".go": "go", ".java": "java", ".cs": "csharp",
+    # .jsx/.mjsx are parsed by the javascript rules, so they are modelled and counted.
+    ".jsx": "javascript", ".mts": "typescript", ".cts": "typescript",
 }
 # Extensions that are plainly source code but which we have no rules for. Counted so
 # a repo made of them cannot report KNOWN by virtue of being unreadable.
 _CODE_ISH = {".kt", ".kts", ".rs", ".swift", ".ex", ".exs", ".scala", ".dart", ".m",
              ".mm", ".c", ".cc", ".cpp", ".h", ".hpp", ".pl", ".pm", ".lua", ".r",
-             ".jl", ".clj", ".erl", ".hs", ".ml", ".fs", ".vb", ".groovy"}
+             ".jl", ".clj", ".erl", ".hs", ".ml", ".fs", ".vb", ".groovy",
+             # Single-file-component formats: plainly source, but ast-grep has no
+             # grammar for their multi-block shape, so we do NOT read them. Counted
+             # here so a React/Vue/Svelte repo censuses as unreadable instead of
+             # censusing EMPTY and sailing through as KNOWN.
+             ".vue", ".svelte", ".astro"}
 _SKIP_DIRS = {".git", "test", "tests", "spec", "__tests__", "vendor", "node_modules",
               ".venv", "dist", "build", "target", "__pycache__"}
 
@@ -96,13 +103,19 @@ def residue_fingerprint(residue: dict) -> str:
 
 
 def verdict(attributed: int, residue: dict, coverage: dict,
-            *, attested: bool = False, unmodeled: int = 0) -> tuple:
+            *, attested: bool = False, unmodeled: int = 0, modeled: int = 0) -> tuple:
     """(KNOWN|UNKNOWN, reasons). KNOWN requires BOTH egress coverage for every
     meaningful language AND nothing left unattributed (or a valid attestation)."""
     reasons = []
-    if unmodeled and not coverage:
-        # every source file is in a language we do not model at all — we have not
-        # looked at this repo, and saying KNOWN would be a lie of omission
+    # Unreadable files count whenever they are a MEANINGFUL share of the repo — not
+    # only when they are the whole of it. The old `not coverage` guard meant a repo that
+    # was half Vue and half JS read the JS, could not read the Vue at all, and still
+    # reported KNOWN: the unreadable half written off because some other language
+    # happened to parse. Same bar as meaningful_languages, so one stray file in a large
+    # readable repo does not cry wolf.
+    total_files = modeled + unmodeled
+    if unmodeled and (not coverage or
+                      (total_files and unmodeled / total_files >= _MEANINGFUL_SHARE)):
         reasons.append(UNMODELED_LANGUAGE)
     uncovered = [lang for lang, kinds in coverage.items()
                  if not any(k in ("sink", "path-assembly") for k in kinds)]
@@ -110,6 +123,14 @@ def verdict(attributed: int, residue: dict, coverage: dict,
         reasons.append(NO_EGRESS_SIGNAL)
     n_paths = len(residue.get("pathLiterals", []))
     n_sinks = len(residue.get("sinks", []))
+    # `coverage` says only whether we SHIP a rule for the language — after every
+    # language gained a sink rule, `uncovered` above became permanently empty and
+    # NO_EGRESS_SIGNAL unreachable in production. Coverage is not evidence. If we
+    # modelled the language, ran its rules, and got NOTHING — no attribution, no
+    # residue at all — we did not look successfully; we merely looked. Saying KNOWN
+    # there is the lie of omission principle 1 forbids.
+    if coverage and attributed == 0 and not n_paths and not n_sinks and not attested:
+        reasons.append(NO_EGRESS_SIGNAL)
     if n_paths and not attested:
         # a versioned path we could not attribute is a miss, full stop
         reasons.append("config-driven-url")
@@ -129,7 +150,8 @@ def build(repo_abs: str, repo_path: str, endpoints: list, residue: dict,
     cov = signal_coverage(langs, rule_kinds_by_lang)
     attributed = sum(1 for e in endpoints
                      if e.get("vendor") and e["vendor"] != "Unknown")
-    v, reasons = verdict(attributed, residue, cov, attested=attested, unmodeled=unmodeled)
+    v, reasons = verdict(attributed, residue, cov, attested=attested,
+                         unmodeled=unmodeled, modeled=sum(counts.values()))
     return {
         "repo": repo_path,
         "languages": counts,
