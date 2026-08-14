@@ -232,3 +232,93 @@ def test_private_assets_all_is_omitted_end_to_end(tmp_path):
     assert "Newtonsoft.Json" in names and "Bar" in names
     assert "StyleCop.Analyzers" not in names and "Foo" not in names
     assert unparsed == []
+
+
+# ── Central Package Management: Directory.Packages.props ─────────────────────────
+
+PROPS = '''<Project>
+  <PropertyGroup><ManagePackageVersionsCentrally>true</ManagePackageVersionsCentrally></PropertyGroup>
+  <ItemGroup>
+    <PackageVersion Include="Moq" Version="4.20.72" />
+    <PackageVersion Include="Newtonsoft.Json" Version="13.0.9" />
+    <PackageVersion Include="StyleCop.Analyzers" Version="1.1.118" />
+    <PackageVersion Include="NeverReferenced" Version="9.9.9" />
+    <PackageVersion Include="ChildForm"><Version>2.0.1</Version></PackageVersion>
+  </ItemGroup>
+</Project>
+'''
+
+# A CPM consumer: no Version on the references, because the props file owns them.
+CPM_CSPROJ = '''<Project Sdk="Microsoft.NET.Sdk">
+  <ItemGroup>
+    <PackageReference Include="Moq" />
+    <PackageReference Include="ChildForm" />
+    <PackageReference Include="Newtonsoft.Json" Version="13.0.3" />
+    <PackageReference Include="StyleCop.Analyzers" PrivateAssets="all" />
+  </ItemGroup>
+</Project>
+'''
+
+
+def test_parse_package_versions_reads_the_catalog():
+    versions = nuget.parse_package_versions(PROPS)
+    assert versions["Moq"] == "4.20.72"
+    assert versions["Newtonsoft.Json"] == "13.0.9"
+
+
+def test_parse_package_versions_reads_the_child_element_form():
+    assert nuget.parse_package_versions(PROPS)["ChildForm"] == "2.0.1"
+
+
+def test_central_versions_fill_an_empty_declared_range():
+    """The whole point: under CPM the csproj states no version, so without the catalog
+    there is nothing to send to OSV — the package audits as if it had no version."""
+    recs = nuget.extract("clients/a", "Shop.csproj", CPM_CSPROJ)
+    filled = {r.name: r for r in nuget.apply_central_versions(recs, nuget.parse_package_versions(PROPS))}
+    assert filled["Moq"].declared_range == "4.20.72"
+    assert filled["Moq"].parse_quality == "exact"
+
+
+def test_a_version_on_the_packagereference_wins_over_the_catalog():
+    """MSBuild errors on this combination, but if a repo has both, the csproj is what that
+    project actually builds against — overwriting it would report a version the project
+    never declared."""
+    recs = nuget.extract("clients/a", "Shop.csproj", CPM_CSPROJ)
+    filled = {r.name: r for r in nuget.apply_central_versions(recs, nuget.parse_package_versions(PROPS))}
+    assert filled["Newtonsoft.Json"].declared_range == "13.0.3"
+
+
+def test_the_catalog_never_creates_a_library_of_its_own():
+    """Directory.Packages.props is a version catalog for PackageReferences, not a second
+    dependency list. `NeverReferenced` is listed there and referenced nowhere — emitting it
+    would report a dependency the application does not have."""
+    recs = nuget.extract("clients/a", "Shop.csproj", CPM_CSPROJ)
+    names = {r.name for r in nuget.apply_central_versions(recs, nuget.parse_package_versions(PROPS))}
+    assert "NeverReferenced" not in names
+
+
+def test_a_private_assets_package_stays_omitted_even_though_the_catalog_lists_it():
+    """PrivateAssets=all never becomes a record, so the catalog must not resurrect it."""
+    recs = nuget.extract("clients/a", "Shop.csproj", CPM_CSPROJ)
+    names = {r.name for r in nuget.apply_central_versions(recs, nuget.parse_package_versions(PROPS))}
+    assert "StyleCop.Analyzers" not in names
+
+
+def test_extract_alone_still_reports_no_version(tmp_path):
+    """extract() stays pure — one file, no filesystem. If it ever reached out for a sibling
+    props file, this would silently start passing and the function would no longer be
+    testable from content alone."""
+    by_name = {r.name: r for r in nuget.extract("clients/a", "Shop.csproj", CPM_CSPROJ)}
+    assert by_name["Moq"].declared_range == "" and by_name["Moq"].parse_quality == "best_effort"
+
+
+def test_apply_central_versions_does_not_mutate_frozen_records():
+    recs = nuget.extract("clients/a", "Shop.csproj", CPM_CSPROJ)
+    before = [r.declared_range for r in recs]
+    nuget.apply_central_versions(recs, nuget.parse_package_versions(PROPS))
+    assert [r.declared_range for r in recs] == before
+
+
+def test_invalid_package_versions_props_raises_valueerror():
+    with pytest.raises(ValueError):
+        nuget.parse_package_versions("<Project><unclosed>")

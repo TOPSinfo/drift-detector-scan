@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import re
 import xml.etree.ElementTree as ET
+from dataclasses import replace
 
 from agent.lib.inventory_models import InventoryRecord, library_techkey
 from agent.lib.extractors import register
@@ -88,6 +89,53 @@ def extract(repo: str, path: str, content: str) -> list:
                     parse_quality="exact" if ";" not in tfm else "best_effort",
                 ))
             break
+    return out
+
+
+def parse_package_versions(content: str) -> dict:
+    """`Directory.Packages.props` → {package id: version}.
+
+    Central Package Management moves versions out of the csproj: the reference says only
+    `<PackageReference Include="Moq" />` and this file owns the version. Without it those
+    packages carry no version at all, so there is nothing to send to OSV — they audit as
+    though nobody had declared anything.
+
+    NOT an extractor, and deliberately not registered as one. This file is a version
+    CATALOG for PackageReferences, not a second dependency list: emitting its entries as
+    libraries would report packages the application never references (including the
+    build-only tools that PrivateAssets excludes).
+    """
+    try:
+        root = ET.fromstring(content)
+    except ET.ParseError as exc:
+        raise ValueError(f"invalid Directory.Packages.props: {exc}") from exc
+
+    out = {}
+    for el in root.iter():
+        if _tag(el) != "PackageVersion":
+            continue
+        name = (el.get("Include") or el.get("Update") or "").strip()
+        version = _child_or_attr(el, "Version")
+        if name and version:
+            out.setdefault(name, version)
+    return out
+
+
+def apply_central_versions(records: list, versions: dict) -> list:
+    """Fill in versions the csproj left to the catalog. Records are frozen — replaced, not
+    mutated.
+
+    Only fills what is EMPTY. A version written on the PackageReference is what that
+    project builds against, so the catalog never overwrites it. And only existing records
+    are touched: a catalog entry with no matching reference adds nothing.
+    """
+    out = []
+    for r in records:
+        if (r.ecosystem == "nuget" and r.kind == "library" and not r.declared_range
+                and r.name in versions):
+            version = versions[r.name]
+            r = replace(r, declared_range=version, parse_quality=_quality(version))
+        out.append(r)
     return out
 
 
