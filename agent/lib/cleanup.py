@@ -1,7 +1,8 @@
 """Remove the artifacts the tool leaves on a user's machine — without a filesystem-wide search.
 
 Every scan appends its state dir to a run-index ledger (`~/.drift/runs.log`), so `drift-scan clean
---all` knows exactly where the scattered `<folder>/.drift-detector` dirs are without walking `$HOME`.
+--all` knows exactly where the scattered `<folder>/.drift-detector` dirs (and plugin slugs under
+`$HOME/.drift-detector/<slug>`) are without walking `$HOME` or rmtree-ing the plugin-home container.
 The learned catalog (`~/.drift/catalog`) is PRESERVED by default — it holds shapes the user absorbed
 and would not want silently dropped; only `--catalog` removes it. A guardrail keeps `clean` from ever
 deleting a path that isn't ours: a `--state` dir is removed only if it looks like a drift state dir.
@@ -17,6 +18,8 @@ _LEDGER = "runs.log"
 # A dir is one of ours iff it carries a scan artifact — the guardrail against `clean --state` nuking
 # a path that isn't a drift state dir. The plugin's own ".drift-detector" folder name also qualifies.
 _MARKERS = ("inventory.json", "drift.json", "audit.json")
+# Plugin multi-root scans live at $HOME/.drift-detector/<slug>. Never rmtree that
+# parent as one tree — it is a container, not a run. Slugs are removed via the ledger.
 
 
 def _ledger_path() -> str:
@@ -44,13 +47,24 @@ def read_runs() -> list:
 
 
 def is_state_dir(path: str) -> bool:
-    """The guardrail: is `path` actually one of ours? True iff it is a directory that either is named
-    `.drift-detector` or carries a scan artifact. Everything `clean` deletes passes this."""
+    """The guardrail: is `path` actually one scan's state dir?
+
+    True iff it carries a scan artifact, or is an empty in-place `.drift-detector`
+    (aborted scan). A `.drift-detector` that only contains slug children — the plugin
+    home at `$HOME/.drift-detector` — is a container, not a run, and must not qualify.
+    """
     if not path or not os.path.isdir(path):
         return False
-    if os.path.basename(os.path.normpath(path)) == ".drift-detector":
+    if any(os.path.exists(os.path.join(path, m)) for m in _MARKERS):
         return True
-    return any(os.path.exists(os.path.join(path, m)) for m in _MARKERS)
+    if os.path.basename(os.path.normpath(path)) != ".drift-detector":
+        return False
+    try:
+        names = os.listdir(path)
+    except OSError:
+        return False
+    # Child directories mean this is a slug container, not one run.
+    return not any(os.path.isdir(os.path.join(path, n)) for n in names)
 
 
 def dir_size(path: str) -> int:
@@ -92,7 +106,8 @@ def plan(*, all_: bool, state: str | None, include_catalog: bool) -> dict:
                 add(d, "run")
         add(os.path.join(root, "reports"), "reports")
         add(os.path.join(root, "eval"), "eval")
-        add(os.path.join(os.path.expanduser("~"), ".drift-detector"), "run")
+        # Do not add $HOME/.drift-detector as a single target. Plugin slugs under
+        # that container are removed only if they appear in the run ledger above.
         if include_catalog:
             add(os.path.join(root, "catalog"), "catalog")
 
@@ -114,6 +129,11 @@ def execute(targets: list) -> list:
     removed = []
     for t in targets:
         path = t["path"] if isinstance(t, dict) else t
+        kind = t.get("kind") if isinstance(t, dict) else None
+        # Never rmtree the plugin-home container even if a caller passes it.
+        if kind == "run" or kind is None:
+            if os.path.basename(os.path.normpath(path)) == ".drift-detector" and not is_state_dir(path):
+                continue
         try:
             shutil.rmtree(path)
             removed.append(os.path.abspath(path))

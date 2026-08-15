@@ -94,3 +94,44 @@ def test_ledger_entry_that_no_longer_exists_is_skipped(home, tmp_path):
     cleanup.record_run(gone)                                # recorded, but never created on disk
     pl = cleanup.plan(all_=True, state=None, include_catalog=False)
     assert pl["targets"] == []                              # a stale ledger entry is simply skipped
+
+
+def test_all_does_not_rmtree_home_drift_detector_container(home, tmp_path, monkeypatch):
+    """`clean --all` must never delete $HOME/.drift-detector as one tree.
+
+    The plugin stores multi-root scans at $HOME/.drift-detector/<slug>. The old
+    plan() added expanduser("~")/.drift-detector as a single rmtree target, and
+    is_state_dir() was true on basename alone — so pytest (HOME unpatched) and
+    `clean --all` wiped every slug, including ones not in the run ledger.
+    """
+    fake_home = tmp_path / "userhome"
+    container = fake_home / ".drift-detector"
+    sentinel = container / "SENTINEL-do-not-delete"
+    sentinel.mkdir(parents=True)
+    (sentinel / "inventory.json").write_text("{}")
+    recorded = _state(container / "recorded-slug")
+    cleanup.record_run(recorded)
+    monkeypatch.setenv("HOME", str(fake_home))
+    monkeypatch.setattr(os.path, "expanduser", lambda p: str(fake_home) if p == "~" else p)
+
+    pl = cleanup.plan(all_=True, state=None, include_catalog=False)
+    target_paths = {t["path"] for t in pl["targets"]}
+    assert os.path.abspath(str(container)) not in target_paths
+    assert os.path.abspath(str(sentinel)) not in target_paths
+    assert os.path.abspath(recorded) in target_paths
+
+    cleanup.execute(pl["targets"])
+    assert sentinel.is_dir()
+    assert (sentinel / "inventory.json").is_file()
+    assert not os.path.isdir(recorded)
+    assert container.is_dir()
+
+
+def test_container_named_drift_detector_is_not_one_run(home, tmp_path):
+    """A .drift-detector that only holds slug children is not itself a deletable run."""
+    container = tmp_path / "plugin-home" / ".drift-detector"
+    slug = container / "new-three"
+    slug.mkdir(parents=True)
+    (slug / "inventory.json").write_text("{}")
+    assert cleanup.is_state_dir(str(container)) is False
+    assert cleanup.is_state_dir(str(slug)) is True
