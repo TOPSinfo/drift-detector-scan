@@ -10,10 +10,14 @@
 
 > **Know before it breaks.**
 
-Drift Detector watches your codebase for third-party integrations that are **about to break** —
-and tells you *which file and line* is affected, *with the date* it breaks, **before it does.**
+**AI proposes. The scanner adjudicates.**
 
-It catches three kinds of rot:
+Claude finds third-party integrations the rules can't see yet. Drift Detector
+**proves** them — `file:line`, sourced retirement dates — or says **needs-human**.
+The certified scan path is deterministic (**zero AI tokens**); it never invents a
+date, and AI leads never mix into certified findings.
+
+It catches three kinds of rot on the **certified** path:
 
 1. **Retired vendor APIs** — a service you call (eBay, Amazon, Shopify, …) is **shutting down** an
    API your code still uses. *Example: "eBay's `GetCategoryFeatures` — called at
@@ -23,11 +27,8 @@ It catches three kinds of rot:
 3. **Known security holes** — public vulnerabilities in the packages you depend on.
 
 It runs as a **[Claude Code](https://docs.anthropic.com/en/docs/claude-code) plugin**. Point Claude at
-your code and it runs **two engines together**: a **deterministic scan** (the three above — dated,
-sourced, **zero AI tokens**) *and* an **AI cross-check** that surfaces integrations the rules can't yet
-see. You get one report in **two clearly-separated tiers of trust** — **certified findings**
-(machine-verified) and **AI leads** (gate-validated but never mixed into the certified ones) — shown as
-**three planes** in one Cockpit. Where it *can't* see, it says so instead of reporting a false all-clear.
+your code; `/drift-detector` runs the certified scan and an optional AI cross-check kept in a
+**separate trust tier**. Where the tool *can't* see, it says so — never a false all-clear.
 
 ### The jargon, once (plain terms)
 
@@ -52,8 +53,8 @@ see. You get one report in **two clearly-separated tiers of trust** — **certif
 
 ## Use it
 
-Install the plugin, point it at a folder, and Claude runs the whole thing — separating the
-**certified truth** from the **AI's guesses**. In the Claude Code CLI:
+Install the plugin, point it at a folder, and Claude runs the scan — keeping
+**certified truth** separate from **AI leads**:
 
 ```
 /plugin marketplace add TOPSinfo/drift-detector-scan
@@ -61,26 +62,17 @@ Install the plugin, point it at a folder, and Claude runs the whole thing — se
 /drift-detector /path/to/a/folder          # one repo, or a folder of repos
 ```
 
-One command runs **all three planes** — CVE/EOL and vendor-API sunsets (certified) plus an AI
-cross-check (leads) — then opens the **Cockpit** alongside a separate **AI · unverified** view.
-Anything Claude learns about how a new integration is shaped persists to `~/.drift/catalog` and
-makes every later run smarter.
+One command runs the certified planes (CVE/EOL + vendor-API sunsets) plus an optional AI
+cross-check, then opens the **Cockpit**. Anything Claude learns about a new integration shape
+persists to `~/.drift/catalog` only after the absorb gate — and makes later runs smarter.
 
 *(First run provisions its own venv and fetches the pinned ast-grep engine — needs
 [`uv`](https://docs.astral.sh/uv/) or Python 3.11+ with venv, nothing else to install.)*
 
-### Headless — CI, or on a schedule
-
-The same command runs unattended (no prompts, local-only):
-
-```
-claude -p "/drift-detector <repo1> <repo2>" --permission-mode bypassPermissions
-```
-
-It scans, writes the Cockpit plus a separate AI-leads view, and **`verify`-certifies** the report.
-Exit codes make it gate-friendly: `0` ok · `2` error · `3` found problems · `4` couldn't scan / verify.
-Run on a schedule across a fleet and it files **one ticket per problem** in the repo that has it —
-idempotently (re-runs update in place; a fixed problem closes its own ticket).
+> **Headless / CI footnote:** same slash command works unattended via
+> `claude -p "/drift-detector <repo…>" --permission-mode bypassPermissions`
+> (exit `0` ok · `2` error · `3` found problems · `4` couldn't scan/verify). Fleet CI is a
+> later story — not the homepage.
 
 ---
 
