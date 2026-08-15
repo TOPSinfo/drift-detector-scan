@@ -203,13 +203,15 @@ def test_usps_web_tools_host_is_flagged_and_the_replacement_host_is_not():
     It shipped scoped to tools.usps.com first, so the retiring host classified as nothing
     and this finding could never fire. Uses the LIVE catalog, not a fixture, because the
     bug lives in the join between the two real files."""
-    from agent.lib.vendors import load_vendors
+    from agent.lib import vendors as vendors_mod
     from agent.lib import classify_url
     loaded = vs.load_sunsets()
     # Derive the vendor the way the scan does. Hand-writing vendor="USPS" would pass even
     # when vendors.yaml cannot classify the host — which is exactly the bug: the catalog
     # knew the retirement, the scanner never labelled the host, and nothing ever fired.
-    hit = classify_url.classify_host("secure.shippingapis.com", load_vendors())
+    # Package vendors.yaml only (no local overlay) — see test_usps_is_scoped_to_the_two_real_api_hosts.
+    hit = classify_url.classify_host(
+        "secure.shippingapis.com", vendors_mod.load_vendors(path=vendors_mod._DEFAULT_VENDORS))
     doc = {"repos": [{"path": "shipper", "endpoints": [
         {"vendor": None if hit is None else hit.vendor,
          "domain": "secure.shippingapis.com", "version": None, "files": ["x.php:1"]},
@@ -224,10 +226,11 @@ def test_usps_web_tools_host_is_flagged_and_the_replacement_host_is_not():
 def test_the_usps_replacement_host_is_not_condemned_by_the_web_tools_sunset():
     """apis.usps.com is where USPS tells you to migrate TO. A domain-scoped entry must not
     drag it down with the platform it replaces."""
-    from agent.lib.vendors import load_vendors
+    from agent.lib import vendors as vendors_mod
     from agent.lib import classify_url
     loaded = vs.load_sunsets()
-    hit = classify_url.classify_host("apis.usps.com", load_vendors())
+    hit = classify_url.classify_host(
+        "apis.usps.com", vendors_mod.load_vendors(path=vendors_mod._DEFAULT_VENDORS))
     assert hit is not None and hit.vendor == "USPS", "apis.usps.com must classify as USPS"
     doc = {"repos": [{"path": "shipper", "endpoints": [
         {"vendor": hit.vendor, "domain": "apis.usps.com", "version": None, "files": ["y.php:1"]},
