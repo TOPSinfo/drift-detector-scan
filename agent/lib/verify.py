@@ -1109,3 +1109,22 @@ def check_adhoc_hash_binds_certified(adhoc_doc: dict, certified_bytes: bytes) ->
                         f"adhoc.json meta.driftJsonSha256 {got[:12]}… does not match "
                         f"sha256(drift.json bytes) {want[:12]}… — the shaped tier was derived "
                         f"from a different scan than the one it is rendered beside")
+
+
+def check_no_queue_label(html: str, where: str = "dashboard.html") -> None:
+    """No rendered surface may say "Queued".
+
+    A queue on the page is a promise to do work later, and the scan has no later: a host is
+    tracked, na, needs-human, blocked, or plainly labelled as not-yet-looked-at. The summary
+    tree was renamed and the cockpit was not, so the same scan read as "pending triage" on the
+    page the owner opens and as "unresolved — pass did not run" on the page they don't. The
+    label lived in `agent/assets/dashboard.app.js`, which the plan's file list never named —
+    hence this check reads the RENDERED html, where an inlined asset cannot hide.
+
+    `drift.json`'s `coverage: "queued"` field name is untouched; this is presentation only.
+    """
+    if "Queued" in html:
+        raise Violation("queue-label",
+                        f"{where} renders the word 'Queued' — a queue on the page promises "
+                        f"work later; label unresolved hosts as unresolved and say whether "
+                        f"the resolution pass ran")
