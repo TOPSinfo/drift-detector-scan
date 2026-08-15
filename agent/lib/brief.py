@@ -151,16 +151,16 @@ def build_brief(inventory: dict, repo: str, *, flag_url: str | None = None) -> s
           "1. Stage specs in `.drift-detector/absorb-staged/` (`idioms.yaml`, `claims.yaml`, "
           "`sunsets.yaml`). Every idiom needs `evidence:` (a real `file:line` you opened); every "
           "sunset needs a `source:` URL you fetched THIS session, or don't write it.",
-          "2. Point the gate at the drift-ops overlay so the learning survives:",
+          "2. Point the gate at the drift-ops overlay so fleet CI sees the learning:",
           "   ```",
           "   export DRIFT_OPS_DIR=<your drift-ops checkout>",
           "   DRIFT_CATALOG_DIR=\"$DRIFT_OPS_DIR/catalog\" \\",
           f"     drift-scan absorb --staged .drift-detector/absorb-staged --repo {name} \\",
           "       --state .drift-detector --now $(date +%F)",
           "   ```",
-          "   Without `DRIFT_CATALOG_DIR` the absorb writes into the installed plugin's own "
-          "catalogs — wiped on update, never read by CI. The overlay is the only place it "
-          "survives and reaches the fleet.",
+          "   Local default (no export) is `~/.drift/catalog` — absorb and the next scan both "
+          "use it. Set `DRIFT_CATALOG_DIR` to the drift-ops catalog so the learning reaches "
+          "the fleet and is reviewed as a YAML diff.",
           "3. The gate REJECTS: an unsourced date; an idiom that doesn't attribute its claimed "
           "call-sites; an idiom that invents endpoints for another vendor; a change that grows "
           "residue. Never weaken a claim to pass — a narrower true proposal is correct.",

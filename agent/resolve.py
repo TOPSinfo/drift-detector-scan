@@ -336,9 +336,11 @@ def apply(verdicts: list, *, now: str, vendors_path=None, overlay_dir: str | Non
         d = overlay_dir or catalog_overlay.overlay_dir()
         if not d:
             raise ResolveRejected([
-                "$DRIFT_CATALOG_DIR is not set — nowhere safe to write reviewed evidence "
-                "(own-domain/vendor-identity/retiring verdicts can never land in agent/*.yaml, "
-                "and an `unknown` with nowhere to record is a pass nobody can prove ran)"])
+                "$DRIFT_CATALOG_DIR is empty — overlay disabled, nowhere safe to write "
+                "reviewed evidence (own-domain/vendor-identity/retiring verdicts can never "
+                "land in agent/*.yaml, and an `unknown` with nowhere to record is a pass "
+                "nobody can prove ran). Unset the var to use ~/.drift/catalog, or set it "
+                "to a writable catalog directory."])
 
         # Phase 1 — validate EVERY target before touching disk. A problem on any one target
         # (an unwritable path, a malformed pre-existing overlay) fails the whole apply: nothing

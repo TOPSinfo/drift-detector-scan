@@ -170,8 +170,9 @@ def test_unknown_verdict_records_the_ledger_and_touches_no_other_overlay(monkeyp
 
 def test_an_unknown_with_no_overlay_dir_is_refused_not_silently_dropped(monkeypatch):
     """There is nowhere to record that the pass looked, so the batch is refused rather than
-    reporting success and losing the verdict — the failure mode this slice exists to end."""
-    monkeypatch.delenv("DRIFT_CATALOG_DIR", raising=False)
+    reporting success and losing the verdict — the failure mode this slice exists to end.
+    Empty $DRIFT_CATALOG_DIR is the explicit disable; unset would default to ~/.drift/catalog."""
+    monkeypatch.setenv("DRIFT_CATALOG_DIR", "")
     with pytest.raises(resolve.ResolveRejected) as exc:
         resolve.apply([_unknown_verdict()], now="2026-08-13")
     assert any("DRIFT_CATALOG_DIR" in p for p in exc.value.args[0])
@@ -208,9 +209,9 @@ def test_well_formed_mixed_set_applies_and_lands_in_the_overlays(monkeypatch, tm
     assert result["needs_human"] and result["needs_human"][0]["host"] == "weird.zenithapp-crm.internal"
 
 
-# --------------------------------------------------------------------- no overlay dir set
+# --------------------------------------------------------------------- overlay explicitly disabled
 def test_catalog_writes_are_refused_without_an_overlay_dir(monkeypatch, tmp_path):
-    monkeypatch.delenv("DRIFT_CATALOG_DIR", raising=False)
+    monkeypatch.setenv("DRIFT_CATALOG_DIR", "")
     with pytest.raises(resolve.ResolveRejected):
         resolve.apply([_own_domain_verdict()], now="2026-08-13")
 

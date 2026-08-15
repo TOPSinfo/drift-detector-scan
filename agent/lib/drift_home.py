@@ -25,10 +25,10 @@ def eval_home() -> str:
 
 
 def catalog_home() -> str:
-    """The persistent local catalog overlay (~/.drift/catalog) — where a single-user `absorb`
-    lands when no $DRIFT_CATALOG_DIR is set, so a learned catalog SURVIVES a pip/uvx upgrade
-    (the package files are site-packages and get wiped). The plugin exports this as
-    DRIFT_CATALOG_DIR so the same entries are loaded on the next scan."""
+    """The persistent local catalog overlay (~/.drift/catalog) — default for absorb, resolve,
+    and loaders when $DRIFT_CATALOG_DIR is unset, so a learned catalog SURVIVES a pip/uvx
+    upgrade (the package files are site-packages and get wiped). Override with
+    DRIFT_CATALOG_DIR for container / drift-ops."""
     p = os.path.join(drift_root(), "catalog")
     os.makedirs(p, exist_ok=True)
     return p

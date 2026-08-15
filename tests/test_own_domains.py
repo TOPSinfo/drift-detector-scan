@@ -40,8 +40,8 @@ def _write(tmp_path, rel, text):
 
 
 # --------------------------------------------------------------------- own_domains.load()
-def test_load_is_empty_when_overlay_dir_unset(monkeypatch):
-    monkeypatch.delenv("DRIFT_CATALOG_DIR", raising=False)
+def test_load_is_empty_when_overlay_disabled(monkeypatch):
+    monkeypatch.setenv("DRIFT_CATALOG_DIR", "")
     assert own_domains.load() == {}
 
 
@@ -138,11 +138,11 @@ def test_confirmed_domain_scoped_to_a_different_repo_does_not_apply(monkeypatch,
 
 
 def test_missing_overlay_file_changes_nothing_end_to_end(monkeypatch, tmp_path):
-    """No overlay dir/file at all -> own_domains.load() == {} -> confirmed stays empty, so the
-    repo's OTHER own-infra signals (token/domain) are exactly what they'd be without this
-    feature. Uses a repo identity that shares no token with the host, so the only way this host
-    could become own-infra is via a (nonexistent) confirmed entry."""
-    monkeypatch.delenv("DRIFT_CATALOG_DIR", raising=False)
+    """Overlay disabled / no own_domains file -> own_domains.load() == {} -> confirmed stays
+    empty, so the repo's OTHER own-infra signals (token/domain) are exactly what they'd be
+    without this feature. Uses a repo identity that shares no token with the host, so the only
+    way this host could become own-infra is via a (nonexistent) confirmed entry."""
+    monkeypatch.setenv("DRIFT_CATALOG_DIR", "")
     _write(tmp_path, "a.php", '$x=file_get_contents("https://api.acmegrocer.com/products");\n')
     out = scan_endpoints([_url("a.php", 1)], str(tmp_path), [_STRIPE],
                          repo_id="https://git.example.com/some-org/totally-different.git")

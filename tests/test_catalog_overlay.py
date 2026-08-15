@@ -1,9 +1,13 @@
-"""The catalog OVERLAY: a writable $DRIFT_CATALOG_DIR layered on the read-only package
-catalogs, so the container/drift-ops can grow the indexes without a rebuild. Off by default
-(unset env) → today's behaviour exactly."""
+"""The catalog OVERLAY: a writable layer over the read-only package catalogs, so absorbed
+idioms / resolve verdicts / needs-human entries survive without a plugin rebuild.
+
+Default location is `~/.drift/catalog` (via $DRIFT_HOME), matching the plugin promptfile
+(`DRIFT_CATALOG_DIR="${DRIFT_CATALOG_DIR:-$HOME/.drift/catalog}"`). Set $DRIFT_CATALOG_DIR
+to override (container / drift-ops). Set it to empty to disable the overlay entirely.
+"""
 import yaml
 
-from agent.lib import catalog_overlay
+from agent.lib import catalog_overlay, drift_home
 from agent.lib.vendors import load_vendors
 from agent.lib.idioms import load_idioms
 from agent.lib.vendor_sunsets import load_sunsets
@@ -19,8 +23,24 @@ def _overlay(monkeypatch, tmp_path, name, data):
 
 
 # ------------------------------------------------------------------- the helper
-def test_load_list_is_empty_when_env_unset(monkeypatch):
+def test_overlay_dir_defaults_to_drift_catalog_home_when_env_unset(monkeypatch, tmp_path):
+    """Unset $DRIFT_CATALOG_DIR must NOT mean "no overlay" — that wiped resolve/needs-human
+    whenever a scan forgot to export the env. Default is the durable ~/.drift/catalog home."""
     monkeypatch.delenv("DRIFT_CATALOG_DIR", raising=False)
+    monkeypatch.setenv("DRIFT_HOME", str(tmp_path / "drifthome"))
+    got = catalog_overlay.overlay_dir()
+    assert got == drift_home.catalog_home()
+    assert got.endswith("/catalog")
+
+
+def test_empty_DRIFT_CATALOG_DIR_disables_the_overlay(monkeypatch):
+    monkeypatch.setenv("DRIFT_CATALOG_DIR", "")
+    assert catalog_overlay.overlay_dir() is None
+    assert catalog_overlay.load_list(catalog_overlay.SUNSETS) == []
+
+
+def test_load_list_is_empty_when_overlay_disabled(monkeypatch):
+    monkeypatch.setenv("DRIFT_CATALOG_DIR", "")
     assert catalog_overlay.load_list(catalog_overlay.SUNSETS) == []
 
 

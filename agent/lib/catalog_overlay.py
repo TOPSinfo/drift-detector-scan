@@ -3,13 +3,17 @@
 The package YAMLs (vendors / idioms / vendor_sunsets / catalog_attestations) ship inside the
 plugin and the container image, where they are READ-ONLY. The Learn loop grows the two
 indexes by ABSORBING entries, and those must land somewhere the deterministic scan can read
-on its next run — a rebuild of the image is not an option per scan. That somewhere is
-`$DRIFT_CATALOG_DIR`: in production, a directory in the `drift-ops` persistence repo.
+on its next run — a rebuild of the image is not an option per scan.
+
+Default location is `~/.drift/catalog` (via $DRIFT_HOME / drift_home.catalog_home), matching
+the plugin promptfile (`DRIFT_CATALOG_DIR="${DRIFT_CATALOG_DIR:-$HOME/.drift/catalog}"`).
+Set $DRIFT_CATALOG_DIR to override (container / drift-ops persistence repo). Set it to empty
+to disable the overlay entirely (tests; hermetic package-only loads).
 
 Every loader reads `package baseline + overlay`, baseline FIRST so the order is deterministic
 (CLAUDE.md principle 3). An absorbed idiom or sunset therefore tunes the very next scan with
-no code change and no image rebuild. Unset env var → no overlay → exactly today's behaviour.
-The overlay is additive and git-reviewed (principle 4: the catalog is data, reviewed).
+no code change and no image rebuild. The overlay is additive and git-reviewed (principle 4:
+the catalog is data, reviewed).
 """
 from __future__ import annotations
 
@@ -18,6 +22,8 @@ import os
 from pathlib import Path
 
 import yaml
+
+from agent.lib import drift_home
 
 # Overlay filenames, one per catalog. NB: the sunsets PACKAGE file is `vendor_sunsets.yaml`,
 # but the overlay is `sunsets.local.yaml` — short, and it sits beside the other three.
@@ -31,8 +37,15 @@ NEEDS_HUMAN = "needs_human.local.yaml"     # hosts a resolution pass could not s
 
 
 def overlay_dir() -> str | None:
-    """The overlay directory from $DRIFT_CATALOG_DIR, or None when unset/empty."""
-    return os.environ.get("DRIFT_CATALOG_DIR") or None
+    """Writable overlay directory, or None when explicitly disabled.
+
+    - $DRIFT_CATALOG_DIR set to a path → that path
+    - $DRIFT_CATALOG_DIR set to "" → disabled (no overlay)
+    - unset → ~/.drift/catalog (via drift_home.catalog_home)
+    """
+    if "DRIFT_CATALOG_DIR" in os.environ:
+        return os.environ["DRIFT_CATALOG_DIR"] or None
+    return drift_home.catalog_home()
 
 
 def overlay_file(name: str) -> str | None:
