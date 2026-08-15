@@ -235,3 +235,57 @@
   expect: { vendor: FedEx, sdk_keywords: [fedex] }
   holdout: false
   fetched_at: "2026-08-15"
+
+# ── Shopify (category: shopify) — batch 1 (2026-08-15) ────────────────────────
+# Category-by-construction: Shopify Admin API PHP SDKs/wrappers. Basenames unique
+# within category (several laravel-shopify forks share a name — only one kept).
+- repo: Shopify/shopify-api-php
+  url: https://github.com/Shopify/shopify-api-php.git
+  sha: "3c41a5e1b3f92c840eab3085c44009493cc6dffc"
+  license: MIT
+  category: shopify
+  expect: { vendor: Shopify, sdk_keywords: [shopify] }
+  holdout: false
+  fetched_at: "2026-08-15"
+
+- repo: gnikyt/Basic-Shopify-API
+  url: https://github.com/gnikyt/Basic-Shopify-API.git
+  sha: "012e2bb8dc90c6f98a01d55da6b640c98e2ec5ff"
+  license: MIT
+  category: shopify
+  expect: { vendor: Shopify, sdk_keywords: [shopify] }
+  # Host is session domain + path /admin/api/… — no myshopify.com URL literal in source.
+  known_gaps: [config-driven-url]
+  holdout: false
+  fetched_at: "2026-08-15"
+
+- repo: phpclassic/php-shopify
+  url: https://github.com/phpclassic/php-shopify.git
+  sha: "9b62f4c1b1717c4f8bc2f130c80c92896bf4a61c"
+  license: Apache-2.0
+  category: shopify
+  expect: { vendor: Shopify, sdk_keywords: [shopify] }
+  # Builds https://{shop}.myshopify.com from config; help.shopify.com docs links only.
+  known_gaps: [config-driven-url]
+  holdout: false
+  fetched_at: "2026-08-15"
+
+- repo: kyon147/laravel-shopify
+  url: https://github.com/kyon147/laravel-shopify.git
+  sha: "15fbedd02d1c944c7a798d86d61549110e294cb6"
+  license: MIT
+  category: shopify
+  expect: { vendor: Shopify, sdk_keywords: [shopify] }
+  holdout: true
+  fetched_at: "2026-08-15"
+
+- repo: ShopifyExtras/PHP-Shopify-API-Wrapper
+  url: https://github.com/ShopifyExtras/PHP-Shopify-API-Wrapper.git
+  sha: "4c63a525f2f913883a00291442a5046f8b11e551"
+  license: MIT
+  category: shopify
+  expect: { vendor: Shopify, sdk_keywords: [shopify] }
+  # Shop domain injected at runtime; no catalogued host literal in the wrapper itself.
+  known_gaps: [config-driven-url]
+  holdout: false
+  fetched_at: "2026-08-15"
