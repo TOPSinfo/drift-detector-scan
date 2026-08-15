@@ -71,10 +71,17 @@ def _project_action(a: dict) -> dict:
 COVERAGE = ("tracked", "queued", "needs-human", "blocked", "na")
 
 
-def _coverage(host_class: str, classified: bool, own_infra_reason: str | None = None) -> str:
+def _coverage(host_class: str, classified: bool, own_infra_reason: str | None = None,
+              *, recorded_needs_human: bool = False) -> str:
     if classified:
         return "tracked"                                   # catalogued vendor — retirements monitored
     if host_class in ("api-lead", "unclassified"):
+        # A resolution pass that looked and honestly could not tell recorded the host in the
+        # needs-human ledger (agent/lib/needs_human.py). Without that, the next scan re-derived
+        # it as `queued` and the work evaporated — "could not tell" reading as "nobody looked".
+        # Only ever replaces `queued`: a host that later becomes a catalogued vendor is tracked.
+        if recorded_needs_human:
+            return "needs-human"
         return "queued"                                    # detected API service, research pending
     # F1: a repo-name-TOKEN own-infra claim is a heuristic, not the strong git-remote org-domain
     # signal — too weak to silently drop a real third party (api.hubspot.com from a repo named
@@ -88,6 +95,8 @@ def _coverage(host_class: str, classified: bool, own_infra_reason: str | None = 
 
 
 def _endpoints_of(inventory: dict) -> list:
+    from agent.lib import needs_human as _needs_human
+    recorded = _needs_human.recorded_keys()
     out = []
     for r in inventory.get("repos", []):
         for e in r.get("endpoints", []):
@@ -96,7 +105,11 @@ def _endpoints_of(inventory: dict) -> list:
             rec = {"repo": r.get("path"), "domain": e.get("domain"),
                    "vendor": e.get("vendor"), "version": e.get("version"),
                    "classified": bool(e.get("classified")),
-                   "hostClass": hc, "coverage": _coverage(hc, bool(e.get("classified")), reason),
+                   "hostClass": hc,
+                   "coverage": _coverage(
+                       hc, bool(e.get("classified")), reason,
+                       recorded_needs_human=(r.get("path"),
+                                             str(e.get("domain") or "").lower()) in recorded),
                    "file_count": e.get("file_count"), "files": e.get("files", [])}
             if reason:
                 rec["ownInfraReason"] = reason

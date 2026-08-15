@@ -150,11 +150,31 @@ def test_unknown_verdict_is_accepted():
     assert resolve.check_verdicts([v]) == []
 
 
-def test_unknown_verdict_applies_without_touching_any_overlay(monkeypatch, tmp_path):
+def test_unknown_verdict_records_the_ledger_and_touches_no_other_overlay(monkeypatch, tmp_path):
+    """An `unknown` writes to the needs-human ledger and NOTHING else.
+
+    This test used to assert `list(d.iterdir()) == []` — "no client evidence -> nothing to
+    write". That was the bug: the verdict was returned in the summary and persisted nowhere, so
+    the next deterministic scan re-derived the host as `queued` and "we looked and could not
+    tell" became indistinguishable from "nobody looked". An unknown IS evidence — evidence that
+    a pass ran and reached no verdict — and it is recorded as such. What must still hold, and
+    is what this test now guards, is that it asserts nothing about the world: no vendor, no
+    own-domain, no sunset."""
     d = _overlay_dir(monkeypatch, tmp_path)
     result = resolve.apply([_unknown_verdict()], now="2026-08-13")
     assert result["written"] == {"own_domain": 0, "vendor_identity": 0, "retiring": 0, "needs_human": 1}
-    assert list(d.iterdir()) == []          # no client evidence -> nothing to write
+    assert [p.name for p in d.iterdir()] == [catalog_overlay.NEEDS_HUMAN]
+    for name in (catalog_overlay.VENDORS, catalog_overlay.OWN_DOMAINS, catalog_overlay.SUNSETS):
+        assert not (d / name).exists(), f"unknown leaked into {name}"
+
+
+def test_an_unknown_with_no_overlay_dir_is_refused_not_silently_dropped(monkeypatch):
+    """There is nowhere to record that the pass looked, so the batch is refused rather than
+    reporting success and losing the verdict — the failure mode this slice exists to end."""
+    monkeypatch.delenv("DRIFT_CATALOG_DIR", raising=False)
+    with pytest.raises(resolve.ResolveRejected) as exc:
+        resolve.apply([_unknown_verdict()], now="2026-08-13")
+    assert any("DRIFT_CATALOG_DIR" in p for p in exc.value.args[0])
 
 
 # --------------------------------------------------------------------- well-formed set applies + lands
