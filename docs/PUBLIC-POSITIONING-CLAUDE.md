@@ -22,9 +22,11 @@ not the homepage.
 
 ## Shipped
 1. README hero / marketplace blurb — done (2026-08-15).
-2. In-chat lead with `summary.html`; cockpit = drill-down — done.
-3. CI as a one-line footnote only — done.
-4. Still deferred: FRONTEND-PLANE / `summary.html` lead.
+2. CI as a one-line footnote only — done.
+3. Cockpit remains the in-chat / README dashboard story (not a `summary.html` lead).
+
+## Still deferred
+- FRONTEND-PLANE / `summary.html` as the HTML lead (see `docs/FRONTEND-PLANE.md`).
 
 ## Do not
 - Inflate AI Frontier counts into certified-looking fixes.
