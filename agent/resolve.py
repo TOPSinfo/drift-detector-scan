@@ -211,6 +211,11 @@ def _own_domain_key(e: dict) -> tuple:
     return (e.get("repo"), str(e.get("domain") or "").lower())
 
 
+def _needs_human_key(e: dict) -> tuple:
+    """repo+host: the same host may be unknown in one client's repo and settled in another's."""
+    return (e.get("repo"), str(e.get("host") or "").lower())
+
+
 def _vendor_key(e: dict) -> tuple:
     domains = e.get("domains") or []
     return (e.get("vendor"), str(domains[0]).lower() if domains else None)
@@ -317,16 +322,23 @@ def apply(verdicts: list, *, now: str, vendors_path=None, overlay_dir: str | Non
                 "by": "ai-resolution", "checked": now,
             })
         else:   # unknown
-            needs_human.append({"host": host, "repo": v.get("repo"), "note": v.get("note", "")})
+            # Recorded, not merely returned: an unpersisted `unknown` is re-derived as `queued`
+            # by the next scan, which makes "the pass could not tell" look identical to "nobody
+            # looked". The note is required — a verdict with no reasoning is what this refuses.
+            needs_human.append({"host": host, "repo": v.get("repo"), "by": "ai-resolution",
+                                "checked": now,
+                                "note": v.get("note") or "resolution pass could not identify "
+                                                        "this host from the evidence available"})
 
     written = {"own_domain": 0, "vendor_identity": 0, "retiring": 0, "needs_human": len(needs_human)}
 
-    if own_domain_entries or vendor_entries or sunset_entries:
+    if own_domain_entries or vendor_entries or sunset_entries or needs_human:
         d = overlay_dir or catalog_overlay.overlay_dir()
         if not d:
             raise ResolveRejected([
                 "$DRIFT_CATALOG_DIR is not set — nowhere safe to write reviewed evidence "
-                "(own-domain/vendor-identity/retiring verdicts can never land in agent/*.yaml)"])
+                "(own-domain/vendor-identity/retiring verdicts can never land in agent/*.yaml, "
+                "and an `unknown` with nowhere to record is a pass nobody can prove ran)"])
 
         # Phase 1 — validate EVERY target before touching disk. A problem on any one target
         # (an unwritable path, a malformed pre-existing overlay) fails the whole apply: nothing
@@ -336,7 +348,8 @@ def apply(verdicts: list, *, now: str, vendors_path=None, overlay_dir: str | Non
         for filename, new_entries, key_fn, kind in (
                 (catalog_overlay.OWN_DOMAINS, own_domain_entries, _own_domain_key, "own_domain"),
                 (catalog_overlay.VENDORS, vendor_entries, _vendor_key, "vendor_identity"),
-                (catalog_overlay.SUNSETS, sunset_entries, _sunset_key, "retiring")):
+                (catalog_overlay.SUNSETS, sunset_entries, _sunset_key, "retiring"),
+                (catalog_overlay.NEEDS_HUMAN, needs_human, _needs_human_key, "needs_human")):
             final_entries, added, problem = _plan_overlay_write(d, filename, new_entries, key_fn)
             if problem:
                 write_problems.append(problem)
