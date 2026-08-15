@@ -430,3 +430,16 @@
   retires: '2023-08-31'
   source: https://advertising.amazon.com/API/docs/en-us/release-notes/deprecations#past-shutoffs
   note: Budget-rules history endpoint shut off 8/31/2023 (already past).
+
+# USPS Web Tools — retired 2026-01-25 per USPS's own documentation page (fetched
+# 2026-08-14). Scoped to secure.shippingapis.com, the host USPS's own examples call
+# (ShippingAPI.dll?API=RateV4...); tools.usps.com is the consumer tracking/locator
+# site and is NOT this API.
+- vendor: USPS
+  domain: secure.shippingapis.com
+  retires: '2026-01-25'
+  replacement: USPS APIs (apis.usps.com)
+  source: https://www.usps.com/business/web-tools-apis/documentation-updates.htm
+  note: 'USPS Web Tools (secure.shippingapis.com/ShippingAPI.dll?API=...) retired
+    2026-01-25; USPS states service disruptions are underway. Scoped to the Web Tools
+    host: tools.usps.com is the consumer tracking/locator site, not this API.'

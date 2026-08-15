@@ -60,6 +60,12 @@
 - { vendor: TaxJar,            techKey: api:taxjar,              domains: [taxjar.com] }
 - { vendor: FedEx,             techKey: api:fedex,               domains: [fedex.com] }
 - { vendor: UPS,               techKey: api:ups,                 domains: [ups.com] }
+# Web Tools host (retired 2026-01-25) + the replacement REST host. tools.usps.com is the
+# consumer tracking/locator site, not an API — every reference to it on USPS's own pages is
+# /tracking/, /locations/, /zip-code-lookup.htm. Scoping to it counted tracking links pasted
+# into mail templates as an integration while the host that is actually retiring classified
+# as nothing, so the sunset could never fire. www.usps.com is the storefront, same problem.
+- { vendor: USPS,              techKey: api:usps,                domains: [secure.shippingapis.com, apis.usps.com] }
 
 # ── Comms / marketing ──────────────────────────────────────────────────────
 - { vendor: Twilio,            techKey: api:twilio,              domains: [twilio.com] }

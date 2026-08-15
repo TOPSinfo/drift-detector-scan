@@ -286,6 +286,11 @@
   source: https://www.twilio.com/en-us/changelog/deprecation-of-region-specific-twilio-api-domain-patterns
   by: ai-research
   note: retirement found (2026-04-28)
+- vendor: USPS
+  checked: '2026-08-14'
+  source: https://www.usps.com/business/web-tools-apis/documentation-updates.htm
+  by: ai-research
+  note: retirement found (2026-01-25)
 - vendor: Vimeo Player
   checked: '2026-08-10'
   source: https://github.com/vimeo/player.js

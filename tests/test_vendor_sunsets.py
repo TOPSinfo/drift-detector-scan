@@ -195,3 +195,42 @@ def test_real_catalog_operation_entries_are_sourced_and_dated():
     # verified from eBay's API Deprecation Status table (snapshot 2026-05-13)
     assert by_op["GetCategoryFeatures"]["retires"] == "2026-06-04"
     assert by_op["GetCategories"]["retires"] == "2026-04-15"
+
+
+def test_usps_web_tools_host_is_flagged_and_the_replacement_host_is_not():
+    """The catalog entry and the detection entry have to meet: a sunset scoped to
+    secure.shippingapis.com is inert unless vendors.yaml classifies that host as USPS.
+    It shipped scoped to tools.usps.com first, so the retiring host classified as nothing
+    and this finding could never fire. Uses the LIVE catalog, not a fixture, because the
+    bug lives in the join between the two real files."""
+    from agent.lib.vendors import load_vendors
+    from agent.lib import classify_url
+    loaded = vs.load_sunsets()
+    # Derive the vendor the way the scan does. Hand-writing vendor="USPS" would pass even
+    # when vendors.yaml cannot classify the host — which is exactly the bug: the catalog
+    # knew the retirement, the scanner never labelled the host, and nothing ever fired.
+    hit = classify_url.classify_host("secure.shippingapis.com", load_vendors())
+    doc = {"repos": [{"path": "shipper", "endpoints": [
+        {"vendor": None if hit is None else hit.vendor,
+         "domain": "secure.shippingapis.com", "version": None, "files": ["x.php:1"]},
+    ]}]}
+    out = audit_inventory(doc, "2026-08-14", sunsets=loaded, **_NOOP)
+    f = [x for x in out["findings"] if x["kind"] == "sunset" and x["ref"] == "USPS"]
+    assert len(f) == 1, f
+    assert f[0]["status"] == "DEPRECATED", f[0]      # 2026-01-25 is past 2026-08-14
+    assert f[0]["files"] == ["x.php:1"]
+
+
+def test_the_usps_replacement_host_is_not_condemned_by_the_web_tools_sunset():
+    """apis.usps.com is where USPS tells you to migrate TO. A domain-scoped entry must not
+    drag it down with the platform it replaces."""
+    from agent.lib.vendors import load_vendors
+    from agent.lib import classify_url
+    loaded = vs.load_sunsets()
+    hit = classify_url.classify_host("apis.usps.com", load_vendors())
+    assert hit is not None and hit.vendor == "USPS", "apis.usps.com must classify as USPS"
+    doc = {"repos": [{"path": "shipper", "endpoints": [
+        {"vendor": hit.vendor, "domain": "apis.usps.com", "version": None, "files": ["y.php:1"]},
+    ]}]}
+    out = audit_inventory(doc, "2026-08-14", sunsets=loaded, **_NOOP)
+    assert [x for x in out["findings"] if x["kind"] == "sunset" and x["ref"] == "USPS"] == []
