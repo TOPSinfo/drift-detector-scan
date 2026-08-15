@@ -78,9 +78,12 @@ def test_usps_is_scoped_to_the_two_real_api_hosts():
     An earlier version of this entry used it, which counted tracking URLs pasted into mail
     templates as a USPS API integration while the host that is actually retiring classified
     as nothing at all. `www.usps.com` is the retail storefront — same failure."""
-    from agent.lib.vendors import load_vendors
+    from agent.lib import vendors as vendors_mod
     from agent.lib import classify_url
-    v = load_vendors()
+    # Package catalog only — load_vendors() with no path also layers ~/.drift/catalog,
+    # and a local resolve overlay can reintroduce tools.usps.com as USPS. This test pins
+    # agent/vendors.yaml.
+    v = vendors_mod.load_vendors(path=vendors_mod._DEFAULT_VENDORS)
     for host in ("secure.shippingapis.com", "apis.usps.com"):
         hit = classify_url.classify_host(host, v)
         assert hit is not None and hit.vendor == "USPS", (host, hit)
