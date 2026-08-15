@@ -38,6 +38,15 @@
 - { package: composer/stripe/stripe-php,         vendor: Stripe,        host: api.stripe.com }
 - { package: npm/stripe,                         vendor: Stripe,        host: api.stripe.com }
 
+# ── Commerce / Shopify ───────────────────────────────────────────────────────────────────
+# Wrappers assemble https://{shop}.myshopify.com — no host literal. Package presence is the
+# evidence (same as twilio/sdk). Host is the catalogued Shopify domain so coverage joins.
+- { package: composer/shopify/shopify-api,       vendor: Shopify,       host: myshopify.com }
+- { package: composer/gnikyt/basic-shopify-api,  vendor: Shopify,       host: myshopify.com }
+- { package: composer/phpclassic/php-shopify,    vendor: Shopify,       host: myshopify.com }
+- { package: composer/shopifyextras/shopify-php-api-wrapper, vendor: Shopify, host: myshopify.com }
+- { package: composer/kyon147/laravel-shopify,   vendor: Shopify,       host: myshopify.com }
+
 # ── AI providers ─────────────────────────────────────────────────────────────────────────
 - { package: composer/openai-php/client,         vendor: OpenAI,        host: api.openai.com }
 - { package: composer/openai-php/laravel,        vendor: OpenAI,        host: api.openai.com }
