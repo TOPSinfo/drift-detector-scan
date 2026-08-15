@@ -32,3 +32,18 @@ def test_composer_vendor_package_not_treated_as_platform():
     assert "lib:composer/composer/ca-bundle" in keys      # vendor package kept
     assert not any("ext-json" in k for k in keys)          # platform req still skipped
     assert not any("composer-plugin-api" in k for k in keys)  # real platform key still skipped
+
+
+def test_composer_emits_the_package_own_name_as_a_library():
+    """Scanning an SDK's own tree (e.g. gnikyt/basic-shopify-api) lists only its *dependencies*
+    in require{}, so sdk_clients never saw the package that IS the integration. Emitting the
+    composer.json `name` as a library record closes that for reviewed API-client packages."""
+    content = '''{
+      "name": "gnikyt/basic-shopify-api",
+      "require": {"php": ">=7.3", "guzzlehttp/guzzle": "^7.0"}
+    }'''
+    recs = composer.extract("Basic-Shopify-API", "composer.json", content)
+    keys = {r.tech_key for r in recs}
+    assert "lib:composer/gnikyt/basic-shopify-api" in keys
+    self = next(r for r in recs if r.name == "gnikyt/basic-shopify-api")
+    assert self.kind == "library" and self.manifest_path == "composer.json"

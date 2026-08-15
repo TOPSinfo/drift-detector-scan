@@ -22,7 +22,19 @@ def extract(repo: str, path: str, content: str) -> list:
     except json.JSONDecodeError as exc:
         raise ValueError(f"invalid composer.json: {exc}") from exc
     out: list = []
-    for name, spec in (data.get("require") or {}).items():
+    # The package's own `name` is the integration when scanning an SDK tree (require{}
+    # lists only its deps). Consumers still get the same tech_key via require — emit
+    # once; skip if it also appears in require (rare self-require).
+    self_name = (data.get("name") or "").strip()
+    required = data.get("require") or {}
+    if self_name and self_name not in required and not _PLATFORM.match(self_name.lower()):
+        out.append(InventoryRecord(
+            repo=repo, manifest_path=path, ecosystem="composer",
+            tech_key=library_techkey("composer", self_name), name=self_name,
+            kind="library", parse_quality="exact",
+            notes="package-self",
+        ))
+    for name, spec in required.items():
         low = name.lower()
         if low == "php":
             out.append(InventoryRecord(

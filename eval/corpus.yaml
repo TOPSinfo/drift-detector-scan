@@ -254,8 +254,7 @@
   license: MIT
   category: shopify
   expect: { vendor: Shopify, sdk_keywords: [shopify] }
-  # Host is session domain + path /admin/api/… — no myshopify.com URL literal in source.
-  known_gaps: [config-driven-url]
+  # Host assembled from config; closed by sdk_clients + composer package-self name emit.
   holdout: false
   fetched_at: "2026-08-15"
 
@@ -265,8 +264,7 @@
   license: Apache-2.0
   category: shopify
   expect: { vendor: Shopify, sdk_keywords: [shopify] }
-  # Builds https://{shop}.myshopify.com from config; help.shopify.com docs links only.
-  known_gaps: [config-driven-url]
+  # Host assembled from config; closed by sdk_clients + composer package-self name emit.
   holdout: false
   fetched_at: "2026-08-15"
 
@@ -285,8 +283,7 @@
   license: MIT
   category: shopify
   expect: { vendor: Shopify, sdk_keywords: [shopify] }
-  # Shop domain injected at runtime; no catalogued host literal in the wrapper itself.
-  known_gaps: [config-driven-url]
+  # Shop domain injected at runtime; closed by sdk_clients + composer package-self name emit.
   holdout: false
   fetched_at: "2026-08-15"
 

@@ -11,6 +11,13 @@ def test_load_maps_packages_to_vendor_host():
     assert c.get("composer/twilio/sdk", {}).get("vendor") == "Twilio"
     assert c["composer/twilio/sdk"]["host"] == "api.twilio.com"
     assert c.get("npm/@sendgrid/mail", {}).get("vendor") == "SendGrid"
+    # Shopify SDK wrappers assemble {shop}.myshopify.com — no host literal; the package IS the
+    # evidence (same pattern as twilio/sdk).
+    assert c.get("composer/gnikyt/basic-shopify-api", {}).get("vendor") == "Shopify"
+    assert c["composer/gnikyt/basic-shopify-api"]["host"] == "myshopify.com"
+    assert c.get("composer/phpclassic/php-shopify", {}).get("vendor") == "Shopify"
+    assert c.get("composer/shopifyextras/shopify-php-api-wrapper", {}).get("vendor") == "Shopify"
+    assert c.get("composer/shopify/shopify-api", {}).get("vendor") == "Shopify"
 
 
 def test_endpoints_for_emits_from_dependency():
