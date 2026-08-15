@@ -68,3 +68,24 @@ def test_the_cockpit_says_when_the_resolution_pass_did_not_run():
     assert _blob(html).get("resolutionRan") is False, "fixture should have an unresolved pass"
     assert "resolution pass did not run" in html, \
         "the cockpit does not carry the honesty note the tree already renders"
+
+
+def test_vendor_drift_surfaces_needs_human_next_to_unresolved():
+    """After resolve, queued can be 0 while needs-human holds the hosts the pass could not
+    settle. Vendor Drift only showed Unresolved(=queued), so the cockpit read as fully
+    settled while the tree still had an 8-row needs-human leaf."""
+    src = open("agent/assets/dashboard.app.js", encoding="utf-8").read()
+    # The drift plane's tile list (not the AI plane's research "Need review" tile).
+    drift = re.search(
+        r'plane:"drift"[^]]*tiles:\[([\s\S]*?)\]\s*\}',
+        src,
+    )
+    assert drift, "Vendor Drift tile group not found"
+    tiles = drift.group(1)
+    assert 'label:"Unresolved"' in tiles
+    m = re.search(r'\{key:"needs-human"[^}]*\}', tiles)
+    assert m, "Vendor Drift has no needs-human tile next to Unresolved"
+    assert 'coverage' in m.group(0) and "needs-human" in m.group(0), \
+        f"needs-human tile must bind counts.coverage['needs-human']: {m.group(0)}"
+    assert 'label:"Needs human"' in m.group(0) or 'label:"Needs-human"' in m.group(0) \
+        or 'label:"Needs Human"' in m.group(0)
