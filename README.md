@@ -71,8 +71,8 @@ persists to `~/.drift/catalog` only after the absorb gate — and makes later ru
 
 > **Headless / CI footnote:** same slash command works unattended via
 > `claude -p "/drift-detector <repo…>" --permission-mode bypassPermissions`
-> (exit `0` ok · `2` error · `3` found problems · `4` couldn't scan/verify). Fleet CI is a
-> later story — not the homepage.
+> (exit `0` ok · `2` error · `3` found problems · `4` couldn't scan/verify). Supported today;
+> fleet-scale CI is not the homepage story.
 
 ---
 
@@ -204,7 +204,7 @@ terminal.
 | `drift.json` + `verify` (the trust contract) | ✅ |
 | SBOM (CycloneDX/SPDX) + SARIF exports | ✅ |
 | The Cockpit dashboard (tiles, retirement timeline, deep-links) | ✅ |
-| Headless / scheduled runs: per-repo issues, 3 granularities, idempotent, "Open in Claude" | ✅ |
+| Headless / scheduled runs via `claude -p` (per-repo issues, idempotent, "Open in Claude") | ✅ |
 
 Where it's headed next: **[docs/ROADMAP.md](docs/ROADMAP.md)**.
 
