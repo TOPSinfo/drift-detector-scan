@@ -38,6 +38,10 @@
     </div>
     <!-- PRIMARY TABS = the ACTIVE plane's metric tiles: counts bind to the SAME tileGroups/counts
          payload the old tile-grid read, just scoped to the current plane and rendered as a strip. -->
+    <!-- Honesty line for the drift plane: when the resolution pass did not run, the
+         unresolved tile's number means "nobody has looked", not "pending triage". Same
+         sentence summary.html's tree carries, from the same payload flag. -->
+    <div class="note" v-if="resolutionNote">{{ resolutionNote }}</div>
     <div class="tabstrip" role="tablist">
       <div class="tgroup" v-for="g in tileGroups" :key="g.title">
         <span class="tglbl">{{ g.title }}</span>

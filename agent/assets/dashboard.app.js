@@ -154,7 +154,12 @@
             {key:"sunsets",label:"Sunsets",n:c.sunsets},
             {key:"pastdue",label:"Past-due",n:c.pastDue,sev:"warn"},
             {key:"apis",label:"Tracked",n:c.apis},
-            {key:"unknown",label:"Queued",n:c.unknown},
+            // Counts the SAME rows the summary tree's `unresolved` node counts
+            // (counts.coverage.queued — endpoint rows), NOT counts.unknown (unclassified
+            // integrations). Bound to the wrong partition, a completed resolution pass could
+            // settle every row and this tile would still show a number. The tab KEY stays
+            // "unknown" so ?tab=unknown deep links keep resolving; label and number changed.
+            {key:"unknown",label:"Unresolved",n:(c.coverage||{})["queued"]||0},
             {key:"excluded",label:"Assets",n:c.excluded},
             {key:"private",label:"Private",n:c.private},
             {key:"unaudited",label:"Unaudited",n:c.unaudited}]},
@@ -191,10 +196,21 @@
       // …For() and feeding it to the right renderX().
       // the drift-plane content view's label follows the selected tile — "Retiring integrations"
       // only fits the sunset tiles; APIs/Pending/Assets are current/found integrations, not retiring.
+      // The same fact tree.py states on its `unresolved` node (_UNRESOLVED_NOTE). It lived
+      // only on summary.html, so the cockpit showed a bare number with no way to tell
+      // "nobody looked yet" from "looked and settled". Cannot-see is not clean on either page.
+      resolutionNote: function(){
+        if(this.plane !== "drift") return "";
+        if(this.DATA.resolutionRan) return "";
+        var n = (this.counts.coverage||{})["queued"]||0;
+        if(!n) return "";
+        return n + " unresolved — resolution pass did not run this scan — not yet confirmed " +
+               "clean or third-party; run with --resolve to settle it";
+      },
       summaryTabLabel: function(){
         if(this.plane !== "drift") return "Findings";
         return {detected:"Detected endpoints", sunsets:"Retiring integrations", pastdue:"Retiring integrations",
-                apis:"Tracked integrations", unknown:"Queued for research (detected, not yet tracked)",
+                apis:"Tracked integrations", unknown:"Unresolved — host not classified",
                 excluded:"Third-party services & assets", private:"Private sources",
                 unaudited:"Unaudited vendors"}[this.tab] || "Detected endpoints";
       },
