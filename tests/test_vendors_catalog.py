@@ -67,3 +67,23 @@ def test_new_vendors_are_unaudited_not_silently_current():
         got = classify_url.classify_host(host, v)
         assert got is not None and got.vendor == vendor, vendor
         assert catalog_coverage.verdict_for(vendor, att, "2026-08-12")[0] == "UNAUDITED"
+
+
+def test_usps_is_scoped_to_the_two_real_api_hosts():
+    """USPS's API traffic goes to secure.shippingapis.com (Web Tools, retired 2026-01-25)
+    and apis.usps.com (the replacement REST platform).
+
+    `tools.usps.com` is NOT an API host — every reference to it on USPS's own pages is a
+    consumer link (/tracking/, /locations/, /zip-code-lookup.htm, /schedule-pickup-steps.htm).
+    An earlier version of this entry used it, which counted tracking URLs pasted into mail
+    templates as a USPS API integration while the host that is actually retiring classified
+    as nothing at all. `www.usps.com` is the retail storefront — same failure."""
+    from agent.lib.vendors import load_vendors
+    from agent.lib import classify_url
+    v = load_vendors()
+    for host in ("secure.shippingapis.com", "apis.usps.com"):
+        hit = classify_url.classify_host(host, v)
+        assert hit is not None and hit.vendor == "USPS", (host, hit)
+    for host in ("tools.usps.com", "www.usps.com"):
+        miss = classify_url.classify_host(host, v)
+        assert miss is None or miss.vendor != "USPS", (host, miss)
