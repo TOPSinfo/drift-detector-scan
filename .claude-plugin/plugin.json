@@ -2,7 +2,7 @@
   "name": "drift-detector",
   "displayName": "Drift Detector",
   "version": "0.20.0-beta",
-  "description": "Detect third-party integration drift across a folder of repos \u2014 code-level API/SDK/runtime usage (via ast-grep), operation-level vendor sunsets, CVE/EOL, and an interactive dashboard, with an honest verdict that says where it is blind. Deterministic + zero-token at the core; an opt-in AI cross-check surfaces leads the rules missed, kept strictly separate from the certified findings.",
+  "description": "Know before it breaks. Claude proposes integrations the rules can't see yet; Drift Detector's deterministic scanner adjudicates \u2014 file:line, sourced dates, or honest needs-human. Never invents a date; AI leads stay separate from certified findings.",
   "author": {
     "name": "Tops Infosolutions Pvt Ltd",
     "email": "driftdetector7@gmail.com"
