@@ -1,9 +1,11 @@
 # Drift Detector — Claude Code Plugin
 
-A Claude Code plugin that scans a folder of cloned repos for **code-level third-party
-integration usage** (which APIs/SDKs each project uses, `file:line`, versions) and reports it
-**in chat** — with the heavy work done by cheap, deterministic Python (ast-grep), not by an
-expensive autonomous LLM agent.
+> **Know before it breaks.** *AI proposes. The scanner adjudicates.*
+
+Claude surfaces integrations the deterministic rules can't see yet; the scanner
+proves them (`file:line`, sourced dates) or returns honest **needs-human**. The
+heavy scan work is cheap, deterministic Python (ast-grep) — **zero LLM tokens** —
+not an autonomous LLM agent.
 
 ## What it is
 
@@ -11,10 +13,6 @@ expensive autonomous LLM agent.
   report, and answers follow-up questions by querying the produced inventory (the "IR"), never by
   re-scanning. Run `/drift-detector` with no path and it asks which folder(s) to scan;
   `/drift-detector doctor` checks prerequisites.
-
-The cost model: the scan is a deterministic static-analysis run (**zero LLM tokens**); Claude
-spends tokens only on the summary + interactive Q&A. Contrast with an autonomous agent doing the
-whole scan itself.
 
 ## Install (teammates)
 
