@@ -289,3 +289,50 @@
   known_gaps: [config-driven-url]
   holdout: false
   fetched_at: "2026-08-15"
+
+# ── Twilio (category: twilio) — batch 1 (2026-08-15) ──────────────────────────
+# Official SDKs ship api.twilio.com literals; sdk_clients.yaml also maps twilio/sdk + npm/twilio.
+- repo: twilio/twilio-php
+  url: https://github.com/twilio/twilio-php.git
+  sha: "1eba2d26041b5d9b7f091c4f514b3a3a2286a2df"
+  license: MIT
+  category: twilio
+  expect: { vendor: Twilio, sdk_keywords: [twilio] }
+  holdout: false
+  fetched_at: "2026-08-15"
+
+- repo: twilio/twilio-python
+  url: https://github.com/twilio/twilio-python.git
+  sha: "306691e793f417b6974640d1ef88785e9de03b2a"
+  license: MIT
+  category: twilio
+  expect: { vendor: Twilio, sdk_keywords: [twilio] }
+  holdout: false
+  fetched_at: "2026-08-15"
+
+- repo: twilio/twilio-node
+  url: https://github.com/twilio/twilio-node.git
+  sha: "c8a4c27de84ec3838726da878cb9ca04a438ec59"
+  license: MIT
+  category: twilio
+  expect: { vendor: Twilio, sdk_keywords: [twilio] }
+  holdout: false
+  fetched_at: "2026-08-15"
+
+- repo: twilio/starter-php
+  url: https://github.com/twilio/starter-php.git
+  sha: "58931945b704912cf8c98eecd1d04993ec7a4daa"
+  license: MIT
+  category: twilio
+  expect: { vendor: Twilio, sdk_keywords: [twilio] }
+  holdout: false
+  fetched_at: "2026-08-15"
+
+- repo: Aloha/laravel-twilio
+  url: https://github.com/Aloha/laravel-twilio.git
+  sha: "0349c2f6a5da267387240b3a0ee132877a35a3f1"
+  license: MIT
+  category: twilio
+  expect: { vendor: Twilio, sdk_keywords: [twilio] }
+  holdout: true
+  fetched_at: "2026-08-15"
