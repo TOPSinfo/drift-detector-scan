@@ -144,11 +144,14 @@
       <!-- AI Frontier plane intro: confident framing of the shaped tier (badge, not banner). -->
       <template v-else-if="heroMode === 'ai'">
         <div class="planehero">
-          <p v-if="hasShaped"><b>{{ shapedCount }} call-site{{ shapedCount === 1 ? '' : 's' }}</b> across
+          <p v-if="hasShaped && shapedCount"><b>{{ shapedCount }} call-site{{ shapedCount === 1 ? '' : 's' }}</b> across
              <b>{{ shapedRepos }} repo{{ shapedRepos === 1 ? '' : 's' }}</b> the deterministic scan
              couldn't see on its own — an AI shaped them and the tool re-checked every one against
-             the code. Real locations, dated from the same reviewed catalog; not saved to your
-             catalog yet. Full list below — <b>“Absorb” to keep them.</b></p>
+             the code. Real locations; dates only when the reviewed catalog already has them.
+             Full list below — <b>“Absorb” to keep them.</b></p>
+          <p v-else-if="hasShaped">A shaping pass ran on this scan but attributed no new call-sites
+             under the gate. The frontier stays empty until a shape claims locs the certified
+             scan was blind to.</p>
           <p v-else>The frontier for repos the deterministic scan can't read on its own. When an AI
              shapes one and the tool re-checks it, the recovered call-sites land here — gate-validated,
              dated from the reviewed catalog. <b>No shaping pass has run on this scan yet.</b></p>
@@ -374,16 +377,31 @@
         </div>
         <table id="panel">
           <tbody>
-            <tr v-if="!shaped.length">
+            <tr v-if="!shapedRows.length">
               <td colspan="4" class="intro">The shaping pass ran and attributed no new call-sites this
                 scan. (An empty result here is real — the pass looked; it did not find a new shape.)</td>
             </tr>
-            <tr class="row" v-for="(sh, si) in shaped" :key="'sh' + si">
-              <td>{{ sh.repo }}</td>
-              <td>{{ sh.ref }} <span class="op" v-if="sh.op">{{ sh.op }}</span></td>
-              <td>{{ sh.date || '— attributed, not dated' }}</td>
-              <td class="loc">{{ sh.loc }}</td>
-            </tr>
+            <template v-for="(sh, si) in shapedRows" :key="'sh' + si">
+              <tr class="row" @click="toggleShapedRow(si)">
+                <td>{{ sh.repo }}</td>
+                <td>{{ sh.ref }} <span class="op" v-if="sh.op">{{ sh.op }}</span></td>
+                <td>{{ sh.date || '— attributed, not dated' }}</td>
+                <td class="loc">{{ sh.loc }}</td>
+              </tr>
+              <tr v-if="expandedShaped[si]">
+                <td colspan="4" class="detail">
+                  <div><b>Call-site:</b> {{ sh.loc }}
+                    <button class="copy-loc" @click.stop="copyText(sh.loc)"
+                            :data-loc="sh.loc">copy</button></div>
+                  <div v-if="sh.note">{{ sh.note }}</div>
+                  <div v-if="sh.evidence"><b>Idiom evidence:</b> {{ sh.evidence }}</div>
+                  <div v-if="sh.pathRegex"><span class="cmd">{{ sh.pathRegex }}</span></div>
+                  <div v-if="sh.idiomId" class="muted">shape {{ sh.idiomId }}</div>
+                  <div class="muted">Gate-validated this run — not a certified finding.
+                    Absorb to keep it in the catalog.</div>
+                </td>
+              </tr>
+            </template>
           </tbody>
         </table>
       </template>

@@ -24,6 +24,54 @@ def test_ai_plane_has_a_leads_tile():
     assert "leadsCount" in js
 
 
+def test_ai_frontier_hero_counts_attributed_new_not_only_dated_actions():
+    """Olive's ad-hoc pass attributed 9 call-sites (gate delta) with 0 catalog-dated sunset
+    actions. shapedCount used len(shaped actions) → hero showed 0 and looked like no pass.
+    The plane number must follow attributedNew (gate-validated shapes), falling back to
+    shaped-action rows only when attributedNew is absent."""
+    js = (_ASSETS / "dashboard.app.js").read_text()
+    assert "attributedNew" in js, \
+        "dashboard.app.js never reads attributedNew — AI Frontier cannot count gate shapes"
+    # shapedCount (or the helper it uses) must sum attributedNew across byRepo
+    assert re.search(r"attributedNew", js)
+    assert "shapedCount" in js
+    # Prove the count path prefers attributedNew: a dedicated reducer / sum, not only .shaped.length
+    assert "shapedCallSites" in js or (
+        "attributedNew" in js[js.index("shapedCount"):js.index("shapedCount") + 400]
+    ), "shapedCount must incorporate attributedNew, not only shaped.length"
+
+
+def test_ai_frontier_list_shows_claims_when_shaped_actions_are_empty():
+    """After counting attributedNew, the hero said '9 call-sites… Full list below' while the
+    table still iterated `shaped` (sunset/CVE actions). Olive has claims=9 and shaped=[] —
+    so the list was blank. Gate-validated locs live on byRepo[].claims; the table must
+    render those (enriched by any matching action), not only dated actions."""
+    js = (_ASSETS / "dashboard.app.js").read_text()
+    tpl = (_ASSETS / "dashboard.template.html").read_text()
+    assert "shapedRows" in js, "need a rows computed that can fall back to claims"
+    assert ".claims" in js or "rp.claims" in js, "shapedRows must read byRepo claims"
+    assert re.search(r'v-for="\(sh,\s*si\) in shapedRows"', tpl), \
+        "template must iterate shapedRows, not empty shaped[]"
+
+
+def test_ai_frontier_shaped_rows_have_a_light_expand_not_certified_drilldown():
+    """Certified rows expand into files/CVEs/recommendation. Shaped rows are a sibling
+    document (claims + idiom) — they still need a click-open detail, but only the light
+    middle-tier fields (loc, idiom note/evidence), never certified action fields."""
+    js = (_ASSETS / "dashboard.app.js").read_text()
+    tpl = (_ASSETS / "dashboard.template.html").read_text()
+    assert "toggleShapedRow" in js and "expandedShaped" in js
+    assert 'note:' in js[js.index("shapedRows"):js.index("shapedRows") + 1200] or \
+           "idiom.note" in js
+    assert "@click=\"toggleShapedRow(si)\"" in tpl or "@click='toggleShapedRow(si)'" in tpl
+    assert "expandedShaped[si]" in tpl
+    # Must not paste certified drill-down into the shaped expand
+    shaped_block = tpl[tpl.index("shapedRows"):tpl.index("Cross-check leads")]
+    assert "row.cves" not in shaped_block and "row.recommendation" not in shaped_block
+    assert "sh.note" in shaped_block or "sh.evidence" in shaped_block
+
+
+
 def test_the_three_tiers_are_badged_distinctly():
     """One tab, but never one undifferentiated pile: gate-validated shapes, sourced research
     verdicts and unverified leads carry genuinely different trust and the UI must say so."""

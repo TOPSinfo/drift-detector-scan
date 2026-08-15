@@ -86,6 +86,7 @@
                                // top-level tab bar; "Retirement timeline" retires into the
                                // hero region — Task 2/3 — so it is not a sub-tab option)
         expanded: {},         // row drill-down: idx (within `rows`) -> open/closed
+        expandedShaped: {},   // AI Frontier shaped-row expand (sibling doc — not certified rows)
         sumView: "prev",       // Summary sub-tab: Preview | JSON · drift.json
         sbomView: "prev",      // SBOM sub-tab: Preview | CycloneDX | SPDX
         sarifView: "prev",     // SARIF sub-tab: Preview | JSON · sarif.json
@@ -160,6 +161,10 @@
             // settle every row and this tile would still show a number. The tab KEY stays
             // "unknown" so ?tab=unknown deep links keep resolving; label and number changed.
             {key:"unknown",label:"Unresolved",n:(c.coverage||{})["queued"]||0},
+            // Hosts the resolution pass looked at and could not settle (needs-human ledger).
+            // Distinct from Unresolved(=queued): after --resolve, queued can be 0 while this
+            // still holds rows — without this tile the cockpit looks fully settled.
+            {key:"needs-human",label:"Needs human",n:(c.coverage||{})["needs-human"]||0},
             {key:"excluded",label:"Assets",n:c.excluded},
             {key:"private",label:"Private",n:c.private},
             {key:"unaudited",label:"Unaudited",n:c.unaudited}]},
@@ -211,6 +216,7 @@
         if(this.plane !== "drift") return "Findings";
         return {detected:"Detected endpoints", sunsets:"Retiring integrations", pastdue:"Retiring integrations",
                 apis:"Tracked integrations", unknown:"Unresolved — host not classified",
+                "needs-human":"Needs human — looked at, unsettled",
                 excluded:"Third-party services & assets", private:"Private sources",
                 unaudited:"Unaudited vendors"}[this.tab] || "Detected endpoints";
       },
@@ -218,7 +224,7 @@
         var f = this.tab;
         // drift opens on the COMPLETE detected-endpoint inventory; tiles filter that one list
         if(this.plane==="drift" && (!f || f==="detected")) return "endpoints";
-        if(f==="apis" || f==="unknown" || f==="excluded") return "endpoints";
+        if(f==="apis" || f==="unknown" || f==="needs-human" || f==="excluded") return "endpoints";
         if(f==="private") return "private";
         if(f==="unaudited") return "catalog";
         return "actions";
@@ -233,20 +239,62 @@
       // ---- the AI-SHAPED tier: gate-validated this run, not yet in the catalog. Loop var is `sh`
       // (NOT a/e/p/cv/row) so check_accessor_coverage's certified-row union is not widened. ----
       hasShaped: function(){ return !!this.ADHOC; },
-      shaped: function(){
-        // params rp/act (NOT r/a) — a/e/p/cv/row are check_accessor_coverage's tracked accessors,
-        // and reusing them here would demand the shaped-record fields on the CERTIFIED sample.
+      // Gate-attributed call-sites (absorb --check delta). Distinct from `shaped` action rows:
+      // a pass can attribute locs the catalog cannot yet date, leaving shaped=[] / datedCount=0
+      // while attributedNew > 0 — the olive demo bug that made AI Frontier read as empty.
+      shapedCallSites: function(){
+        return ((this.ADHOC && this.ADHOC.byRepo) || []).reduce(function(n, rp){
+          return n + (Number(rp.attributedNew) || 0);
+        }, 0);
+      },
+      // Rows for the AI Frontier table. Prefer byRepo.claims (the gate-validated file:line list);
+      // enrich with any matching sunset/CVE action for vendor/date. Fall back to action-only
+      // rows for older adhoc blobs that lack claims. Never leave the hero at N with an empty table.
+      shapedRows: function(){
         var out = [];
         ((this.ADHOC && this.ADHOC.byRepo) || []).forEach(function(rp){
+          var byLoc = {};
+          (rp.shaped || []).forEach(function(act){
+            (act.files || []).forEach(function(f){
+              var loc = (f && f.loc) != null ? f.loc : f;
+              if(loc) byLoc[String(loc).trim()] = act;
+            });
+          });
+          var idiom = (rp.idioms || [])[0] || {};
+          var fallbackRef = idiom.vendor || "shaped";
+          var claims = rp.claims || [];
+          if(claims.length){
+            claims.forEach(function(loc){
+              var act = byLoc[String(loc).trim()];
+              out.push({
+                repo: rp.repo,
+                ref: act ? act.ref : fallbackRef,
+                op: act ? (act.operation || "") : (idiom.family || ""),
+                date: act ? (act.date || "") : "",
+                loc: loc,
+                note: idiom.note || "",
+                evidence: idiom.evidence || "",
+                idiomId: idiom.id || "",
+                pathRegex: idiom.pathRegex || ""
+              });
+            });
+            return;
+          }
           (rp.shaped || []).forEach(function(act){
             var f = (act.files || [])[0];
             out.push({ repo: rp.repo, ref: act.ref, op: act.operation || "",
-                       date: act.date || "", loc: (f && f.loc) || f || "" });
+                       date: act.date || "", loc: (f && f.loc) || f || "",
+                       note: idiom.note || "", evidence: idiom.evidence || "",
+                       idiomId: idiom.id || "", pathRegex: idiom.pathRegex || "" });
           });
         });
         return out;
       },
-      shapedCount: function(){ return this.shaped.length; },
+      shapedCount: function(){
+        var n = this.shapedRows.length;
+        if(n) return n;
+        return this.shapedCallSites;
+      },
 
       // ---- the AI-LEADS tier: rawest of the three, corroborated only by the session that read
       // it. `objArr(LEADS.repos)` / `objArr(r.integrations)` guard against a blob that parsed as
@@ -660,6 +708,7 @@
           if(!f || f==="detected") return true;   // COMPLETE inventory — every endpoint, every kind
           if(f==="excluded") return !self.isIntegration(e.hostClass, e.ownInfraReason);
           if(f==="unknown")  return self.isIntegration(e.hostClass, e.ownInfraReason) && !e.classified;
+          if(f==="needs-human") return e.coverage === "needs-human";
           if(f==="apis")     return e.classified;
           return true;
         });
@@ -749,6 +798,9 @@
       },
       onRowClick: function(idx){ if(this.mode==="actions" || this.mode==="endpoints") this.toggleRow(idx); },
       toggleRow: function(idx){ this.expanded[idx] = !this.expanded[idx]; },
+      // Light expand for AI Frontier shaped rows — sibling adhoc.json fields only (loc + idiom),
+      // never certified action drill-down (cves / recommendation / finding_count).
+      toggleShapedRow: function(si){ this.expandedShaped[si] = !this.expandedShaped[si]; },
 
       // ---- SBOM/SARIF repo-scope helpers ----
       componentRepos: function(c){
@@ -812,13 +864,13 @@
       // detail row — mirrors the vanilla render(), which rebuilt the whole <tbody> (and so
       // discarded every row's open/closed state) on every tile click / scope change / keystroke.
       // It also (tab/scope only) re-syncs the URL — see the Task 4/7 note on syncUrl above.
-      tab: function(){ this.expanded = {}; this.syncUrl(); },
-      plane: function(){ this.expanded = {}; this.syncUrl(); },
-      scope: function(){ this.expanded = {}; this.syncUrl(); },
+      tab: function(){ this.expanded = {}; this.expandedShaped = {}; this.syncUrl(); },
+      plane: function(){ this.expanded = {}; this.expandedShaped = {}; this.syncUrl(); },
+      scope: function(){ this.expanded = {}; this.expandedShaped = {}; this.syncUrl(); },
       // sub (Summary/SBOM/SARIF) doesn't scope `rows`/`expanded` — only the primary tab and
       // repo scope do — so switching it just re-syncs the URL, no accordion reset needed.
       sub: function(){ this.syncUrl(); },
-      q: function(){ this.expanded = {}; }
+      q: function(){ this.expanded = {}; this.expandedShaped = {}; }
     },
     mounted: function(){
       try{ var s=localStorage.getItem("drift-theme"); if(s) this.theme=s; }catch(e){}
