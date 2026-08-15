@@ -187,3 +187,51 @@
   expect: { vendor: Stripe, sdk_keywords: [stripe] }
   holdout: false
   fetched_at: "2026-08-15"
+
+# ── FedEx (category: fedex) — batch 1 (2026-08-15) ────────────────────────────
+# Category-by-construction: FedEx-specific wrappers/SDKs (not multi-carrier aggregators —
+# those are label risk: may never call fedex.com). Basenames must be unique within category.
+- repo: JeremyDunn/php-fedex-api-wrapper
+  url: https://github.com/JeremyDunn/php-fedex-api-wrapper.git
+  sha: "39ffa1e6d1a3deb4de2235ff01776c6641eb8b7c"
+  license: NOASSERTION
+  category: fedex
+  expect: { vendor: FedEx, sdk_keywords: [fedex] }
+  holdout: false
+  fetched_at: "2026-08-15"
+
+- repo: WhatArmy/FedexRest
+  url: https://github.com/WhatArmy/FedexRest.git
+  sha: "e114d484c0874078a47f3d72ac29928161d84e19"
+  license: MIT
+  category: fedex
+  expect: { vendor: FedEx, sdk_keywords: [fedex] }
+  holdout: false
+  fetched_at: "2026-08-15"
+
+- repo: maxirus/fedex-tracking-api-wrapper
+  url: https://github.com/maxirus/fedex-tracking-api-wrapper.git
+  sha: "20e7536447c9b28f1ddb909dcf8c8d5f1393892c"
+  license: MIT
+  category: fedex
+  expect: { vendor: FedEx, sdk_keywords: [fedex] }
+  holdout: false
+  fetched_at: "2026-08-15"
+
+- repo: ShipStream/fedex-rest-php-sdk
+  url: https://github.com/ShipStream/fedex-rest-php-sdk.git
+  sha: "bd1be321be84a74f098251f4f02dfd81fdd55ed0"
+  license: Apache-2.0
+  category: fedex
+  expect: { vendor: FedEx, sdk_keywords: [fedex] }
+  holdout: true
+  fetched_at: "2026-08-15"
+
+- repo: antibodies-online/FedEx-REST
+  url: https://github.com/antibodies-online/FedEx-REST.git
+  sha: "a838a35ffde2a20d6172b124e81dedbbcabd93f1"
+  license: MIT
+  category: fedex
+  expect: { vendor: FedEx, sdk_keywords: [fedex] }
+  holdout: false
+  fetched_at: "2026-08-15"
