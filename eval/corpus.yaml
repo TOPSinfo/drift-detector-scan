@@ -138,3 +138,52 @@
 # products; it contains no actual Walmart API/SDK. The scanner correctly detects nothing, so this
 # is a bad corpus specimen (not a scanner weakness) — dropped rather than papered over with a
 # known_gap. This is exactly the `label-wrong` failure mode the eval exists to catch.
+
+# ── Stripe (category: stripe) — batch 1 (2026-08-15) ───────────────────────────
+# Category-by-construction: each repo is a Stripe SDK or Stripe-billing integration.
+# Official / wrapper packages are expected to detect via SDK keyword when there is no
+# hard-coded api.stripe.com literal (sdk-only-no-callsite is OK as via=sdk, not a miss).
+- repo: stripe/stripe-php
+  url: https://github.com/stripe/stripe-php.git
+  sha: "edf8118f0b96d69f06f372da9168d613d1aed072"
+  license: MIT
+  category: stripe
+  expect: { vendor: Stripe, sdk_keywords: [stripe] }
+  holdout: false
+  fetched_at: "2026-08-15"
+
+- repo: laravel/cashier
+  url: https://github.com/laravel/cashier.git
+  sha: "b47500c10f54bf6bb7996673ae01c7bfb42c4cb9"
+  license: MIT
+  category: stripe
+  expect: { vendor: Stripe, sdk_keywords: [stripe, cashier] }
+  holdout: false
+  fetched_at: "2026-08-15"
+
+- repo: cartalyst/stripe
+  url: https://github.com/cartalyst/stripe.git
+  sha: "ad1b78d697dcb2f322c5b126b55550bb84e64db8"
+  license: BSD-3-Clause
+  category: stripe
+  expect: { vendor: Stripe, sdk_keywords: [stripe] }
+  holdout: false
+  fetched_at: "2026-08-15"
+
+- repo: flo-sch/stripe-bundle
+  url: https://github.com/flo-sch/stripe-bundle.git
+  sha: "72b1f0ba3925cb92daec4bc48ccb4b800ab6109b"
+  license: MIT
+  category: stripe
+  expect: { vendor: Stripe, sdk_keywords: [stripe] }
+  holdout: true
+  fetched_at: "2026-08-15"
+
+- repo: Mazzzoni/stripe-php-demo-example
+  url: https://github.com/Mazzzoni/stripe-php-demo-example.git
+  sha: "c8ec7d28cd83c5017a5670e07c819f2856d8fb55"
+  license: NOASSERTION
+  category: stripe
+  expect: { vendor: Stripe, sdk_keywords: [stripe] }
+  holdout: false
+  fetched_at: "2026-08-15"
