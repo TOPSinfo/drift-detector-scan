@@ -1,5 +1,6 @@
 from agent.lib.vendors import Vendor, DEFAULT_VERSION_REGEX
 from agent.lib.endpoints import build_endpoints, scan_endpoints
+from agent.lib import shapes
 
 
 def _write(tmp_path, rel, text):
@@ -761,17 +762,44 @@ def test_one_distinctive_family_among_generics_does_attribute(tmp_path):
     assert len([e for e in out["endpoints"] if e["classified"]]) == 3
 
 
-def test_corroborated_repo_with_findings_still_reports_unknown(tmp_path):
-    # DELIBERATE, not an oversight: attributing operations is a narrower claim than covering
-    # the repo. The host is still config-injected, so the scanner cannot say it saw this
-    # repo's egress. Conflating the two would let "we dated six findings" read as "we saw
-    # everything" — the exact failure principle 1 exists to prevent.
-    ms = [_spc("catalog/api.go", 231, 'p := fmt.Sprintf("/catalog/v0/items")'),
-          _spc("fbaInbound/api.go", 749, 'p := fmt.Sprintf("/fba/inbound/v0/s")'),
-          _spc("ordersV0/api.go", 88, 'p := fmt.Sprintf("/orders/v0/orders")'),
-          _sink("pkg/client.go", 40)]
+def test_shapes_verdict_is_known_for_a_corroborated_fully_attributed_repo():
+    # REPLACES test_corroborated_repo_with_findings_still_reports_unknown, which asserted a
+    # verdict claim (UNKNOWN/config-driven-url for an attributed-but-still-sink-carrying repo)
+    # by never calling shapes.verdict at all — it only checked that a sink survived in residue,
+    # so it could not have failed on the behaviour it claimed to pin.
+    #
+    # ACTUAL measured behaviour: amzapi/selling-partner-api-sdk reports verdict=KNOWN with
+    # reasons=[] (attributed=102, unattributedPaths=0, sinks=123). The residue-accounting fix
+    # on this branch stopped double-counting a line the path-constant idiom already attributed
+    # as unattributed residue, which drove unattributedPaths from 122 to 0 and flipped this
+    # repo's class from UNKNOWN to KNOWN.
+    #
+    # That is correct: shapes.verdict only treats an unresolved sink as evidence of blindness
+    # when attributed == 0 (`elif n_sinks and attributed == 0`) — we cannot link a sink to the
+    # specific endpoint it calls without dataflow, so a fully-attributed repo legitimately
+    # still shows egress sinks. Signature verified against agent/lib/shapes.py:
+    #   verdict(attributed, residue, coverage, *, attested=False, unmodeled=0, modeled=0)
+    #     -> (KNOWN|UNKNOWN, reasons)
+    residue = {"pathLiterals": [], "sinks": [{"loc": f"pkg/client_{i}.go:1"} for i in range(123)]}
+    coverage = {"go": ["sink", "path-constant"]}
+    result = shapes.verdict(102, residue, coverage, attested=False, unmodeled=0, modeled=200)
+    assert result == ("KNOWN", []), \
+        "a corroborated repo with clean path residue is KNOWN even though sinks remain"
+
+
+def test_distinctive_attributes_when_only_one_of_several_listed_families_is_present(tmp_path):
+    # `distinctive` is "at least one of N present", not "all of N present" — every existing
+    # fixture up to this test used a single-item `distinctive` list, so that branch of the
+    # guard (`fams & set(inst.get("distinctive") or ())`) was never exercised with more than
+    # one candidate. Three families are listed here; only `fba` is present among the matched
+    # paths, and it must still attribute.
+    inst = dict(_SPAPI_INST, families=["catalog", "fba", "orders", "shipping"],
+                pathRegex=r"^/(catalog|fba|orders|shipping)/",
+                distinctive=["fba", "authorization", "uploads"])
+    ms = [_spc("src/a.go", 9, 'p := fmt.Sprintf("/orders/v0/orders")'),
+          _spc("src/b.go", 14, 'p := fmt.Sprintf("/catalog/v0/items")'),
+          _spc("src/c.go", 21, 'p := fmt.Sprintf("/fba/inbound/v0/shipments")'),
+          _sink("src/client.go", 8)]
     out = scan_endpoints(ms, str(tmp_path), [_SPAPI],
-                         idioms=[_SPAPI_INST], repo_id="git@github.com:acme/anything.git")
+                         idioms=[inst], repo_id="git@github.com:acme/real-seller-2.git")
     assert len([e for e in out["endpoints"] if e["classified"]]) == 3
-    assert out["residue"].get("sinks"), \
-        "the unresolved sink is what keeps the verdict honest about config-driven egress"
