@@ -1,5 +1,6 @@
 from agent.lib.vendors import Vendor, DEFAULT_VERSION_REGEX
 from agent.lib.endpoints import build_endpoints, scan_endpoints
+from agent.lib import shapes
 
 
 def _write(tmp_path, rel, text):
@@ -627,3 +628,178 @@ def test_path_constant_can_pin_a_version(tmp_path):
                          idioms=[inst], repo_id="git@x:example-org/bigcommerce-api.git")
     eps = [e for e in out["endpoints"] if e["classified"]]
     assert eps and eps[0]["version"] == "v2"
+
+
+# ── corroboration: a shipped path-constant guarded by evidence, not by repo identity ──
+_SPAPI = Vendor("Amazon SP-API", "api:spapi", ("sellingpartnerapi-na.amazon.com",),
+                DEFAULT_VERSION_REGEX)
+_SPAPI_INST = {"id": "spapi-operation-paths", "family": "path-constant",
+               "vendor": "Amazon SP-API", "corroboration": 3,
+               "families": ["catalog", "fba", "orders", "reports"],
+               "pathRegex": r"^/(catalog|fba|orders|reports)/",
+               "distinctive": ["fba"],
+               "evidence": "amzapi/selling-partner-api-sdk reports/api.gen.go:492"}
+
+
+def _spc(path, line, text):
+    return _pc(path, line, text, vendor="Amazon SP-API", check="spapi-operation-paths")
+
+
+def test_corroborated_path_constant_attributes_when_the_threshold_is_met(tmp_path):
+    # Four distinct families (catalog, fba, orders, reports) >= corroboration 3 -> attribute.
+    ms = [_spc("catalog/api.go", 231, 'basePath := fmt.Sprintf("/catalog/v0/items")'),
+          _spc("fbaInbound/api.go", 749, 'basePath := fmt.Sprintf("/fba/inbound/v0/shipments")'),
+          _spc("ordersV0/api.go", 88, 'basePath := fmt.Sprintf("/orders/v0/orders")'),
+          _spc("reports/api.go", 492, 'basePath := fmt.Sprintf("/reports/2021-06-30/reports")'),
+          _sink("pkg/client.go", 40)]
+    out = scan_endpoints(ms, str(tmp_path), [_SPAPI],
+                         idioms=[_SPAPI_INST], repo_id="git@github.com:acme/anything.git")
+    ops = {e["operation"] for e in out["endpoints"] if e["classified"]}
+    assert ops == {"/catalog/v0/items", "/fba/inbound/v0/shipments",
+                   "/orders/v0/orders", "/reports/2021-06-30/reports"}
+    assert all(e["vendor"] == "Amazon SP-API"
+               for e in out["endpoints"] if e["classified"])
+
+
+def test_corroborated_path_constant_refuses_below_the_threshold(tmp_path):
+    # THE BUG THIS GUARDS: an eBay repo with a single generic /orders/v1/ path must NOT be
+    # tagged Amazon SP-API. Two distinct families < corroboration 3 -> nothing attributes,
+    # and the paths land in residue so coverage stays honest rather than silently clean.
+    ms = [_spc("src/orders.go", 12, 'p := fmt.Sprintf("/orders/v1/list")'),
+          _spc("src/catalog.go", 30, 'p := fmt.Sprintf("/catalog/v1/item")'),
+          _sink("src/client.go", 8)]
+    out = scan_endpoints(ms, str(tmp_path), [_SPAPI],
+                         idioms=[_SPAPI_INST], repo_id="git@github.com:acme/ebay-thing.git")
+    assert [e for e in out["endpoints"] if e["classified"]] == []
+    residue = {r["loc"] for r in out["residue"].get("pathConstants", [])}
+    assert residue == {"src/orders.go:12", "src/catalog.go:30"}
+
+
+def test_corroboration_counts_distinct_families_not_match_volume(tmp_path):
+    # Twenty hits in ONE family is still one family. Volume is not corroboration — a repo
+    # with a hundred /orders/ paths has said one thing loudly, not three things.
+    ms = [_spc(f"src/o{i}.go", i, f'p := fmt.Sprintf("/orders/v1/x{i}")') for i in range(20)]
+    ms.append(_sink("src/client.go", 8))
+    out = scan_endpoints(ms, str(tmp_path), [_SPAPI],
+                         idioms=[_SPAPI_INST], repo_id="git@github.com:acme/loud.git")
+    assert [e for e in out["endpoints"] if e["classified"]] == []
+
+
+def test_corroborated_path_constant_still_requires_an_egress_sink(tmp_path):
+    # The sink guard is independent of the scoping guard and must survive it.
+    ms = [_spc("catalog/api.go", 231, 'p := fmt.Sprintf("/catalog/v0/items")'),
+          _spc("fbaInbound/api.go", 749, 'p := fmt.Sprintf("/fba/inbound/v0/s")'),
+          _spc("ordersV0/api.go", 88, 'p := fmt.Sprintf("/orders/v0/orders")')]
+    out = scan_endpoints(ms, str(tmp_path), [_SPAPI],
+                         idioms=[_SPAPI_INST], repo_id="git@github.com:acme/nosink.git")
+    assert [e for e in out["endpoints"] if e["classified"]] == []
+
+
+def test_corroborated_instance_needs_no_repo_field(tmp_path):
+    # REGRESSION: the host fallback read inst['repo'] unconditionally, so a corroborated
+    # instance (which has no `repo`) raised KeyError for any vendor with no domains.
+    vendorless = Vendor("Amazon SP-API", "api:spapi", (), DEFAULT_VERSION_REGEX)
+    ms = [_spc("catalog/api.go", 231, 'p := fmt.Sprintf("/catalog/v0/items")'),
+          _spc("fbaInbound/api.go", 749, 'p := fmt.Sprintf("/fba/inbound/v0/s")'),
+          _spc("ordersV0/api.go", 88, 'p := fmt.Sprintf("/orders/v0/orders")'),
+          _sink("pkg/client.go", 40)]
+    out = scan_endpoints(ms, str(tmp_path), [vendorless],
+                         idioms=[_SPAPI_INST], repo_id="git@github.com:acme/anything.git")
+    assert len([e for e in out["endpoints"] if e["classified"]]) == 3
+
+
+def test_a_path_constant_attribution_removes_the_line_from_path_literal_residue(tmp_path):
+    # REGRESSION (the 102-attributed-but-122-still-residue bug): the same line can match both
+    # a path-literal rule and a path-constant rule. Residue excluded only `attributed_locs`,
+    # so a line the idiom HAD attributed was still reported as unattributed. Residue is the
+    # conscience — it must shrink when an idiom lands, or the absorb gate cannot see progress.
+    loc_text = 'basePath := fmt.Sprintf("/catalog/v0/items")'
+    ms = [_spc("catalog/api.go", 231, loc_text),
+          {"kind": "path-literal", "path": "catalog/api.go", "line": 231, "text": loc_text},
+          _spc("fbaInbound/api.go", 749, 'p := fmt.Sprintf("/fba/inbound/v0/s")'),
+          _spc("ordersV0/api.go", 88, 'p := fmt.Sprintf("/orders/v0/orders")'),
+          _sink("pkg/client.go", 40)]
+    out = scan_endpoints(ms, str(tmp_path), [_SPAPI],
+                         idioms=[_SPAPI_INST], repo_id="git@github.com:acme/anything.git")
+    assert any(e["operation"] == "/catalog/v0/items"
+               for e in out["endpoints"] if e["classified"])
+    assert "catalog/api.go:231" not in {r["loc"]
+                                        for r in out["residue"].get("pathLiterals", [])}
+
+
+def test_generic_families_alone_do_not_attribute(tmp_path):
+    # REGRESSION, reproduced 2026-08-18 against a real scan: a multi-vendor repo carrying
+    # eBay /orders/, Shopify /products/ and BigCommerce /catalog/ + /shipping/ cleared
+    # corroboration 3 and was attributed 4 endpoints to Amazon SP-API with verdict KNOWN,
+    # on zero Amazon code. Three GENERIC families are not evidence of a vendor.
+    inst = dict(_SPAPI_INST, families=["catalog", "fba", "orders", "shipping"],
+                pathRegex=r"^/(catalog|fba|orders|shipping)/",
+                distinctive=["fba"])
+    ms = [_spc("src/ebay.go", 9, 'p := fmt.Sprintf("/orders/v1/order_items")'),
+          _spc("src/shopify.go", 14, 'p := fmt.Sprintf("/catalog/v3/summary")'),
+          _spc("src/bigcommerce.go", 21, 'p := fmt.Sprintf("/shipping/v2/zones")'),
+          _sink("src/client.go", 8)]
+    out = scan_endpoints(ms, str(tmp_path), [_SPAPI],
+                         idioms=[inst], repo_id="git@github.com:acme/marketplace-hub.git")
+    assert [e for e in out["endpoints"] if e["classified"]] == [], \
+        "three generic families must not attribute a vendor"
+    assert len(out["residue"].get("pathConstants", [])) == 3, \
+        "refused matches must land in residue, never be dropped"
+
+
+def test_one_distinctive_family_among_generics_does_attribute(tmp_path):
+    # The other side of the guard: a genuine SP-API repo carries /fba/, which no other
+    # marketplace uses as a leading segment. Count met AND a distinctive family present.
+    inst = dict(_SPAPI_INST, families=["catalog", "fba", "orders", "shipping"],
+                pathRegex=r"^/(catalog|fba|orders|shipping)/",
+                distinctive=["fba"])
+    ms = [_spc("src/a.go", 9, 'p := fmt.Sprintf("/orders/v0/orders")'),
+          _spc("src/b.go", 14, 'p := fmt.Sprintf("/catalog/v0/items")'),
+          _spc("src/c.go", 21, 'p := fmt.Sprintf("/fba/inbound/v0/shipments")'),
+          _sink("src/client.go", 8)]
+    out = scan_endpoints(ms, str(tmp_path), [_SPAPI],
+                         idioms=[inst], repo_id="git@github.com:acme/real-seller.git")
+    assert len([e for e in out["endpoints"] if e["classified"]]) == 3
+
+
+def test_shapes_verdict_is_known_for_a_corroborated_fully_attributed_repo():
+    # REPLACES test_corroborated_repo_with_findings_still_reports_unknown, which asserted a
+    # verdict claim (UNKNOWN/config-driven-url for an attributed-but-still-sink-carrying repo)
+    # by never calling shapes.verdict at all — it only checked that a sink survived in residue,
+    # so it could not have failed on the behaviour it claimed to pin.
+    #
+    # ACTUAL measured behaviour: amzapi/selling-partner-api-sdk reports verdict=KNOWN with
+    # reasons=[] (attributed=102, unattributedPaths=0, sinks=123). The residue-accounting fix
+    # on this branch stopped double-counting a line the path-constant idiom already attributed
+    # as unattributed residue, which drove unattributedPaths from 122 to 0 and flipped this
+    # repo's class from UNKNOWN to KNOWN.
+    #
+    # That is correct: shapes.verdict only treats an unresolved sink as evidence of blindness
+    # when attributed == 0 (`elif n_sinks and attributed == 0`) — we cannot link a sink to the
+    # specific endpoint it calls without dataflow, so a fully-attributed repo legitimately
+    # still shows egress sinks. Signature verified against agent/lib/shapes.py:
+    #   verdict(attributed, residue, coverage, *, attested=False, unmodeled=0, modeled=0)
+    #     -> (KNOWN|UNKNOWN, reasons)
+    residue = {"pathLiterals": [], "sinks": [{"loc": f"pkg/client_{i}.go:1"} for i in range(123)]}
+    coverage = {"go": ["sink", "path-constant"]}
+    result = shapes.verdict(102, residue, coverage, attested=False, unmodeled=0, modeled=200)
+    assert result == ("KNOWN", []), \
+        "a corroborated repo with clean path residue is KNOWN even though sinks remain"
+
+
+def test_distinctive_attributes_when_only_one_of_several_listed_families_is_present(tmp_path):
+    # `distinctive` is "at least one of N present", not "all of N present" — every existing
+    # fixture up to this test used a single-item `distinctive` list, so that branch of the
+    # guard (`fams & set(inst.get("distinctive") or ())`) was never exercised with more than
+    # one candidate. Three families are listed here; only `fba` is present among the matched
+    # paths, and it must still attribute.
+    inst = dict(_SPAPI_INST, families=["catalog", "fba", "orders", "shipping"],
+                pathRegex=r"^/(catalog|fba|orders|shipping)/",
+                distinctive=["fba", "authorization", "uploads"])
+    ms = [_spc("src/a.go", 9, 'p := fmt.Sprintf("/orders/v0/orders")'),
+          _spc("src/b.go", 14, 'p := fmt.Sprintf("/catalog/v0/items")'),
+          _spc("src/c.go", 21, 'p := fmt.Sprintf("/fba/inbound/v0/shipments")'),
+          _sink("src/client.go", 8)]
+    out = scan_endpoints(ms, str(tmp_path), [_SPAPI],
+                         idioms=[inst], repo_id="git@github.com:acme/real-seller-2.git")
+    assert len([e for e in out["endpoints"] if e["classified"]]) == 3
