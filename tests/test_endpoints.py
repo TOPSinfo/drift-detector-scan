@@ -627,3 +627,80 @@ def test_path_constant_can_pin_a_version(tmp_path):
                          idioms=[inst], repo_id="git@x:example-org/bigcommerce-api.git")
     eps = [e for e in out["endpoints"] if e["classified"]]
     assert eps and eps[0]["version"] == "v2"
+
+
+# ── corroboration: a shipped path-constant guarded by evidence, not by repo identity ──
+_SPAPI = Vendor("Amazon SP-API", "api:spapi", ("sellingpartnerapi-na.amazon.com",),
+                DEFAULT_VERSION_REGEX)
+_SPAPI_INST = {"id": "spapi-operation-paths", "family": "path-constant",
+               "vendor": "Amazon SP-API", "corroboration": 3,
+               "families": ["catalog", "fba", "orders", "reports"],
+               "pathRegex": r"^/(catalog|fba|orders|reports)/",
+               "evidence": "amzapi/selling-partner-api-sdk reports/api.gen.go:492"}
+
+
+def _spc(path, line, text):
+    return _pc(path, line, text, vendor="Amazon SP-API", check="spapi-operation-paths")
+
+
+def test_corroborated_path_constant_attributes_when_the_threshold_is_met(tmp_path):
+    # Four distinct families (catalog, fba, orders, reports) >= corroboration 3 -> attribute.
+    ms = [_spc("catalog/api.go", 231, 'basePath := fmt.Sprintf("/catalog/v0/items")'),
+          _spc("fbaInbound/api.go", 749, 'basePath := fmt.Sprintf("/fba/inbound/v0/shipments")'),
+          _spc("ordersV0/api.go", 88, 'basePath := fmt.Sprintf("/orders/v0/orders")'),
+          _spc("reports/api.go", 492, 'basePath := fmt.Sprintf("/reports/2021-06-30/reports")'),
+          _sink("pkg/client.go", 40)]
+    out = scan_endpoints(ms, str(tmp_path), [_SPAPI],
+                         idioms=[_SPAPI_INST], repo_id="git@github.com:acme/anything.git")
+    ops = {e["operation"] for e in out["endpoints"] if e["classified"]}
+    assert ops == {"/catalog/v0/items", "/fba/inbound/v0/shipments",
+                   "/orders/v0/orders", "/reports/2021-06-30/reports"}
+    assert all(e["vendor"] == "Amazon SP-API"
+               for e in out["endpoints"] if e["classified"])
+
+
+def test_corroborated_path_constant_refuses_below_the_threshold(tmp_path):
+    # THE BUG THIS GUARDS: an eBay repo with a single generic /orders/v1/ path must NOT be
+    # tagged Amazon SP-API. Two distinct families < corroboration 3 -> nothing attributes,
+    # and the paths land in residue so coverage stays honest rather than silently clean.
+    ms = [_spc("src/orders.go", 12, 'p := fmt.Sprintf("/orders/v1/list")'),
+          _spc("src/catalog.go", 30, 'p := fmt.Sprintf("/catalog/v1/item")'),
+          _sink("src/client.go", 8)]
+    out = scan_endpoints(ms, str(tmp_path), [_SPAPI],
+                         idioms=[_SPAPI_INST], repo_id="git@github.com:acme/ebay-thing.git")
+    assert [e for e in out["endpoints"] if e["classified"]] == []
+    residue = {r["loc"] for r in out["residue"].get("pathConstants", [])}
+    assert residue == {"src/orders.go:12", "src/catalog.go:30"}
+
+
+def test_corroboration_counts_distinct_families_not_match_volume(tmp_path):
+    # Twenty hits in ONE family is still one family. Volume is not corroboration — a repo
+    # with a hundred /orders/ paths has said one thing loudly, not three things.
+    ms = [_spc(f"src/o{i}.go", i, f'p := fmt.Sprintf("/orders/v1/x{i}")') for i in range(20)]
+    ms.append(_sink("src/client.go", 8))
+    out = scan_endpoints(ms, str(tmp_path), [_SPAPI],
+                         idioms=[_SPAPI_INST], repo_id="git@github.com:acme/loud.git")
+    assert [e for e in out["endpoints"] if e["classified"]] == []
+
+
+def test_corroborated_path_constant_still_requires_an_egress_sink(tmp_path):
+    # The sink guard is independent of the scoping guard and must survive it.
+    ms = [_spc("catalog/api.go", 231, 'p := fmt.Sprintf("/catalog/v0/items")'),
+          _spc("fbaInbound/api.go", 749, 'p := fmt.Sprintf("/fba/inbound/v0/s")'),
+          _spc("ordersV0/api.go", 88, 'p := fmt.Sprintf("/orders/v0/orders")')]
+    out = scan_endpoints(ms, str(tmp_path), [_SPAPI],
+                         idioms=[_SPAPI_INST], repo_id="git@github.com:acme/nosink.git")
+    assert [e for e in out["endpoints"] if e["classified"]] == []
+
+
+def test_corroborated_instance_needs_no_repo_field(tmp_path):
+    # REGRESSION: the host fallback read inst['repo'] unconditionally, so a corroborated
+    # instance (which has no `repo`) raised KeyError for any vendor with no domains.
+    vendorless = Vendor("Amazon SP-API", "api:spapi", (), DEFAULT_VERSION_REGEX)
+    ms = [_spc("catalog/api.go", 231, 'p := fmt.Sprintf("/catalog/v0/items")'),
+          _spc("fbaInbound/api.go", 749, 'p := fmt.Sprintf("/fba/inbound/v0/s")'),
+          _spc("ordersV0/api.go", 88, 'p := fmt.Sprintf("/orders/v0/orders")'),
+          _sink("pkg/client.go", 40)]
+    out = scan_endpoints(ms, str(tmp_path), [vendorless],
+                         idioms=[_SPAPI_INST], repo_id="git@github.com:acme/anything.git")
+    assert len([e for e in out["endpoints"] if e["classified"]]) == 3

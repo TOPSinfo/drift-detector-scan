@@ -285,6 +285,30 @@ def scan_endpoints(matches: list, repo_root: str, vendors: list, *, max_files: i
     # sink (it actually makes HTTP calls). Everything else lands in residue below.
     pc_by_id = {i["id"]: i for i in (idioms or []) if i.get("family") == "path-constant"}
     has_sink = any(m.get("kind") == "sink" for m in matches)
+    # Corroboration pre-pass. The threshold is a property of the REPO, not of the match being
+    # considered, so it has to be settled before any attribution happens — otherwise the first
+    # match would be judged on evidence not yet counted. Counts DISTINCT first path segments:
+    # twenty /orders/ hits are one family, not twenty, because volume is not corroboration.
+    corroborated: set = set()
+    _fams_seen: dict = {}
+    for m in matches:
+        if m.get("kind") != "path-constant":
+            continue
+        inst = pc_by_id.get(m.get("checkId"))
+        if inst is None or inst.get("corroboration") is None:
+            continue
+        rel = _relpath(m.get("path", ""), repo_root)
+        lineno = int(m.get("line", 0) or 0)
+        path = _string_literal_of(m.get("text") or
+                                  _read_line(repo_root, rel, lineno, line_cache))
+        if not path or not re.search(inst["pathRegex"], path):
+            continue
+        seg = path.split("/")[1] if path.startswith("/") and "/" in path[1:] else ""
+        if seg:
+            _fams_seen.setdefault(inst["id"], set()).add(seg)
+    for iid, fams in _fams_seen.items():
+        if len(fams) >= int(pc_by_id[iid]["corroboration"]):
+            corroborated.add(iid)
     attributed_pc: set = set()
     if pc_by_id:
         for m in matches:
@@ -297,7 +321,11 @@ def scan_endpoints(matches: list, repo_root: str, vendors: list, *, max_files: i
             lineno = int(m.get("line", 0) or 0)
             if inst.get("requiresSink", True) and not has_sink:
                 continue
-            if not _repo_in_scope(repo_id or repo_root, inst.get("repo", "")):
+            # Exactly one of these two guards is present — idioms._validate enforces that.
+            if inst.get("corroboration") is not None:
+                if inst["id"] not in corroborated:
+                    continue
+            elif not _repo_in_scope(repo_id or repo_root, inst.get("repo", "")):
                 continue
             path = _string_literal_of(m.get("text") or
                                       _read_line(repo_root, rel, lineno, line_cache))
@@ -306,7 +334,9 @@ def scan_endpoints(matches: list, repo_root: str, vendors: list, *, max_files: i
             v = by_name.get(m.get("vendor") or inst.get("vendor"))
             if v is None:
                 continue
-            host = v.domains[0] if v.domains else f"sdk:{inst['repo']}"
+            # A corroborated instance has no `repo`, so fall back to its id — reading
+            # inst['repo'] unconditionally raised KeyError for a domainless vendor.
+            host = v.domains[0] if v.domains else f"sdk:{inst.get('repo') or inst['id']}"
             # optional `version`: a wrapper pinned to a specific (often DEPRECATED) API version
             # — e.g. BigCommerce's /api/v2 constants — so a version-scoped sunset can flag it.
             add(v.vendor, v.techKey, host, inst.get("version"), path, rel, lineno,
