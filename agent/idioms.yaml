@@ -164,8 +164,10 @@
 #   10 repos carried SP-API path families — every one a genuine Amazon SP-API SDK — with a
 #      DISTINCT-family count between 9 and 16.
 #   32 repos carried ZERO.
-#   No repo fell between 1 and 8. A threshold of 3 sits 6 below the worst true positive and
-#   3 above the worst false positive.
+#   No repo fell between 1 and 8 — but this branch REPRODUCED a false positive at exactly 3
+#   families (a multi-vendor repo carrying eBay, Shopify and BigCommerce paths). The count
+#   alone was not a sufficient margin; that is why `distinctive` exists below and is a
+#   second, independent guard, not a redundant one.
 #
 # No `language:` — path shapes are identical across languages, and omitting the field compiles
 # the instance for all eight. Verified on Go (amzapi/selling-partner-api-sdk): 0 -> 102
@@ -180,7 +182,25 @@
   pathRegex: ^/(authorization|catalog|fba|feeds|finances|listings|messaging|mfn|notifications|orders|products|reports|sales|sellers|service|shipping|solicitations|uploads)/
   # SP-API-specific segments. `orders`/`catalog`/`products`/`shipping`/`sales` are ordinary
   # e-commerce nouns and are deliberately NOT here — a multi-vendor repo carrying three of
-  # them was falsely attributed to SP-API before this field existed. Measured 2026-08-18:
-  # all 10 genuine SP-API SDKs in the corpus carry 2-5 of these; the multi-vendor fixture 0.
-  distinctive: [authorization, fba, listings, mfn, solicitations, uploads]
+  # them was falsely attributed to SP-API before this field existed.
+  #
+  # `authorization`, `listings` and `uploads` were ALSO removed (narrowed 2026-08-18) —
+  # they are generic enough that other marketplaces use them as leading path segments too,
+  # and the corpus proved it: `iamfmjk__etsy` carries `listings`+`shipping`,
+  # `Notronix__JEtsy` carries `listings`, and two BigCommerce repos already sit at exactly 3
+  # matched families — those three entries left only a ONE-family margin before a
+  # non-Amazon repo would be attributed to Amazon SP-API. Measured to lose ZERO true
+  # positives: all 5 attributed SP-API repos plus jlevers/selling-partner-api and
+  # lineofflight/peddler carry both `fba` and `mfn`.
+  distinctive: [fba, mfn, solicitations]
+  # Corroboration (17 co-occurring path families, 5 of them distinctive) is stronger
+  # evidence of an integration than a single matched HTTP-egress call pattern, so the
+  # weaker signal must not veto the stronger. Without this, endpoints.py's default
+  # `inst.get("requiresSink", True)` vetoed ~557 corroborated operation paths in two
+  # genuine SP-API repos whose egress just doesn't match the sink patterns we ship: PHP's
+  # sink pattern is fully-qualified `new \GuzzleHttp\Client(...)` and misses the aliased
+  # `new Client(...)` (jlevers/selling-partner-api); Ruby's `Faraday.new($$$)` misses the
+  # block form (lineofflight/peddler). Verified `requiresSink` is read by endpoints.py and
+  # is not rejected by idioms._validate (which has no unknown-key allowlist).
+  requiresSink: false
   evidence: amzapi/selling-partner-api-sdk reports/api.gen.go:492
