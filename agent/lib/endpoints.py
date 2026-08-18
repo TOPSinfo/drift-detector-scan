@@ -307,8 +307,16 @@ def scan_endpoints(matches: list, repo_root: str, vendors: list, *, max_files: i
         if seg:
             _fams_seen.setdefault(inst["id"], set()).add(seg)
     for iid, fams in _fams_seen.items():
-        if len(fams) >= int(pc_by_id[iid]["corroboration"]):
-            corroborated.add(iid)
+        inst = pc_by_id[iid]
+        if len(fams) < int(inst["corroboration"]):
+            continue
+        # A count of GENERIC families is not evidence of a vendor. At least one family
+        # specific to this vendor must appear. Note the empty-set case fails CLOSED: an
+        # instance with no `distinctive` attributes nothing, rather than falling back to
+        # count-only and re-opening the multi-vendor false positive.
+        if not (fams & set(inst.get("distinctive") or ())):
+            continue
+        corroborated.add(iid)
     attributed_pc: set = set()
     if pc_by_id:
         for m in matches:

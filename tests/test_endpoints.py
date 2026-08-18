@@ -636,6 +636,7 @@ _SPAPI_INST = {"id": "spapi-operation-paths", "family": "path-constant",
                "vendor": "Amazon SP-API", "corroboration": 3,
                "families": ["catalog", "fba", "orders", "reports"],
                "pathRegex": r"^/(catalog|fba|orders|reports)/",
+               "distinctive": ["fba"],
                "evidence": "amzapi/selling-partner-api-sdk reports/api.gen.go:492"}
 
 
@@ -723,3 +724,38 @@ def test_a_path_constant_attribution_removes_the_line_from_path_literal_residue(
                for e in out["endpoints"] if e["classified"])
     assert "catalog/api.go:231" not in {r["loc"]
                                         for r in out["residue"].get("pathLiterals", [])}
+
+
+def test_generic_families_alone_do_not_attribute(tmp_path):
+    # REGRESSION, reproduced 2026-08-18 against a real scan: a multi-vendor repo carrying
+    # eBay /orders/, Shopify /products/ and BigCommerce /catalog/ + /shipping/ cleared
+    # corroboration 3 and was attributed 4 endpoints to Amazon SP-API with verdict KNOWN,
+    # on zero Amazon code. Three GENERIC families are not evidence of a vendor.
+    inst = dict(_SPAPI_INST, families=["catalog", "fba", "orders", "shipping"],
+                pathRegex=r"^/(catalog|fba|orders|shipping)/",
+                distinctive=["fba"])
+    ms = [_spc("src/ebay.go", 9, 'p := fmt.Sprintf("/orders/v1/order_items")'),
+          _spc("src/shopify.go", 14, 'p := fmt.Sprintf("/catalog/v3/summary")'),
+          _spc("src/bigcommerce.go", 21, 'p := fmt.Sprintf("/shipping/v2/zones")'),
+          _sink("src/client.go", 8)]
+    out = scan_endpoints(ms, str(tmp_path), [_SPAPI],
+                         idioms=[inst], repo_id="git@github.com:acme/marketplace-hub.git")
+    assert [e for e in out["endpoints"] if e["classified"]] == [], \
+        "three generic families must not attribute a vendor"
+    assert len(out["residue"].get("pathConstants", [])) == 3, \
+        "refused matches must land in residue, never be dropped"
+
+
+def test_one_distinctive_family_among_generics_does_attribute(tmp_path):
+    # The other side of the guard: a genuine SP-API repo carries /fba/, which no other
+    # marketplace uses as a leading segment. Count met AND a distinctive family present.
+    inst = dict(_SPAPI_INST, families=["catalog", "fba", "orders", "shipping"],
+                pathRegex=r"^/(catalog|fba|orders|shipping)/",
+                distinctive=["fba"])
+    ms = [_spc("src/a.go", 9, 'p := fmt.Sprintf("/orders/v0/orders")'),
+          _spc("src/b.go", 14, 'p := fmt.Sprintf("/catalog/v0/items")'),
+          _spc("src/c.go", 21, 'p := fmt.Sprintf("/fba/inbound/v0/shipments")'),
+          _sink("src/client.go", 8)]
+    out = scan_endpoints(ms, str(tmp_path), [_SPAPI],
+                         idioms=[inst], repo_id="git@github.com:acme/real-seller.git")
+    assert len([e for e in out["endpoints"] if e["classified"]]) == 3
