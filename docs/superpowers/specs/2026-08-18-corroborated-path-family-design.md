@@ -3,13 +3,15 @@
 **Date:** 2026-08-18
 **Status:** approved, not yet implemented
 **Origin:** the standing "multi-language egress gap" open item, re-measured 2026-08-18
+**Revised:** 2026-08-18 — Lane 2 corrected from "build a Go ecosystem" to catalog data; see that section
 
 ## Summary
 
 Ship a vendor-scoped `path-constant` idiom that is guarded by **corroboration** (N distinct
-path families co-occurring in a repo) instead of by `repo:` identity, and teach the scanner to
-read `go.mod` as a new `go` ecosystem. Together these close the gap where a repo's API
-operations are visible in its source but the scanner attributes none of them.
+path families co-occurring in a repo) instead of by `repo:` identity. This closes the gap where
+a repo's API operations are visible in its source but the scanner attributes none of them.
+A small catalog addition (`sdk_clients` entries for the Go SP-API SDKs) covers the complementary
+case where the SDK is a dependency and the paths are not in-tree.
 
 This is **not** a Go feature. The same path shapes appear in all eight languages; Go is
 merely where the absence was most visible (0 of 5 corpus repos KNOWN).
@@ -138,21 +140,45 @@ One SP-API instance, **no `language:` field**, so it compiles for all eight lang
 The `evidence:` line above is the one used in the verified trial. The absorb gate requires a
 real file:line; it is not a template field.
 
-## Lane 2 — the Go ecosystem
+## Lane 2 — consumer repos (DATA ONLY — corrected 2026-08-18)
 
-`lockfile.py` parses composer, npm, pypi and nuget. There is no Go, Ruby or Maven ecosystem.
-Add `go.mod` as ecosystem `go`, which unlocks three things independently of Lane 1:
+**An earlier draft of this spec called for building a Go ecosystem. That was wrong and the
+work must not be done.** The claim came from grepping `lockfile.py`, which handles *lockfiles*
+(exact resolved versions) and legitimately has no Go entry. Manifest extraction is a separate
+layer, and Go is already there. Verified:
 
-1. Go dependency inventory (currently entirely absent).
-2. OSV Go advisories — Go packages presently get zero CVE coverage.
-3. `sdk_clients` / `sdk_profiles` entries for the Go SP-API SDKs, so a **consumer** repo dates
-   its operations instead of only naming its vendor.
+- `agent/lib/extractors/go.py` parses `go.mod` — direct requires plus the `go` runtime
+  directive, `ecosystem="go"`, `tech_key="lib:go/<module>"`, `// indirect` excluded.
+- `purl.OSV_ECOSYSTEM` already contains `"go": "Go"` and `_PURL_TYPE` `"go": "golang"`, so Go
+  CVE/EOL auditing already works. (`bundler`, `maven`, `cargo`, `nuget` are all present too.)
+- The consumer fixture inventoried the SDK correctly:
+  `{"eco":"go","pkg":"github.com/amzapi/selling-partner-api-sdk","ver":"v1.9.0",
+  "versionSource":"manifest","parseQuality":"exact"}`
+- `sdk_clients.load()` keys on `"<ecosystem>/<name>"` generically and `_pkg_key()` maps
+  `lib:go/github.com/amzapi/selling-partner-api-sdk` → `go/github.com/amzapi/...`. A unit check
+  confirms a Go entry joins **with no code change**.
+
+So Lane 2 reduces to catalog data: `sdk_clients.yaml` entries for the Go SP-API SDK modules,
+which give a consumer repo its vendor attribution from the manifest.
+
+A `go.sum` lockfile parser is explicitly **not** wanted: `go.mod` already yields exact pinned
+versions (`parseQuality: exact`), so a lockfile parser would add a second source of the same
+fact. YAGNI.
+
+**Known limitation, accepted:** `sdk_clients` attributes the *vendor*, not the *operations*. A
+consumer therefore reports "this repo calls Amazon SP-API" but cannot date `/fba/inbound/v0`,
+because those path literals live in the module cache rather than the repo. Operation-level
+dating for consumers is `sdk_profiles`' job. Note `catalog_overlay.SDK_PROFILES` is
+overlay-backed by deliberate doctrine ("client-scoped SDK profiles live in the overlay, not the
+package"), so shipping public SP-API profiles in the baseline would need that doctrine revisited
+— out of scope here, and recorded as a follow-up.
 
 ## Staging
 
-1. **`go.mod` parsing** — independent value, touches nothing in the idiom path.
-2. **Corroboration guard** — schema, validation, enforcement.
-3. **The shipped instance** — inert until step 2 exists.
+1. **Corroboration guard** — schema, validation, enforcement.
+2. **The shipped SP-API instance** — inert until step 1 exists.
+3. **`sdk_clients` Go entries** — independent data change; can land in any order.
+4. **Eval-corpus cases** for Go/Java/Ruby/C#.
 
 ## Testing
 
@@ -184,7 +210,8 @@ Per CLAUDE.md principle 5, each guard must be shown to FAIL on the bug it target
 
 - Extending corroboration to other vendors in this change. The mechanism generalizes; the
   calibration does not. Each new vendor needs its own threshold evidence.
-- Ruby / Maven ecosystems. Same shape of work as `go.mod`, deliberately deferred.
+- Operation-level dating for consumer repos via public `sdk_profiles`. Blocked on the
+  overlay-only doctrine for that catalog; recorded as a follow-up, not built here.
 - Dataflow / sink→endpoint linking. Unchanged, still out of scope.
 
 ## Provenance
