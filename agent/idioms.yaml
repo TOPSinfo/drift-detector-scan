@@ -153,3 +153,29 @@
 
     KNOWN MISS: f'...' (single quotes), rf"..."/F"..." prefixes, triple-quoted f-strings.
     KNOWN MISS: `self.baseURL + path` — no case-folding, same ruling as JS baseUrl.
+
+# ── Amazon SP-API operation paths ────────────────────────────────────────────────────────
+# The first path-constant to SHIP. Every earlier one is repo-scoped, because a generic
+# `/api/orders` would mis-tag another marketplace. This one is guarded by corroboration
+# instead: at least 3 of the 18 SP-API path families must co-occur before any attributes.
+#
+# THRESHOLD PROVENANCE (measured 2026-08-18 over 42 cloned corpus repos, 8 languages, 8
+# marketplace portals — eBay, Walmart, Shopify, BigCommerce, Etsy, MercadoLibre, MWS, SP-API):
+#   10 repos carried SP-API path families — every one a genuine Amazon SP-API SDK — with a
+#      DISTINCT-family count between 9 and 16.
+#   32 repos carried ZERO.
+#   No repo fell between 1 and 8. A threshold of 3 sits 6 below the worst true positive and
+#   3 above the worst false positive.
+#
+# No `language:` — path shapes are identical across languages, and omitting the field compiles
+# the instance for all eight. Verified on Go (amzapi/selling-partner-api-sdk): 0 -> 102
+# attributed, yielding 6 dated SP-API sunsets, 4 of them already past their removal date.
+- id: spapi-operation-paths
+  family: path-constant
+  vendor: Amazon SP-API
+  corroboration: 3
+  families: [authorization, catalog, fba, feeds, finances, listings, messaging, mfn,
+             notifications, orders, products, reports, sales, sellers, service, shipping,
+             solicitations, uploads]
+  pathRegex: ^/(authorization|catalog|fba|feeds|finances|listings|messaging|mfn|notifications|orders|products|reports|sales|sellers|service|shipping|solicitations|uploads)/
+  evidence: amzapi/selling-partner-api-sdk reports/api.gen.go:492

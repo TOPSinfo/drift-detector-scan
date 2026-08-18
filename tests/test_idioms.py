@@ -130,3 +130,16 @@ def test_corroborated_instance_compiles_for_every_language():
     assert [d["language"] for d in docs] == langs
     assert all(d["metadata"] == {"kind": "path-constant", "vendor": "Amazon SP-API"}
                for d in docs)
+
+
+def test_shipped_spapi_instance_loads_and_is_corroborated():
+    # The first path-constant to ship in the BASELINE catalog. It must be corroboration-
+    # guarded (a repo-scoped instance cannot ship) and language-agnostic.
+    shipped = {i["id"]: i for i in idioms.load_idioms(idioms._DEFAULT)}
+    inst = shipped["spapi-operation-paths"]
+    assert inst["family"] == "path-constant"
+    assert inst["vendor"] == "Amazon SP-API"
+    assert inst.get("repo") is None, "a shipped instance must not be repo-scoped"
+    assert inst["corroboration"] >= 3
+    assert "language" not in inst, "omitting language is what serves all eight languages"
+    idioms._validate(inst, "agent/idioms.yaml")
