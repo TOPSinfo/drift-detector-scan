@@ -27,6 +27,12 @@ CASES = [
     ("php", "s.php"), ("javascript", "s.js"), ("typescript", "s.ts"),
     ("python", "s.py"), ("go", "s.go"), ("ruby", "s.rb"),
     ("java", "s.java"), ("csharp", "s.cs"),
+    # A language having SOME sink is not the same as covering the shapes real SDKs use.
+    # These two fixtures carry ONLY the newer shapes, so they cannot pass on the strength
+    # of an older pattern. Both were found by scanning real repos that reported sinks: 0
+    # while plainly making HTTP calls — see the comments in vendor_rules.EGRESS_SINKS.
+    ("php", "s_saloon.php"),
+    ("ruby", "s_httprb.rb"),
 ]
 
 
@@ -71,3 +77,11 @@ def test_deliberately_excluded_patterns_stay_excluded():
     assert "$C.Do(" not in flat, "Go $C.Do matches sync.Once.Do — too noisy to be a sink"
     assert "file_get_contents" not in flat, "PHP file_get_contents is usually filesystem"
     assert "got($$$)" not in flat, "`got` is a single common word, too easily shadowed"
+    # Measured against the 34-repo client fleet: a bare `$C->send($$$)` matched 36 lines and
+    # 35 were noise — 26 `Mail::to(...)->send(new SomeMailable)`, a PHP `$generator->send()`,
+    # and `$response->send()`. The shipped patterns name the property (`connector`/`client`),
+    # which caught all 350 real Saloon calls with zero noise. Re-adding the bare form would
+    # tell users their mailer is an API integration.
+    assert "$C->send($$$)" not in flat, (
+        "a bare $C->send matches Laravel mailers, PHP generators and response emission — "
+        "name the property (connector/client) instead")

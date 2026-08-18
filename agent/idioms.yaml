@@ -193,14 +193,13 @@
   # positives: all 5 attributed SP-API repos plus jlevers/selling-partner-api and
   # lineofflight/peddler carry both `fba` and `mfn`.
   distinctive: [fba, mfn, solicitations]
-  # Corroboration (17 co-occurring path families, 5 of them distinctive) is stronger
-  # evidence of an integration than a single matched HTTP-egress call pattern, so the
-  # weaker signal must not veto the stronger. Without this, endpoints.py's default
-  # `inst.get("requiresSink", True)` vetoed ~557 corroborated operation paths in two
-  # genuine SP-API repos whose egress just doesn't match the sink patterns we ship: PHP's
-  # sink pattern is fully-qualified `new \GuzzleHttp\Client(...)` and misses the aliased
-  # `new Client(...)` (jlevers/selling-partner-api); Ruby's `Faraday.new($$$)` misses the
-  # block form (lineofflight/peddler). Verified `requiresSink` is read by endpoints.py and
-  # is not rejected by idioms._validate (which has no unknown-key allowlist).
-  requiresSink: false
+  # NOTE: this instance briefly carried `requiresSink: false`, because the sink guard was
+  # vetoing ~557 corroborated operation paths in two genuine SP-API repos that reported
+  # sinks: 0. That was treating a symptom. The real cause was two MISSING sink patterns —
+  # jlevers/selling-partner-api reaches Amazon through Saloon (`$this->connector->send()`),
+  # and lineofflight/peddler through the httprb gem (`HTTP.get`), neither of which the
+  # shipped patterns could match. Both are now in vendor_rules.EGRESS_SINKS, so the two
+  # repos report 350 and 5 sinks and attribute 166 and 154 paths WITH the guard on. The
+  # override was removed once that was measured: a corroborated family should still have to
+  # show that the repo actually makes HTTP calls.
   evidence: amzapi/selling-partner-api-sdk reports/api.gen.go:492
