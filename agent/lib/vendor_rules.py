@@ -66,6 +66,9 @@ def _ast_literal_rule(base_id: str, regex: str, lang: str, metadata: dict) -> di
 #
 # Deliberately EXCLUDED as too noisy without argument-shape analysis:
 #   php     file_get_contents / fopen — usually filesystem
+#   php     $C->send($$$)             — MEASURED on a 34-repo Laravel fleet: 36 matches, 35
+#                                       of them noise (Mail::to()->send(), $generator->send(),
+#                                       $response->send()). Name the property instead.
 #   go      $C.Do($$$)                — sync.Once.Do and every builder .Do() in Go
 #   js      got($$$)                  — a single common word; too easy to shadow
 # The rule is the one PHP already followed: a sink that cries wolf is worse than a gap,
@@ -79,6 +82,19 @@ EGRESS_SINKS = {
         {"pattern": "curl_exec($$$)"},
         {"pattern": "curl_setopt($$$, CURLOPT_URL, $$$)"},
         {"pattern": "new \\GuzzleHttp\\Client($$$)"},
+        # Modern PHP SDKs do not construct Guzzle directly. jlevers/selling-partner-api is
+        # built on Saloon: it imports GuzzleHttp\Client five times, NEVER constructs one
+        # outside its tests, and issues 350 calls as `$this->connector->send($request)`.
+        # The repo scanned as sinks: 0 while making 350 HTTP calls, which vetoed every
+        # corroborated path in it. Same story for a named `client` property (clousale).
+        # The PROPERTY IS NAMED on purpose — same reasoning as url-append's `target`. A bare
+        # `$C->send($$$)` was MEASURED against the 34-repo client fleet and matched 36 lines
+        # of which 35 were noise: 26 `Mail::to(...)->send(new SomeMailable)`, a PHP
+        # `$generator->send($value)`, and `$response->send()` / `$kernel->handle(...)->send()`
+        # response emission. Naming the property took that to zero across all 42 corpus repos
+        # and the whole fleet, while still catching all 350 real ones.
+        {"pattern": "$C->connector->send($$$)"},
+        {"pattern": "$C->client->send($$$)"},
     ],
     "javascript": [
         {"pattern": "fetch($$$)"},
@@ -111,6 +127,14 @@ EGRESS_SINKS = {
         {"pattern": "RestClient.$M($$$)"},
         {"pattern": "HTTParty.$M($$$)"},
         {"pattern": "Faraday.new($$$)"},
+        # httprb (the `http` gem) — NOT HTTParty, and not Faraday. lineofflight/peddler
+        # depends on `http >= 5.3` and reaches Amazon through `HTTP.post(URL, form: params)`,
+        # `HTTP.get(url)` and `HTTP.use(:auto_inflate).get(url)`. None of the four patterns
+        # above can match those, so the repo scanned as sinks: 0 with 17 co-occurring SP-API
+        # path families present. `$M` rather than a verb list because the gem chains builders
+        # (`.use`/`.headers`) before the verb, and the outer call is then on the builder.
+        # Measured: 7 hits in peddler, 0 in every other corpus repo and 0 across the fleet.
+        {"pattern": "HTTP.$M($$$)"},
     ],
     "java": [
         {"pattern": "HttpClient.newHttpClient()"},
