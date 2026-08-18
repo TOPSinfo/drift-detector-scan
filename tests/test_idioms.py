@@ -102,6 +102,26 @@ def test_validate_rejects_a_corroborated_regex_without_an_alternation():
         idioms._validate(inst, "test")
 
 
+def test_validate_rejects_a_corroborated_regex_missing_the_leading_anchor():
+    # THE BUG THIS GUARDS: endpoints.py counts distinct families by reading path segment 0
+    # (`path.split("/")[1]`) — it does NOT re-run pathRegex. That counting is only correct
+    # if the alternation IS segment 0 by construction, which requires the regex to be
+    # anchored at the start (`^/(a|b|c)/`). An unanchored `/(catalog|fba|orders)/` still
+    # matches (mid-path), so validation used to accept it — but then the two mechanisms
+    # disagree at scan time, in both directions:
+    #   permissive: /v1/orders/x, /v2/orders/x, /api/orders/x all match the unanchored
+    #   alternation on ONE family (orders), but segment-0 counts {v1, v2, api} = 3 distinct
+    #   segments — clearing a corroboration threshold of 3 on the evidence of one family.
+    #   restrictive: /api/orders/x, /api/catalog/y, /api/fba/z are three genuine families,
+    #   but segment-0 reads `api` for all three = 1 distinct segment — a real corroborated
+    #   vendor is silently refused.
+    # Requiring the anchor makes segment 0 the alternation by construction, so the counter
+    # in endpoints.py is provably correct instead of coincidentally correct.
+    inst = dict(_CORR_INST, pathRegex=r"/(catalog|fba|orders)/")
+    with pytest.raises(idioms.IdiomError, match="alternation"):
+        idioms._validate(inst, "test")
+
+
 def test_corroborated_instance_compiles_for_every_language():
     # No `language:` field -> to_rules falls back to the full language list. This is what
     # makes one shipped instance serve all eight languages.

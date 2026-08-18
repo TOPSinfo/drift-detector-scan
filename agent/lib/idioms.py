@@ -25,9 +25,16 @@ FAMILIES = frozenset({"url-assembly", "url-append", "operation-marker", "path-co
                       "client-base"})
 
 # `^/(catalog|fba|orders)/` -> the alternation body, so a corroborated instance's `families`
-# list can be pinned to its own regex. Anchored deliberately: a corroborated family counts
-# FIRST path segments, so the alternation has to be the first segment or the count is a lie.
-_PC_ALTERNATION = re.compile(r"^\^?/\(([^)]+)\)/")
+# list can be pinned to its own regex. The leading `^` is REQUIRED, not optional: endpoints.py
+# counts distinct families by reading path segment 0 (`path.split("/")[1]`) — it never re-runs
+# pathRegex. That counter is only correct if the alternation IS segment 0 by construction. An
+# unanchored `/(catalog|fba|orders)/` still matches mid-path, so the two would silently
+# disagree at scan time: permissive (segment-0 counts {v1, v2, api} = 3 "families" from one
+# real family match, clearing a threshold on false evidence) or restrictive (three genuine
+# families under a shared prefix like /api/ all read as segment "api" = 1, refusing a real
+# corroborated vendor). Requiring `^` makes segment 0 the alternation by construction, so
+# endpoints.py's counter is provably correct instead of coincidentally correct.
+_PC_ALTERNATION = re.compile(r"^\^/\(([^)]+)\)/")
 
 # family -> the rule kind its matches carry, i.e. how endpoints.py will read them
 # How each language spells string concatenation. url-assembly used to emit PHP's `.`
@@ -131,8 +138,9 @@ def _validate(inst: dict, where: str) -> None:
             m = _PC_ALTERNATION.match(inst["pathRegex"])
             if not m:
                 raise IdiomError(f"{where}: a corroborated path-constant needs a pathRegex of "
-                                 r"the form `^/(a|b|c)/` — the alternation is what makes "
-                                 "families countable")
+                                 r"the form `^/(a|b|c)/` — anchored with a leading `^`, so the "
+                                 "alternation is path segment 0 and endpoints.py's segment-0 "
+                                 "family counter cannot disagree with it")
             if set(m.group(1).split("|")) != set(fams):
                 raise IdiomError(f"{where}: `families` must equal the pathRegex alternation "
                                  f"— regex has {sorted(set(m.group(1).split('|')))}, "
