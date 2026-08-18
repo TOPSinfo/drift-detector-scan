@@ -759,3 +759,19 @@ def test_one_distinctive_family_among_generics_does_attribute(tmp_path):
     out = scan_endpoints(ms, str(tmp_path), [_SPAPI],
                          idioms=[inst], repo_id="git@github.com:acme/real-seller.git")
     assert len([e for e in out["endpoints"] if e["classified"]]) == 3
+
+
+def test_corroborated_repo_with_findings_still_reports_unknown(tmp_path):
+    # DELIBERATE, not an oversight: attributing operations is a narrower claim than covering
+    # the repo. The host is still config-injected, so the scanner cannot say it saw this
+    # repo's egress. Conflating the two would let "we dated six findings" read as "we saw
+    # everything" — the exact failure principle 1 exists to prevent.
+    ms = [_spc("catalog/api.go", 231, 'p := fmt.Sprintf("/catalog/v0/items")'),
+          _spc("fbaInbound/api.go", 749, 'p := fmt.Sprintf("/fba/inbound/v0/s")'),
+          _spc("ordersV0/api.go", 88, 'p := fmt.Sprintf("/orders/v0/orders")'),
+          _sink("pkg/client.go", 40)]
+    out = scan_endpoints(ms, str(tmp_path), [_SPAPI],
+                         idioms=[_SPAPI_INST], repo_id="git@github.com:acme/anything.git")
+    assert len([e for e in out["endpoints"] if e["classified"]]) == 3
+    assert out["residue"].get("sinks"), \
+        "the unresolved sink is what keeps the verdict honest about config-driven egress"
