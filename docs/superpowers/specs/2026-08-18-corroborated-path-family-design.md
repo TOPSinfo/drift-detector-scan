@@ -201,10 +201,13 @@ Per CLAUDE.md principle 5, each guard must be shown to FAIL on the bug it target
 1. **Residue accounting.** `unattributedPaths` stayed at 122 even with 102 attributed
    (saleweaver: 389 attributed, 1159 residue). Either residue counts raw matches by design or
    this is a reporting bug. It drives the coverage tree, so settle it before shipping.
-2. **Verdict semantics.** The verdict stays `UNKNOWN`/`config-driven-url` despite 102
-   attributions and 6 dated findings. This is probably *correct* — the host genuinely is
-   config-driven — but a repo with 6 dated findings rendering as UNKNOWN deserves a conscious
-   decision rather than an accident.
+2. **Verdict semantics — SETTLED 2026-08-18.** A repo may report `UNKNOWN` /
+   `config-driven-url` while carrying attributed operations and dated findings. This is
+   correct: the verdict describes whether the scanner could see the repo's egress, and a
+   config-injected host means it could not. Attributing operations is a narrower claim than
+   covering the repo, and conflating them would let "we dated six findings" masquerade as
+   "we saw everything". Pinned by
+   `test_corroborated_repo_with_findings_still_reports_unknown`.
 
 ## Non-goals
 
