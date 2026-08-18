@@ -18,8 +18,29 @@ def _default_git(args, cwd=None) -> str:  # pragma: no cover - real git subproce
     return proc.stdout.strip()
 
 
+def checkout_name(repo: str) -> str:
+    """The on-disk checkout name for a corpus repo: `<org>__<repo>`.
+
+    THE ONE definition. `agent/eval/score.py` joins scan results back to corpus entries by
+    this name, and when the two derived it independently the eval broke silently: _dest was
+    changed to include the org (to fix a real collision) while score still keyed on
+    `basename(repo)`, so every repo scanned fine and then scored as `errored`, and the gate
+    reported nine undetected repos that were actually detected. Import it; never re-derive it.
+    """
+    return str(repo).rstrip("/").replace("/", "__")
+
+
 def _dest(sandbox_root, entry) -> str:
-    name = os.path.basename(entry["repo"].rstrip("/"))
+    """`<sandbox>/<category>/<org>__<repo>`.
+
+    The org is part of the path on purpose. Keying on `basename(repo)` alone collided:
+    `amzn/selling-partner-api-sdk` and `amzapi/selling-partner-api-sdk` are both real, both
+    in category `sp`, and both landed on one directory — so the second entry ran
+    `git fetch origin <its sha>` inside the FIRST one's checkout and died with
+    `upload-pack: not our ref`, taking `drift-eval run sp` down with it. Two different repos
+    must never share a checkout, however similarly they are named.
+    """
+    name = checkout_name(entry["repo"])
     return os.path.join(sandbox_root, entry["category"], name)
 
 

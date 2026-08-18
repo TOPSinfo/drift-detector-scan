@@ -23,7 +23,7 @@ def _corpus_file(tmp_path):
 
 def _fake_scan(root, state, now, **kw):
     # one repo, one classified eBay endpoint — as if scanned
-    doc = {"repos": [{"path": "ebay-sdk-php",
+    doc = {"repos": [{"path": "o__ebay-sdk-php",
                       "endpoints": [{"vendor": "eBay", "classified": True, "version": "v1",
                                      "domain": "svcs.ebay.com"}],
                       "sdks": []}],
@@ -57,7 +57,7 @@ def test_cli_returns_exit_code_from_gate(tmp_path, monkeypatch):
     from agent.eval import cli
     # a scan that detects nothing -> gate fails -> exit 1
     monkeypatch.setattr(runner, "scan_folder",
-                        lambda *a, **k: {"doc": {"repos": [{"path": "ebay-sdk-php",
+                        lambda *a, **k: {"doc": {"repos": [{"path": "o__ebay-sdk-php",
                                                             "endpoints": [], "sdks": []}],
                                                 "coverage": {"reposErrored": []}}, "diff": {}})
     monkeypatch.setattr(runner, "audit_inventory", lambda *a, **k: {"findings": []})

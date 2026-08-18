@@ -35,34 +35,34 @@ def _audit(findings=()):
 
 
 def test_recall_via_classified_endpoint():
-    sc = score([_entry()], _inv([_repo("ebay-sdk-php", endpoints=[_ep()])]), _audit())
+    sc = score([_entry()], _inv([_repo("o__ebay-sdk-php", endpoints=[_ep()])]), _audit())
     r = sc["repos"][0]
     assert r["detected"] is True and r["via"] == "endpoint"
     assert sc["gate"]["passed"] is True
 
 
 def test_recall_via_sdk_keyword():
-    inv = _inv([_repo("ebay-sdk-php", sdks=[{"eco": "composer", "pkg": "dts/ebay-sdk-php"}])])
+    inv = _inv([_repo("o__ebay-sdk-php", sdks=[{"eco": "composer", "pkg": "dts/ebay-sdk-php"}])])
     sc = score([_entry(sdk_keywords=["ebay"])], inv, _audit())
     r = sc["repos"][0]
     assert r["detected"] is True and r["via"] == "sdk"
 
 
 def test_sdk_keyword_defaults_to_category():
-    inv = _inv([_repo("ebay-sdk-php", sdks=[{"eco": "composer", "pkg": "acme/ebay-things"}])])
+    inv = _inv([_repo("o__ebay-sdk-php", sdks=[{"eco": "composer", "pkg": "acme/ebay-things"}])])
     sc = score([_entry(sdk_keywords=None)], inv, _audit())    # no sdk_keywords -> [category]="ebay"
     assert sc["repos"][0]["detected"] is True and sc["repos"][0]["via"] == "sdk"
 
 
 def test_endpoint_takes_precedence_when_both_fire():
-    inv = _inv([_repo("ebay-sdk-php", endpoints=[_ep()],
+    inv = _inv([_repo("o__ebay-sdk-php", endpoints=[_ep()],
                       sdks=[{"eco": "composer", "pkg": "dts/ebay-sdk-php"}])])
     sc = score([_entry(sdk_keywords=["ebay"])], inv, _audit())
     assert sc["repos"][0]["via"] == "endpoint"
 
 
 def test_miss_when_neither_and_gate_fails_unattributed():
-    inv = _inv([_repo("ebay-sdk-php", endpoints=[_ep(vendor="Unknown", classified=False)])])
+    inv = _inv([_repo("o__ebay-sdk-php", endpoints=[_ep(vendor="Unknown", classified=False)])])
     sc = score([_entry()], inv, _audit())
     r = sc["repos"][0]
     assert r["detected"] is False and r["via"] is None
@@ -71,7 +71,7 @@ def test_miss_when_neither_and_gate_fails_unattributed():
 
 
 def test_gate_passes_when_miss_is_a_declared_known_gap():
-    inv = _inv([_repo("ebay-sdk-php")])                       # nothing detected
+    inv = _inv([_repo("o__ebay-sdk-php")])                       # nothing detected
     sc = score([_entry(known_gaps=["sdk-only-no-callsite"])], inv, _audit())
     r = sc["repos"][0]
     assert r["detected"] is False and r["miss_mode"] == "sdk-only-no-callsite"
@@ -80,7 +80,7 @@ def test_gate_passes_when_miss_is_a_declared_known_gap():
 
 
 def test_noise_counts_only_unknown_endpoints():
-    inv = _inv([_repo("r", endpoints=[_ep(), _ep(vendor="Unknown", classified=False),
+    inv = _inv([_repo("o__r", endpoints=[_ep(), _ep(vendor="Unknown", classified=False),
                                       _ep(vendor="Unknown", classified=False)])])
     sc = score([_entry(repo="o/r")], inv, _audit())
     assert sc["repos"][0]["noise"] == 2
@@ -107,7 +107,7 @@ def test_version_rate_is_over_url_versionable_not_all_classified():
     eps = [_ep(version="v1", example="https://api.ebay.com/sell/inventory/v1/x"),
            _ep(version="v1", example="https://svcs.ebay.com/services/selling/v1/y"),
            _ep(version=None, example="https://api.ebay.com/ws/api.dll")]     # no URL version
-    sc = score([_entry(repo="o/r")], _inv([_repo("r", endpoints=eps)]), _audit())
+    sc = score([_entry(repo="o/r")], _inv([_repo("o__r", endpoints=eps)]), _audit())
     r = sc["repos"][0]
     assert r["version_rate"] == 1.0
     assert r["no_url_version"] == 1
@@ -120,7 +120,7 @@ def test_url_versioned_but_not_extracted_counts_as_a_real_miss():
     # the URL HAS /v1/ but the scanner returned version=None -> a genuine extraction miss -> hurts the rate
     eps = [_ep(version="v1", example="https://api.ebay.com/sell/inventory/v1/x"),
            _ep(version=None, example="https://api.ebay.com/buy/browse/v1/item")]  # url has v1, not extracted
-    sc = score([_entry(repo="o/r")], _inv([_repo("r", endpoints=eps)]), _audit())
+    sc = score([_entry(repo="o/r")], _inv([_repo("o__r", endpoints=eps)]), _audit())
     assert sc["repos"][0]["version_rate"] == 0.5                # 1 of 2 versionable extracted
     assert sc["repos"][0]["no_url_version"] == 0
 
@@ -130,7 +130,7 @@ def test_extracted_version_is_always_versionable_even_if_detector_is_stricter():
     # the `or version is not None` clause must still count it as versionable+extracted, never as
     # "no URL version" (denominator must be a superset of the numerator).
     eps = [_ep(version="v2.1", example="https://api.vendor.com/thing/v2.1/x")]
-    sc = score([_entry(repo="o/r")], _inv([_repo("r", endpoints=eps)]), _audit())
+    sc = score([_entry(repo="o/r")], _inv([_repo("o__r", endpoints=eps)]), _audit())
     assert sc["repos"][0]["version_rate"] == 1.0
     assert sc["repos"][0]["no_url_version"] == 0
     assert sc["summary"]["versionable"] == 1
@@ -139,7 +139,7 @@ def test_extracted_version_is_always_versionable_even_if_detector_is_stricter():
 def test_version_rate_none_when_no_versionable_endpoints():
     eps = [_ep(version=None, example="https://api.ebay.com/ws/api.dll"),
            _ep(vendor="Unknown", classified=False, example="https://x.io/y")]
-    sc = score([_entry(repo="o/r")], _inv([_repo("r", endpoints=eps)]), _audit())
+    sc = score([_entry(repo="o/r")], _inv([_repo("o__r", endpoints=eps)]), _audit())
     assert sc["repos"][0]["version_rate"] is None              # nothing URL-versionable, no div-by-zero
     assert sc["repos"][0]["no_url_version"] == 1               # the classified, versionless one
     assert sc["summary"]["version_rate"] is None
@@ -148,7 +148,7 @@ def test_version_rate_none_when_no_versionable_endpoints():
 def test_sunset_hit_matches_host():
     a = _audit([{"kind": "sunset", "domain": "svcs.ebay.com"}])
     sc = score([_entry(sunset_host="svcs.ebay.com")],
-               _inv([_repo("ebay-sdk-php", endpoints=[_ep()])]), a)
+               _inv([_repo("o__ebay-sdk-php", endpoints=[_ep()])]), a)
     r = sc["repos"][0]
     assert r["sunset_expected"] is True and r["sunset_hit"] is True
     assert sc["summary"]["sunset_match"] == {"expected": 1, "hit": 1}
@@ -157,9 +157,9 @@ def test_sunset_hit_matches_host():
 def test_sunset_miss_on_different_host_and_absent_when_unset():
     a = _audit([{"kind": "sunset", "domain": "open.api.ebay.com"}])
     sc = score([_entry(sunset_host="svcs.ebay.com")],
-               _inv([_repo("ebay-sdk-php", endpoints=[_ep()])]), a)
+               _inv([_repo("o__ebay-sdk-php", endpoints=[_ep()])]), a)
     assert sc["repos"][0]["sunset_hit"] is False
-    sc2 = score([_entry()], _inv([_repo("ebay-sdk-php", endpoints=[_ep()])]), _audit())
+    sc2 = score([_entry()], _inv([_repo("o__ebay-sdk-php", endpoints=[_ep()])]), _audit())
     assert sc2["repos"][0]["sunset_expected"] is False and sc2["repos"][0]["sunset_hit"] is None
 
 
@@ -172,5 +172,5 @@ def test_errored_repo_reported_not_crashing():
 
 def test_deterministic():
     entries = [_entry(repo="o/a"), _entry(repo="o/b")]
-    inv = _inv([_repo("a", endpoints=[_ep()]), _repo("b", endpoints=[_ep()])])
+    inv = _inv([_repo("o__a", endpoints=[_ep()]), _repo("o__b", endpoints=[_ep()])])
     assert score(entries, inv, _audit()) == score(entries, inv, _audit())

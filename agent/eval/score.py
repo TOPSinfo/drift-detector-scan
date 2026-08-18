@@ -7,6 +7,8 @@ version-rate and sunset-match are informational.
 from __future__ import annotations
 
 import os
+
+from agent.eval.clone import checkout_name
 import re
 import statistics
 
@@ -16,7 +18,10 @@ def _basename(repo_or_path: str) -> str:
 
 
 def _match_repo(entry, inventory):
-    want = _basename(entry["repo"])
+    # `checkout_name`, not `_basename`: two different orgs can publish the same repo name
+    # (amzn/ vs amzapi/selling-partner-api-sdk), so the checkout carries the org and this
+    # join must use the SAME key clone.py wrote. See clone.checkout_name.
+    want = checkout_name(entry["repo"])
     for r in inventory.get("repos", []):
         if _basename(r.get("path", "")) == want:
             return r
