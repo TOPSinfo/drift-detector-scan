@@ -17,7 +17,7 @@
 - **Never invent a date.** Every retirement carries a `source:` URL fetched that session.
 - A green `drift-scan verify` is the **only** correctness claim permitted. Never "it looks right".
 - **Every guard must be shown to FAIL on the bug it targets** before it is trusted (CLAUDE.md principle 5). Reproduce first, then fix.
-- Test suite baseline: `.venv/bin/python -m pytest -q` — currently 505+ tests, ~12s, no network.
+- Test suite baseline: `.venv/bin/python -m pytest -q` — **1321 passed, 3 skipped** at branch point (commit 24beb3d), ~25s, no network. CLAUDE.md still says "505+"; that figure is stale. Any drop from 1321 is a regression.
 - Catalog YAML carries **load-bearing comments**; each entry records its provenance.
 
 ---

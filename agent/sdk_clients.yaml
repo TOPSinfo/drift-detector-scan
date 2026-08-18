@@ -52,3 +52,10 @@
 - { package: composer/openai-php/laravel,        vendor: OpenAI,        host: api.openai.com }
 - { package: npm/openai,                          vendor: OpenAI,        host: api.openai.com }
 - { package: "npm/@anthropic-ai/sdk",            vendor: Anthropic,     host: api.anthropic.com }
+
+# ── Marketplace / Amazon SP-API (Go) ─────────────────────────────────────────────────────
+# A consumer repo requires one of these in go.mod but holds NO SP-API path literals of its
+# own — the paths live in the module cache, which is not scanned. The dependency IS the
+# evidence, exactly as for composer/twilio/sdk. This is the complement of the shipped
+# `spapi-operation-paths` idiom, which needs the paths to be in-tree.
+- { package: go/github.com/amzapi/selling-partner-api-sdk, vendor: Amazon SP-API, host: sellingpartnerapi-na.amazon.com }

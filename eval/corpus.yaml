@@ -333,3 +333,44 @@
   expect: { vendor: Twilio, sdk_keywords: [twilio] }
   holdout: true
   fetched_at: "2026-08-15"
+
+# ── Amazon SP-API across the languages the corpus never covered ──────────────────────────
+# Added 2026-08-18. Until now the corpus was 34 repos of which only twilio-python and
+# twilio-node were non-PHP, so the egress sinks shipped for all eight languages had NO
+# end-to-end regression guard. These four also pin the shipped `spapi-operation-paths`
+# family in four languages at once. SHAs read from the pinned corpus clones.
+- repo: amzapi/selling-partner-api-sdk
+  url: https://github.com/amzapi/selling-partner-api-sdk.git
+  sha: "2d9166b756fd114f17286169e5b0f6c2b00db379"
+  license: MIT
+  category: sp
+  expect: { vendor: Amazon SP-API, sdk_keywords: [selling-partner] }
+  holdout: false
+  fetched_at: "2026-08-18"
+
+- repo: amzn/selling-partner-api-samples
+  url: https://github.com/amzn/selling-partner-api-samples.git
+  sha: "8ac80bca2fe29f467d442be45f5f39ca12dfc7a6"
+  license: MIT-0
+  category: sp
+  expect: { vendor: Amazon SP-API, sdk_keywords: [selling-partner] }
+  holdout: false
+  fetched_at: "2026-08-18"
+
+- repo: lineofflight/peddler
+  url: https://github.com/lineofflight/peddler.git
+  sha: "4e4d872d349e9ec21facb89f8df92b1c9cc78b2b"
+  license: MIT
+  category: sp
+  expect: { vendor: Amazon SP-API, sdk_keywords: [peddler] }
+  holdout: false
+  fetched_at: "2026-08-18"
+
+- repo: abuzuhri/Amazon-SP-API-CSharp
+  url: https://github.com/abuzuhri/Amazon-SP-API-CSharp.git
+  sha: "ba22ba0a98a8cddb8919bfe1d801bbce2c34da74"
+  license: MIT
+  category: sp
+  expect: { vendor: Amazon SP-API, sdk_keywords: [selling-partner] }
+  holdout: false
+  fetched_at: "2026-08-18"

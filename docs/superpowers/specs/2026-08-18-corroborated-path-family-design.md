@@ -201,10 +201,25 @@ Per CLAUDE.md principle 5, each guard must be shown to FAIL on the bug it target
 1. **Residue accounting.** `unattributedPaths` stayed at 122 even with 102 attributed
    (saleweaver: 389 attributed, 1159 residue). Either residue counts raw matches by design or
    this is a reporting bug. It drives the coverage tree, so settle it before shipping.
-2. **Verdict semantics.** The verdict stays `UNKNOWN`/`config-driven-url` despite 102
-   attributions and 6 dated findings. This is probably *correct* — the host genuinely is
-   config-driven — but a repo with 6 dated findings rendering as UNKNOWN deserves a conscious
-   decision rather than an accident.
+2. **Verdict semantics — SETTLED 2026-08-18, CORRECTED same day.** The claim originally
+   recorded here — that a corroborated repo may report `UNKNOWN` / `config-driven-url`
+   while carrying attributed operations and dated findings — is not what the code does.
+   Measured behaviour: `amzapi/selling-partner-api-sdk` reports `verdict=KNOWN` with
+   `reasons=[]` (attributed=102, unattributedPaths=0, sinks=123). The fix to open question 1
+   (residue no longer double-counts a line the path-constant idiom already attributed)
+   drove `unattributedPaths` from 122 to 0 for this repo, and that flipped its class from
+   UNKNOWN to KNOWN.
+   This is correct, and here is why: `agent.lib.shapes.verdict` treats an unresolved sink as
+   evidence of blindness only when `attributed == 0` (`elif n_sinks and attributed == 0 and
+   not attested`). A fully-attributed repo legitimately still shows egress sinks — we cannot
+   link a sink to the specific endpoint it calls without dataflow — so counting those sinks
+   against the verdict would cry wolf on exactly the repos the scanner sees best. Once
+   `unattributedPaths` is 0 and every meaningful language has egress-signal coverage, nothing
+   is left to make the verdict UNKNOWN. Pinned by
+   `test_shapes_verdict_is_known_for_a_corroborated_fully_attributed_repo`, which calls
+   `shapes.verdict` directly and asserts `("KNOWN", [])` — the earlier test named
+   `test_corroborated_repo_with_findings_still_reports_unknown` never called `verdict` at
+   all and could not have failed on this behaviour.
 
 ## Non-goals
 

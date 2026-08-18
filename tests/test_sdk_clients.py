@@ -45,3 +45,13 @@ def test_one_endpoint_per_host_no_double_count():
     repo = {"sdks": [{"techKey": "lib:composer/twilio/sdk", "file": "composer.json"},
                      {"techKey": "lib:npm/twilio", "file": "package.json"}]}
     assert len(sdk_clients.endpoints_for(repo, clients)) == 1   # two packages, one Twilio host
+
+
+def test_go_module_techkeys_join_the_client_map():
+    # Go needed no code: extractors/go.py emits lib:go/<module> and _pkg_key maps it to
+    # go/<module>, which is the map key. This pins that the catalog rows are reachable.
+    clients = sdk_clients.load()
+    assert "go/github.com/amzapi/selling-partner-api-sdk" in clients
+    key = sdk_clients._pkg_key("lib:go/github.com/amzapi/selling-partner-api-sdk")
+    assert key == "go/github.com/amzapi/selling-partner-api-sdk"
+    assert clients[key]["vendor"] == "Amazon SP-API"
