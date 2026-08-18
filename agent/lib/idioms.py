@@ -12,6 +12,7 @@ absorption is unbounded.
 from __future__ import annotations
 
 import os
+import re
 
 import yaml
 
@@ -22,6 +23,11 @@ _DEFAULT = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__
 
 FAMILIES = frozenset({"url-assembly", "url-append", "operation-marker", "path-constant",
                       "client-base"})
+
+# `^/(catalog|fba|orders)/` -> the alternation body, so a corroborated instance's `families`
+# list can be pinned to its own regex. Anchored deliberately: a corroborated family counts
+# FIRST path segments, so the alternation has to be the first segment or the count is a lie.
+_PC_ALTERNATION = re.compile(r"^\^?/\(([^)]+)\)/")
 
 # family -> the rule kind its matches carry, i.e. how endpoints.py will read them
 # How each language spells string concatenation. url-assembly used to emit PHP's `.`
@@ -91,16 +97,46 @@ def _validate(inst: dict, where: str) -> None:
         raise IdiomError(f"{where}: operation-marker needs `marker` (a regex over string "
                          "literals) or `pattern` (an ast-grep pattern)")
     if fam == "path-constant":
-        # Repo-scoped + vendor-bound: a config-injected wrapper has no host literal, so the
-        # vendor cannot be inferred from the repo — it must be NAMED (and reviewed), and the
-        # instance must say which repo it applies to (the paths — `/api/orders` — are generic
-        # and would mis-tag a different marketplace otherwise). pathRegex says which string
-        # literals in that repo are operation paths.
-        for req in ("repo", "vendor", "pathRegex"):
+        # Vendor-bound always: a config-injected wrapper has no host literal, so the vendor
+        # cannot be inferred from the repo — it must be NAMED (and reviewed). pathRegex says
+        # which string literals are operation paths.
+        for req in ("vendor", "pathRegex"):
             if not inst.get(req):
-                raise IdiomError(f"{where}: path-constant needs `{req}` — it is repo-scoped "
-                                 "(generic paths would mis-tag another vendor) and vendor-bound "
+                raise IdiomError(f"{where}: path-constant needs `{req}` — it is vendor-bound "
                                  "(no host literal to infer the vendor from)")
+        # ...and GUARDED, by exactly one of two mechanisms. `repo` scopes the instance to one
+        # repository (right for a client's private wrapper, whose generic /api/orders would
+        # mis-tag another marketplace). `corroboration` scopes it by evidence instead, so the
+        # instance can SHIP: N distinct path families must co-occur in the repo before any of
+        # them attributes. Neither guard = a family that tags every repo's /orders/ with this
+        # vendor. Both = the weaker one is dead weight nobody reviews.
+        has_repo = bool(inst.get("repo"))
+        has_corr = inst.get("corroboration") is not None
+        if has_repo == has_corr:
+            raise IdiomError(f"{where}: path-constant needs exactly one of `repo` "
+                             "(scoped to one repository) or `corroboration` (scoped by "
+                             "co-occurring evidence, so the instance can ship)")
+        if has_corr:
+            corr = inst["corroboration"]
+            if not isinstance(corr, int) or isinstance(corr, bool) or corr < 2:
+                raise IdiomError(f"{where}: `corroboration` must be an integer >= 2 — a "
+                                 "threshold of 1 is a single generic path, i.e. no guard")
+            fams = inst.get("families")
+            if not isinstance(fams, list) or not fams:
+                raise IdiomError(f"{where}: a corroborated path-constant needs `families` — "
+                                 "the list of path segments whose DISTINCT count is compared "
+                                 "against the threshold")
+            # `families` and `pathRegex` state the same set twice. Pin them to each other so
+            # they cannot drift: an edit to one that forgets the other fails the load loudly.
+            m = _PC_ALTERNATION.match(inst["pathRegex"])
+            if not m:
+                raise IdiomError(f"{where}: a corroborated path-constant needs a pathRegex of "
+                                 r"the form `^/(a|b|c)/` — the alternation is what makes "
+                                 "families countable")
+            if set(m.group(1).split("|")) != set(fams):
+                raise IdiomError(f"{where}: `families` must equal the pathRegex alternation "
+                                 f"— regex has {sorted(set(m.group(1).split('|')))}, "
+                                 f"families has {sorted(set(fams))}")
 
 
 def load_idioms(path: str | None = None) -> list:
