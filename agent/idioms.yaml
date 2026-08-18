@@ -178,4 +178,9 @@
              notifications, orders, products, reports, sales, sellers, service, shipping,
              solicitations, uploads]
   pathRegex: ^/(authorization|catalog|fba|feeds|finances|listings|messaging|mfn|notifications|orders|products|reports|sales|sellers|service|shipping|solicitations|uploads)/
+  # SP-API-specific segments. `orders`/`catalog`/`products`/`shipping`/`sales` are ordinary
+  # e-commerce nouns and are deliberately NOT here — a multi-vendor repo carrying three of
+  # them was falsely attributed to SP-API before this field existed. Measured 2026-08-18:
+  # all 10 genuine SP-API SDKs in the corpus carry 2-5 of these; the multi-vendor fixture 0.
+  distinctive: [authorization, fba, listings, mfn, solicitations, uploads]
   evidence: amzapi/selling-partner-api-sdk reports/api.gen.go:492

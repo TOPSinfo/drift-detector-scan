@@ -57,6 +57,7 @@ _CORR_INST = {"id": "spapi-operation-paths", "family": "path-constant",
               "vendor": "Amazon SP-API", "corroboration": 3,
               "families": ["catalog", "fba", "orders"],
               "pathRegex": r"^/(catalog|fba|orders)/",
+              "distinctive": ["fba"],
               "evidence": "amzapi/selling-partner-api-sdk reports/api.gen.go:492"}
 
 
@@ -119,6 +120,22 @@ def test_validate_rejects_a_corroborated_regex_missing_the_leading_anchor():
     # in endpoints.py is provably correct instead of coincidentally correct.
     inst = dict(_CORR_INST, pathRegex=r"/(catalog|fba|orders)/")
     with pytest.raises(idioms.IdiomError, match="alternation"):
+        idioms._validate(inst, "test")
+
+
+def test_validate_rejects_a_corroborated_instance_without_distinctive_families():
+    # THE BUG THIS GUARDS: counting generic nouns alone let a repo wired to eBay, Shopify
+    # and BigCommerce clear a threshold of 3 and be attributed to Amazon SP-API on zero
+    # Amazon code. An author must name which families actually mean THIS vendor.
+    inst = dict(_CORR_INST)
+    inst.pop("distinctive", None)
+    with pytest.raises(idioms.IdiomError, match="distinctive"):
+        idioms._validate(inst, "test")
+
+
+def test_validate_rejects_distinctive_families_not_in_families():
+    inst = dict(_CORR_INST, distinctive=["fba", "notarealfamily"])
+    with pytest.raises(idioms.IdiomError, match="subset"):
         idioms._validate(inst, "test")
 
 

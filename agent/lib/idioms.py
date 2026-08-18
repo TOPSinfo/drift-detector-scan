@@ -145,6 +145,20 @@ def _validate(inst: dict, where: str) -> None:
                 raise IdiomError(f"{where}: `families` must equal the pathRegex alternation "
                                  f"— regex has {sorted(set(m.group(1).split('|')))}, "
                                  f"families has {sorted(set(fams))}")
+            # ...and which of those families are SPECIFIC to this vendor. Counting families
+            # alone is not enough: 10 of SP-API's 18 are ordinary e-commerce nouns, and a
+            # repo wired to eBay (/orders/), Shopify (/products/) and BigCommerce (/catalog/)
+            # cleared a threshold of 3 and was attributed to Amazon SP-API — 4 endpoints,
+            # verdict KNOWN, on zero Amazon code. Reproduced 2026-08-18. At least one
+            # distinctive family must be present before ANY of them attributes.
+            dist = inst.get("distinctive")
+            if not isinstance(dist, list) or not dist:
+                raise IdiomError(f"{where}: a corroborated path-constant needs `distinctive` "
+                                 "— the subset of `families` that is specific to this vendor. "
+                                 "Generic nouns alone let a multi-vendor repo clear the count")
+            if not set(dist) <= set(fams):
+                raise IdiomError(f"{where}: `distinctive` must be a subset of `families` — "
+                                 f"{sorted(set(dist) - set(fams))} is not in `families`")
 
 
 def load_idioms(path: str | None = None) -> list:
