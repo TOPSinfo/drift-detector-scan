@@ -350,7 +350,11 @@ def scan_endpoints(matches: list, repo_root: str, vendors: list, *, max_files: i
         lineno = int(m.get("line", 0) or 0)
         loc = f"{rel}:{lineno}"
         kind = m.get("kind")
-        if kind == "path-literal" and loc not in attributed_locs:
+        # `attributed_pc` too: one line can match both a path-literal rule and a path-constant
+        # rule, and a line the idiom attributed is not unattributed. Counting it twice made
+        # residue immovable — absorbing an idiom left unattributedPaths unchanged, so the gate
+        # could not tell a working instance from a no-op.
+        if kind == "path-literal" and loc not in attributed_locs and loc not in attributed_pc:
             path = classify_url.path_literal_of(
                 m.get("text") or _read_line(repo_root, rel, lineno, line_cache))
             if path:
