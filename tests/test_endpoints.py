@@ -704,3 +704,22 @@ def test_corroborated_instance_needs_no_repo_field(tmp_path):
     out = scan_endpoints(ms, str(tmp_path), [vendorless],
                          idioms=[_SPAPI_INST], repo_id="git@github.com:acme/anything.git")
     assert len([e for e in out["endpoints"] if e["classified"]]) == 3
+
+
+def test_a_path_constant_attribution_removes_the_line_from_path_literal_residue(tmp_path):
+    # REGRESSION (the 102-attributed-but-122-still-residue bug): the same line can match both
+    # a path-literal rule and a path-constant rule. Residue excluded only `attributed_locs`,
+    # so a line the idiom HAD attributed was still reported as unattributed. Residue is the
+    # conscience — it must shrink when an idiom lands, or the absorb gate cannot see progress.
+    loc_text = 'basePath := fmt.Sprintf("/catalog/v0/items")'
+    ms = [_spc("catalog/api.go", 231, loc_text),
+          {"kind": "path-literal", "path": "catalog/api.go", "line": 231, "text": loc_text},
+          _spc("fbaInbound/api.go", 749, 'p := fmt.Sprintf("/fba/inbound/v0/s")'),
+          _spc("ordersV0/api.go", 88, 'p := fmt.Sprintf("/orders/v0/orders")'),
+          _sink("pkg/client.go", 40)]
+    out = scan_endpoints(ms, str(tmp_path), [_SPAPI],
+                         idioms=[_SPAPI_INST], repo_id="git@github.com:acme/anything.git")
+    assert any(e["operation"] == "/catalog/v0/items"
+               for e in out["endpoints"] if e["classified"])
+    assert "catalog/api.go:231" not in {r["loc"]
+                                        for r in out["residue"].get("pathLiterals", [])}
