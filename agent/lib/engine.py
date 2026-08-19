@@ -56,13 +56,40 @@ def _rule_metadata(ruleset_path: str) -> dict:
 _SKIP_DIRS = {"test", "tests", "spec", "__tests__", "vendor", "node_modules",
               ".venv", "dist", "build", "target", "__pycache__"}
 
+# Third-party UI libraries checked into the tree. They ship URLs in their OWN source — CKEditor
+# lists the video providers it can embed, Fancybox lists media hosts, Leaflet lists tile
+# providers — so reading them as first-party code invents integrations. On a real 19-repo scan
+# this produced "this inventory system calls Dailymotion" from public/js/ckeditor/ckeditor.js:5.
+#
+# Matched on the FILENAME, never the directory. That distinction is the whole point: skipping
+# `lib`/`libs`/`plugins`/`vendors` was measured to drop 449 of 2375 call-sites including 219
+# Amazon SP-API, because clients vendor Amazon's SDK into application/libraries/amazon-sp-api/.
+# A vendored SDK is a genuine integration; a vendored widget is not, and only the filename can
+# tell them apart.
+#
+# It FAILS SAFE: an unlisted library stays noisy, which is a far smaller harm than an over-broad
+# entry silently suppressing a real finding. `_looks_generated` is what stops this list going
+# stale — it catches unnamed bundles with no maintenance at all.
+_VENDORED_FILES = ("ckeditor", "summernote", "fancybox", "tinymce", "leaflet", "metronic",
+                   "highchart", "gmaps", "owl.carousel", "jquery.lazy")
+
+
+def _is_vendored_asset(name: str) -> bool:
+    """Is this FILENAME a checked-in third-party library or a build artifact?"""
+    n = name.lower()
+    if ".min." in n or ".bundle." in n:
+        return True
+    return any(lib in n for lib in _VENDORED_FILES)
+
 
 def _is_skipped(file_path: str, repo_path: str) -> bool:
     try:
         rel = Path(file_path).resolve().relative_to(Path(repo_path).resolve())
     except ValueError:
         rel = Path(file_path)
-    return any(part in _SKIP_DIRS for part in rel.parts[:-1])
+    if any(part in _SKIP_DIRS for part in rel.parts[:-1]):
+        return True
+    return _is_vendored_asset(rel.name)
 
 
 def run_scan(repo_path: str, ruleset_path: str, *, engine: str = "ast-grep",
