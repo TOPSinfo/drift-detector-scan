@@ -1,0 +1,66 @@
+# Documentation site — https://topsinfo.github.io/drift-detector-scan/
+#
+# `nav` curates the SIDEBAR only. Every file under docs/ still builds — so existing relative
+# links keep resolving — and, VERIFIED against the generated search_index.json, off-nav pages
+# ARE returned by site search: the tech-debt register, the positioning brief, and everything
+# under docs/superpowers/ are all findable. That is a deliberate, accepted choice (those files
+# are already public in the repo, and tests/test_no_internal_identifiers.py keeps client names
+# out of the tree on every change) — but it is NOT concealment, so do not describe it as such.
+#
+# To genuinely keep a page out of the build and the search index, use MkDocs' `exclude_docs:`
+# rather than merely leaving it out of `nav`. Omitting it from `nav` hides it from the sidebar
+# and nothing else.
+site_name: Drift Detector
+site_description: Know before it breaks — find dying third-party API integrations down to file:line.
+site_url: https://topsinfo.github.io/drift-detector-scan/
+repo_url: https://github.com/TOPSinfo/drift-detector-scan
+repo_name: TOPSinfo/drift-detector-scan
+edit_uri: edit/master/docs/
+
+theme:
+  name: material
+  palette:
+    # ember-crimson is the product accent (see CLAUDE.md § Branding)
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      primary: deep orange
+      accent: deep orange
+      toggle: { icon: material/weather-night, name: Switch to dark mode }
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      primary: deep orange
+      accent: deep orange
+      toggle: { icon: material/weather-sunny, name: Switch to light mode }
+  features:
+    - navigation.sections
+    - navigation.top
+    - content.code.copy
+    - search.highlight
+
+markdown_extensions:
+  - admonition
+  - attr_list
+  - tables
+  - toc: { permalink: true }
+  - pymdownx.superfences
+  - pymdownx.details
+
+nav:
+  - Home: index.md
+  - Use it:
+      - Claude Code plugin: PLUGIN.md
+      - Teaching it a new shape: drift-absorb.md
+  - Trust it:
+      - Evaluating the scanner: EVAL.md
+  - Where it's going:
+      - Roadmap: ROADMAP.md
+
+# A page that exists but is not in `nav` is built and linkable, and MkDocs would otherwise warn
+# on every one of them. Internal docs are intentionally off-nav, so silence that specific warning
+# rather than dropping the files (which would break inbound links from the repo and CHANGELOG).
+validation:
+  nav:
+    omitted_files: ignore
+  links:
+    absolute_links: ignore
+    unrecognized_links: ignore
