@@ -32,10 +32,17 @@ def read(state_dir: str, repo: str | None = None) -> list:
     A missing trail is an empty list, not an error — asking about a repo nobody has absorbed is
     a normal question. A corrupt LINE is skipped rather than fatal: this is a hand-editable
     debugging file, and losing one row must not stop the rest from rendering.
+
+    `errors="replace"` on the open: a process killed mid-write can truncate a multi-byte
+    character, leaving a line that is not valid UTF-8 at all. `for line in fh` decodes as it
+    iterates — before the per-line json.loads try below — and a raw UnicodeDecodeError there is
+    not an OSError, so it would slip past the `except OSError` and crash the caller. Replacing
+    undecodable bytes with U+FFFD keeps decoding infallible; the mangled line then simply fails
+    json.loads and is skipped by the existing per-line handling, same as any other corrupt line.
     """
     rows = []
     try:
-        with open(_path(state_dir), encoding="utf-8") as fh:
+        with open(_path(state_dir), encoding="utf-8", errors="replace") as fh:
             for line in fh:
                 line = line.strip()
                 if not line:
@@ -58,6 +65,13 @@ def append(state_dir: str, *, repo: str, staged: list, delta: dict, now: str | N
     and nothing else has to hold state. `now` is written exactly as given (None stays None):
     inventing a wall-clock timestamp here would make the file unreproducible and break the
     determinism rule the rest of the pipeline keeps.
+
+    KNOWN LIMITATION, accepted rather than fixed: counting rows for the attempt number means
+    numbering is not stable across a later `forget` prune (attempt 3 can become attempt 1 once
+    earlier rows are gone), and two concurrent appenders can race and both compute the same
+    count, colliding on one attempt number. This is a single-agent debugging file, not a
+    multi-writer ledger — no locking is added here on purpose; that would be over-engineering
+    for what this file is for.
     """
     try:
         attempt = len(read(state_dir, repo=repo)) + 1
