@@ -33,7 +33,7 @@ the idea is rejected on the merits.** Do not reintroduce it.
 **Licensing.** Tracker Radar is **CC BY-NC-SA 4.0**, not CC-BY-SA (verified from the repo's own
 LICENSE: `Copyright 2020 Duck Duck Go, Inc. / Licensed under the CC BY-NC-SA 4.0 license`,
 https://github.com/duckduckgo/tracker-radar). The **NonCommercial** term bars our use — Drift
-Detector is a commercial Tops Infosolutions tool published on PyPI and run on client
+Detector is a commercial Tops Infosolutions tool run on client
 engagements, and DDG's README explicitly directs commercial users to negotiate a separate
 licence. **ShareAlike** is an independent conflict: it would force that file to be CC BY-NC-SA
 inside an MIT repo.
