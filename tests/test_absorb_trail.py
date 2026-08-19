@@ -90,3 +90,39 @@ def test_the_written_line_carries_the_gate_delta_verbatim(tmp_path):
     row = absorb_trail.read(str(tmp_path))[0]
     assert row["delta"] == d, "the trail must record the gate's own numbers, not a re-derivation"
     assert row["staged"] == ["i/1", "i/2"]
+
+
+def test_check_without_trail_writes_nothing(tmp_path, monkeypatch):
+    """PURITY. `absorb --check` is documented as a dry run that writes nothing in TWO places —
+    commands/drift-absorb.md and agent/absorb.py's docstring. The trail is opt-in precisely so
+    that stays true; this pins it against a future change that makes writing the default."""
+    from agent import cli
+    calls = []
+    monkeypatch.setattr(absorb_trail, "append", lambda *a, **k: calls.append(k) or True)
+    args = _FakeArgs(state=str(tmp_path), trail=False)
+    cli._maybe_record_trail(args, repo="r", staged=[], delta=_delta())
+    assert calls == []
+    assert not os.path.exists(os.path.join(str(tmp_path), absorb_trail.FILENAME))
+
+
+def test_check_with_trail_records_one_row(tmp_path):
+    from agent import cli
+    args = _FakeArgs(state=str(tmp_path), trail=True, now="2026-08-19")
+    cli._maybe_record_trail(args, repo="acme/api", staged=["i/1"], delta=_delta())
+    rows = absorb_trail.read(str(tmp_path))
+    assert len(rows) == 1 and rows[0]["repo"] == "acme/api" and rows[0]["attempt"] == 1
+
+
+def test_trail_without_state_is_a_warning_not_a_crash(tmp_path, capsys):
+    """--trail needs somewhere to write. Saying so beats writing nowhere silently."""
+    from agent import cli
+    args = _FakeArgs(state=None, trail=True)
+    cli._maybe_record_trail(args, repo="r", staged=[], delta=_delta())
+    assert "trail" in capsys.readouterr().err.lower()
+
+
+class _FakeArgs:
+    def __init__(self, **kw):
+        self.state = kw.get("state")
+        self.trail = kw.get("trail", False)
+        self.now = kw.get("now")
