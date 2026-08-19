@@ -939,6 +939,26 @@ def _cmd_recommend(args) -> int:
     return 0
 
 
+def _maybe_record_trail(args, *, repo: str, staged: list, delta: dict) -> None:
+    """Record this --check attempt to the absorb trail, if --trail was asked for.
+
+    Opt-in on purpose: `absorb --check` is documented as writing nothing (commands/
+    drift-absorb.md and absorb.py's docstring both say so), and quietly falsifying that is the
+    drift this project spends its effort preventing. Failures here are warnings, never errors —
+    the gate's verdict is the product and a debugging by-product may not break it.
+    """
+    if not getattr(args, "trail", False):
+        return
+    if not getattr(args, "state", None):
+        print("absorb: --trail needs --state; no trail written", file=sys.stderr)
+        return
+    from agent.lib import absorb_trail
+    if not absorb_trail.append(args.state, repo=repo, staged=staged, delta=delta,
+                               now=getattr(args, "now", None)):
+        print("absorb: could not write the trail (continuing — the verdict is unaffected)",
+              file=sys.stderr)
+
+
 def _cmd_absorb(args) -> int:
     """Gate a staged proposal into the tool. Deterministic, zero tokens.
 
@@ -1010,6 +1030,12 @@ def _cmd_absorb(args) -> int:
         print("DELTA " + _json.dumps({k: m[k] for k in
               ("attributedBefore", "attributedAfter", "residueBefore", "residueAfter",
                "claims", "invented", "unclaimed", "problems")}, sort_keys=True))
+        _maybe_record_trail(args, repo=repo_ident,
+                            staged=[i.get("id") for i in (staged_idioms or [])],
+                            delta={k: m[k] for k in
+                                   ("attributedBefore", "attributedAfter", "residueBefore",
+                                    "residueAfter", "claims", "invented", "unclaimed",
+                                    "problems")})
         return 3 if m["problems"] else 0
 
     problems = m["problems"]
@@ -1580,6 +1606,10 @@ def main(argv: list[str]) -> int:
     pab.add_argument("--check", action="store_true",
                      help="dry run: report the attributed-call delta + gate verdict, write "
                           "nothing (the iteration instrument for an absorbing agent)")
+    pab.add_argument("--trail", action="store_true",
+                     help="with --check: append this attempt to <state>/absorb-trail.jsonl so "
+                          "the climb can be reviewed later (a debug by-product; --check "
+                          "without it still writes nothing)")
     pab.set_defaults(func=_cmd_absorb)
 
     prc = sub.add_parser("recommend")     # which scan profile should this folder run?
