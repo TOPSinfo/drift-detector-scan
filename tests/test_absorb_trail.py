@@ -163,6 +163,63 @@ def test_forget_of_an_unknown_repo_removes_nothing(tmp_path):
     assert len(absorb_trail.read(str(tmp_path))) == 1
 
 
+def test_render_escapes_a_pipe_in_a_problem_string(tmp_path):
+    # THE BUG THIS GUARDS: absorb.py builds problem strings with `!r` over hand-edited YAML
+    # scalars, which can contain a literal `|`. Dropped straight into a Markdown table cell, that
+    # `|` opens a phantom column and misaligns the row.
+    #
+    # Parsed with the same unescaped-pipe splitter `verify.py` uses on drift.md (`_CELL_SPLIT`,
+    # `(?<!\\)\|`) rather than a naive `str.split("|")` — a correctly-escaped `\|` is still two
+    # characters, so a naive split would still (wrongly) treat it as a column break.
+    from agent.lib.verify import _parse_md_tables
+
+    absorb_trail.append(str(tmp_path), repo="acme/api", staged=["i/1"],
+                        delta=_delta(attributed_after=0, problems=["bad token: 'a|b'"]),
+                        now="2026-08-19")
+    out = absorb_trail.render(absorb_trail.read(str(tmp_path)))
+    tables = _parse_md_tables(out)
+    assert len(tables) == 1
+    row = tables[0]["rows"][0]
+    assert len(row) == len(tables[0]["header"]) == 6, \
+        "an unescaped '|' in the problem string added a phantom column"
+    assert row[-1] == "reject — bad token: 'a\\|b'"
+
+
+def test_forget_returns_negative_one_instead_of_raising_when_it_cannot_write(tmp_path):
+    # THE BUG THIS GUARDS: `append` and `read` both swallow OSError and degrade gracefully;
+    # `forget` did not, so `absorb-report --forget` on an unwritable trail died with a raw
+    # PermissionError traceback instead of reporting cleanly like the rest of this module.
+    #
+    # The trail file itself is made read-only (blocks the old `open(path, "w")` truncate) AND its
+    # directory loses write permission (blocks creating the atomic-rewrite's temp file) — a
+    # read-only mount would look like this. Either alone only fails one of the two
+    # implementations; together they pin the target behaviour regardless of which write strategy
+    # is in use.
+    absorb_trail.append(str(tmp_path), repo="drop/me", staged=[], delta=_delta(), now="2026-08-19")
+    trail_file = os.path.join(str(tmp_path), absorb_trail.FILENAME)
+    os.chmod(trail_file, 0o444)
+    os.chmod(str(tmp_path), 0o555)
+    try:
+        assert absorb_trail.forget(str(tmp_path), "drop/me") == -1
+    finally:
+        os.chmod(str(tmp_path), 0o755)  # restore so pytest can clean up tmp_path
+        os.chmod(trail_file, 0o644)
+
+
+def test_forget_leaves_kept_rows_intact_on_success(tmp_path):
+    # Guards the atomic rewrite (temp file + os.replace): a crash mid-write of a plain "w" must
+    # not lose rows for repos that should have been KEPT.
+    absorb_trail.append(str(tmp_path), repo="keep/me", staged=["i/1"], delta=_delta(),
+                        now="2026-08-19")
+    absorb_trail.append(str(tmp_path), repo="keep/me", staged=["i/1", "i/2"], delta=_delta(),
+                        now="2026-08-19")
+    absorb_trail.append(str(tmp_path), repo="drop/me", staged=[], delta=_delta(), now="2026-08-19")
+    assert absorb_trail.forget(str(tmp_path), "drop/me") == 1
+    remaining = absorb_trail.read(str(tmp_path))
+    assert [r["repo"] for r in remaining] == ["keep/me", "keep/me"]
+    assert [r["attempt"] for r in remaining] == [1, 2]
+
+
 def test_absorb_report_command_wires_read_render_stdout(tmp_path, capsys):
     # The tests above exercise `render` in isolation, against hand-built row lists. This one
     # drives the actual `absorb-report` CLI command — args -> read -> render -> stdout — so a
