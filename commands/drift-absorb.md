@@ -68,12 +68,12 @@ Write only to `<folder>/.drift-detector/absorb-staged/`:
 "$SCAN" precedents --state "$D" --repo "$REPO"   # prior absorptions in the same bucket (language + reasons)
 ```
 
-This is the assimilation. Iterate with **`absorb --check`** — a dry run that reports the attributed-call delta and writes nothing:
+This is the assimilation. Iterate with **`absorb --check`** — a dry run that reports the attributed-call delta and touches neither the catalog nor the report (`--trail` appends this attempt to `<state>/absorb-trail.jsonl` so the climb can be reviewed afterwards; without it, nothing is written at all):
 
 ```bash
 : "${DRIFT_OPS_DIR:?clone the drift-ops persistence repo and export DRIFT_OPS_DIR=<its path>}"
 DRIFT_CATALOG_DIR="$DRIFT_OPS_DIR/catalog" \
-  "$SCAN" absorb --check --staged "$D/absorb-staged" --repo "$REPO" --state "$D" --now "$(date +%F)"
+  "$SCAN" absorb --check --trail --staged "$D/absorb-staged" --repo "$REPO" --state "$D" --now "$(date +%F)"
 ```
 
 It prints `attributed before→after`, `residue before→after`, `claims met/missing`, the gate verdict, and a `DELTA {json}` line you can parse. Then:
@@ -114,6 +114,16 @@ git push -u origin "$BR"
 glab mr create --fill --yes 2>/dev/null || echo "push done — open the MR for $BR in drift-ops"
 ```
 
+Render the climb into the hand-back — the attempt-by-attempt evidence (attributed/residue per
+try, gate verdicts) behind the headline number below:
+
+```bash
+"$SCAN" absorb-report --state "$D" --repo "$REPO"
+```
+
+Fold that output into the MR description or the flag-issue comment — it is the receipts, not
+just the claim.
+
 The MR description must carry, in this order:
 
 - **The headline the fleet cares about:** `before → after attributed` (e.g. "4 → 39 traced call-sites; 105 → 5 residue"). This is the value, stated plainly.
@@ -122,6 +132,17 @@ The MR description must carry, in this order:
 - What remains and why (the honest tail).
 
 Then **comment the summary + MR link on the flag issue, and ask the human in the terminal to review and merge** — you never merge. The next fleet scan sees the repo KNOWN and closes the flag on its own; the flag's *actual* close is the scan's job (the deterministic truth), not the MR's say-so.
+
+**Once the human has merged that MR, prune the trail:**
+
+```bash
+"$SCAN" absorb-report --state "$D" --forget "$REPO"
+```
+
+This matters, not just tidies: the trail's rows carry the CLIENT's own `file:line` locations,
+and `$D` is that client's own checkout — not this repo, so our `.gitignore` gives it no
+protection. The merged catalog entry is the artifact worth keeping; the attempts that produced
+it are not, once it has landed.
 
 ## Guardrails
 

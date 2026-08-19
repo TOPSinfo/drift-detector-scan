@@ -939,6 +939,75 @@ def _cmd_recommend(args) -> int:
     return 0
 
 
+def _cmd_absorb_report(args) -> int:
+    """Render the absorb trail — the climb across attempts — or prune one repo's rows.
+
+    A debug projection, deliberately outside the certified path: it reads only the trail, and
+    `verify` never reads it back. Exit 0 always for the read path; there is no failure state in
+    reading a record. `--forget` is the one path that writes, so it is the one path that can
+    fail — `forget()` returns -1 (never raises) if the trail could not be rewritten, and that
+    must surface as a clear message and non-zero exit, not a silent "removed -1 attempt(s)" that
+    reads as success.
+    """
+    from agent.lib import absorb_trail
+
+    # BUG THIS GUARDS AGAINST: the writer (`_cmd_absorb`, below) keys trail rows on
+    # `scan_util.repo_scope_id(args.repo)` — the git REMOTE url, falling back to the local path
+    # only when there's no remote. This command used to match `--repo` / `--forget` against the
+    # raw string verbatim. The documented loop (commands/drift-absorb.md) passes a FOLDER PATH
+    # as $REPO, so rows stored under "git@host:acme/api.git" were invisible to
+    # `--repo /home/me/acme-api`, and `--forget /home/me/acme-api` printed "removed 0
+    # attempt(s)" and exited 0 while every row stayed on disk — a client-data deletion control
+    # silently failing. Normalise here: if the incoming value names an existing directory, run
+    # it through the SAME repo_scope_id() the writer used, so it resolves to the same key. A
+    # value that is not a directory (already a scope id, or a repo that no longer exists on
+    # disk) is used as given.
+    def _resolve(value):
+        if value and os.path.isdir(value):
+            return scan_util.repo_scope_id(value)
+        return value
+
+    if getattr(args, "forget", None):
+        forget_id = _resolve(args.forget)
+        n = absorb_trail.forget(args.state, forget_id)
+        if n < 0:
+            print(f"absorb-report: could not rewrite the trail to forget {forget_id} "
+                  "(check the trail file/directory is writable)", file=sys.stderr)
+            return 1
+        if n == 0:
+            # Make a no-op prune impossible to mistake for a successful one: list what IS in
+            # the trail so an id mismatch (the bug above) is visible instead of reading as a
+            # quiet success.
+            present = sorted({r.get("repo") for r in absorb_trail.read(args.state)})
+            print(f"absorb-report: removed nothing — no attempts recorded for {forget_id}. "
+                  f"repo id(s) in the trail: {', '.join(present) if present else '(none)'}")
+            return 0
+        print(f"absorb-report: removed {n} attempt(s) for {forget_id}")
+        return 0
+    print(absorb_trail.render(absorb_trail.read(args.state, repo=_resolve(getattr(args, "repo", None)))))
+    return 0
+
+
+def _maybe_record_trail(args, *, repo: str, staged: list, delta: dict) -> None:
+    """Record this --check attempt to the absorb trail, if --trail was asked for.
+
+    Opt-in on purpose: `absorb --check` is documented as writing nothing (commands/
+    drift-absorb.md and absorb.py's docstring both say so), and quietly falsifying that is the
+    drift this project spends its effort preventing. Failures here are warnings, never errors —
+    the gate's verdict is the product and a debugging by-product may not break it.
+    """
+    if not getattr(args, "trail", False):
+        return
+    if not getattr(args, "state", None):
+        print("absorb: --trail needs --state; no trail written", file=sys.stderr)
+        return
+    from agent.lib import absorb_trail
+    if not absorb_trail.append(args.state, repo=repo, staged=staged, delta=delta,
+                               now=getattr(args, "now", None)):
+        print("absorb: could not write the trail (continuing — the verdict is unaffected)",
+              file=sys.stderr)
+
+
 def _cmd_absorb(args) -> int:
     """Gate a staged proposal into the tool. Deterministic, zero tokens.
 
@@ -1010,6 +1079,12 @@ def _cmd_absorb(args) -> int:
         print("DELTA " + _json.dumps({k: m[k] for k in
               ("attributedBefore", "attributedAfter", "residueBefore", "residueAfter",
                "claims", "invented", "unclaimed", "problems")}, sort_keys=True))
+        _maybe_record_trail(args, repo=repo_ident,
+                            staged=[i.get("id") for i in (staged_idioms or [])],
+                            delta={k: m[k] for k in
+                                   ("attributedBefore", "attributedAfter", "residueBefore",
+                                    "residueAfter", "claims", "invented", "unclaimed",
+                                    "problems")})
         return 3 if m["problems"] else 0
 
     problems = m["problems"]
@@ -1580,7 +1655,17 @@ def main(argv: list[str]) -> int:
     pab.add_argument("--check", action="store_true",
                      help="dry run: report the attributed-call delta + gate verdict, write "
                           "nothing (the iteration instrument for an absorbing agent)")
+    pab.add_argument("--trail", action="store_true",
+                     help="with --check: append this attempt to <state>/absorb-trail.jsonl so "
+                          "the climb can be reviewed later (a debug by-product; --check "
+                          "without it still writes nothing)")
     pab.set_defaults(func=_cmd_absorb)
+
+    par2 = sub.add_parser("absorb-report")   # the absorb trail -> Markdown (debug projection)
+    par2.add_argument("--state", required=True)
+    par2.add_argument("--repo", help="only this repo's attempts")
+    par2.add_argument("--forget", help="drop this repo's attempts (do it once its idiom merges)")
+    par2.set_defaults(func=_cmd_absorb_report)
 
     prc = sub.add_parser("recommend")     # which scan profile should this folder run?
     prc.add_argument("--root", required=True)
