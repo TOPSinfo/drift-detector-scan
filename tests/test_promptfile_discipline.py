@@ -8,7 +8,7 @@ rules it still states; these pin the rules whose removal would quietly break the
 
 `/drift-detector`'s discipline is guarded in test_runner.py; `/drift-onboard`'s in test_onboard.py.
 This file covers `/drift-research` — the loop most exposed to "just make up a plausible date," which
-had no guard.
+had no guard — and `/drift-absorb`, whose loop must keep recording its trail.
 """
 from pathlib import Path
 
@@ -57,3 +57,11 @@ def test_research_hands_evidence_to_the_gate_not_the_catalog():
     assert "research --apply" in t
     assert "absorb" in t
     assert "by: ai-research" in t                  # AI 'current' is a weaker, TTL'd provenance tier
+
+
+def test_absorb_loop_records_its_trail():
+    """The loop must pass --trail, or the record silently does not happen — the same
+    silent-skip failure the client-identifier guard had. The flag is opt-in to keep
+    `absorb --check` pure; this is what stops opt-in becoming never-on."""
+    t = (_CMD / "drift-absorb.md").read_text()
+    assert "--trail" in t, "the absorb loop must pass --trail so the climb is recorded"

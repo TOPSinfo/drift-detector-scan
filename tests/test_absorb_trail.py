@@ -239,3 +239,25 @@ def test_absorb_report_command_wires_read_render_stdout(tmp_path, capsys):
     out = capsys.readouterr().out
     assert "acme/api" in out
     assert "0 → 0" in out and "0 → 44" in out
+
+
+import subprocess
+
+
+def test_the_trail_filename_is_gitignored(tmp_path):
+    """It carries client file:line data and repo identities. Being gitignored is the mechanism
+    that keeps it out of a public tree; a comment asking people to be careful is not."""
+    root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    out = subprocess.run(["git", "check-ignore", "-q", absorb_trail.FILENAME],
+                         cwd=root).returncode
+    assert out == 0, f"{absorb_trail.FILENAME} must be gitignored — it is client data"
+
+
+def test_verify_does_not_read_the_trail():
+    """BOUNDARY: a debugging by-product must never become something the correctness claim rests
+    on. If verify learned to read the trail, deleting a debug file could change whether a report
+    is judged correct."""
+    root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    with open(os.path.join(root, "agent", "lib", "verify.py"), encoding="utf-8") as fh:
+        src = fh.read()
+    assert "absorb_trail" not in src and absorb_trail.FILENAME not in src
