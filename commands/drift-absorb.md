@@ -68,12 +68,12 @@ Write only to `<folder>/.drift-detector/absorb-staged/`:
 "$SCAN" precedents --state "$D" --repo "$REPO"   # prior absorptions in the same bucket (language + reasons)
 ```
 
-This is the assimilation. Iterate with **`absorb --check`** — a dry run that reports the attributed-call delta and writes nothing:
+This is the assimilation. Iterate with **`absorb --check`** — a dry run that reports the attributed-call delta and touches neither the catalog nor the report (`--trail` appends this attempt to `<state>/absorb-trail.jsonl` so the climb can be reviewed afterwards; without it, nothing is written at all):
 
 ```bash
 : "${DRIFT_OPS_DIR:?clone the drift-ops persistence repo and export DRIFT_OPS_DIR=<its path>}"
 DRIFT_CATALOG_DIR="$DRIFT_OPS_DIR/catalog" \
-  "$SCAN" absorb --check --staged "$D/absorb-staged" --repo "$REPO" --state "$D" --now "$(date +%F)"
+  "$SCAN" absorb --check --trail --staged "$D/absorb-staged" --repo "$REPO" --state "$D" --now "$(date +%F)"
 ```
 
 It prints `attributed before→after`, `residue before→after`, `claims met/missing`, the gate verdict, and a `DELTA {json}` line you can parse. Then:
