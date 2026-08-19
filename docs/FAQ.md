@@ -185,14 +185,6 @@ Split in two on purpose.
 **Code** — `agent/lib/vendor_rules.py` compiles those into the parser's rule pack. Nothing is
 hand-written per repository.
 
-## What makes this hard for someone else to copy? { .faq }
-
-The catalog, and the discipline around it. CVE data is free; "vendor X retires operation Y on
-date Z" is not published anywhere. Add to that attribution down to `file:line` across eight
-languages, and gates that let the catalog grow fast **without** letting a wrong date in.
-
-An entry count is not coverage — a vendor with entries but no attestation is `UNAUDITED`, and the
-tool says so rather than counting it as done.
 
 ## How do I know the report's numbers are right? { .faq }
 
@@ -219,23 +211,8 @@ every run's state is committed, so the trail exists in git history. What does **
 is a rendered trend view: the dashboard shows the latest run only. Week-over-week burn-down is
 the first item on the [roadmap](ROADMAP.md).
 
-## Where is the test corpus? { .faq }
+---
 
-`eval/corpus.yaml` — 38 real public repositories pinned at exact SHAs, each with the vendor it
-must detect. The clones are **never committed**; they are fetched at eval time. Run it with
-`drift-eval run <category>`.
-
-## What is each directory for? { .faq }
-
-| path | what lives there |
-|---|---|
-| `agent/` | the runtime — CLI, pipeline, and the reviewed catalogs |
-| `agent/lib/` | the pieces: scanning, classification, idioms, delivery, rendering |
-| `bin/drift-scan` | the self-provisioning engine the plugin calls |
-| `commands/` | the plugin promptfiles — what Claude actually executes |
-| `templates/ci/` | CI templates copied into **your** repo by onboarding |
-| `deploy/drift-ops/` | template for the private state/config repo a fleet needs |
-| `eval/` | the **scanner** corpus — pinned repos + recall gate |
-| `evals/` | the **promptfile** corpus — a different thing, easily confused |
-| `docs/` | this site, plus the `drift.json` schema |
-| `tests/` | 1349 tests; each comment pins a real shipped bug |
+**Building or maintaining the tool rather than running it?** The guards, invariants and
+doctrine live in [How it stays honest](how-it-stays-honest.md) — the verify contract, the
+absorb gate, the attestation model, and where it is deliberately blind.

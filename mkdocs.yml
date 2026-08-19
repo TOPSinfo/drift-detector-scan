@@ -60,8 +60,9 @@ nav:
   - FAQ: FAQ.md
   - Use it:
       - Claude Code plugin: PLUGIN.md
+  - Build it:
+      - How it stays honest: how-it-stays-honest.md
       - Teaching it a new shape: drift-absorb.md
-  - Trust it:
       - Evaluating the scanner: EVAL.md
   - Where it's going:
       - Roadmap: ROADMAP.md
