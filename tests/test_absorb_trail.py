@@ -67,6 +67,19 @@ def test_read_ignores_a_corrupt_line_rather_than_dying(tmp_path):
     assert len(absorb_trail.read(str(tmp_path))) == 1
 
 
+def test_read_survives_a_line_with_invalid_utf8_bytes(tmp_path):
+    # A process killed mid-write can truncate a multi-byte character, leaving a line that is not
+    # valid UTF-8 at all. `for line in fh` decodes as it iterates, so that failure happens BEFORE
+    # the per-line json.loads try — a UnicodeDecodeError, which is not an OSError and not caught
+    # by read's outer `except OSError`. Tasks 3 and 4 call `read` directly (not through `append`,
+    # which happens to catch ValueError and mask this), so this would crash the renderer on
+    # exactly the corruption this module claims to tolerate.
+    absorb_trail.append(str(tmp_path), repo="r", staged=[], delta=_delta(), now="2026-08-19")
+    with open(os.path.join(str(tmp_path), absorb_trail.FILENAME), "ab") as fh:
+        fh.write(b"\xff\xfe not utf-8\n")
+    assert len(absorb_trail.read(str(tmp_path))) == 1
+
+
 def test_read_of_a_missing_trail_is_empty_not_an_error(tmp_path):
     assert absorb_trail.read(str(tmp_path)) == []
 
