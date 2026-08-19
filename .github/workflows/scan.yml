@@ -19,8 +19,9 @@
 name: drift-scan
 
 on:
-  schedule:
-    - cron: "0 7 * * 0"        # Sundays 07:00 UTC
+  # NO schedule. The real fleet scan runs on the customer's own CI (see templates/ci/), because
+  # GitHub-hosted runners cannot reach a private GitLab fleet — this fired weekly on the product
+  # repo and failed in ~10s with the variables unset. Manual only: it is a demo/reference run.
   workflow_dispatch: {}         # manual "Run workflow"
 
 permissions:
@@ -216,37 +217,3 @@ jobs:
   # is "true". A public Pages site exposes the vuln posture (repo names, CVEs, versions) to
   # the world — fine for demo data, NOT for real client repos. Before any real scan: set
   # PUBLISH_PAGES=false (or unset it), and migrate to PRIVATE GitLab Pages on drift-ops.
-  publish-pages:
-    needs: scan
-    if: vars.PUBLISH_PAGES == 'true'
-    runs-on: ubuntu-latest
-    permissions:
-      contents: read
-      pages: write            # deploys to GitHub Pages, not to this repo's contents
-      id-token: write         # OIDC for the Pages deployment
-    environment:
-      name: github-pages
-      url: ${{ steps.deploy.outputs.page_url }}
-    env:
-      GITLAB_HOST: ${{ vars.GITLAB_HOST }}
-      DRIFT_OPS_PATH: ${{ vars.DRIFT_OPS_PATH }}
-    steps:
-      - name: Assemble the site from the persisted Cockpit
-        env:
-          GITLAB_TOKEN: ${{ secrets.GITLAB_TOKEN }}
-        run: |
-          : "${GITLAB_HOST:?set repo variable GITLAB_HOST}" ; : "${DRIFT_OPS_PATH:?set repo variable DRIFT_OPS_PATH}"
-          git clone --depth 1 "https://oauth2:${GITLAB_TOKEN}@${GITLAB_HOST}/${DRIFT_OPS_PATH}.git" ops
-          [ -f ops/state/dashboard.html ] || { echo "::error::no dashboard in drift-ops — did the scan run?"; exit 1; }
-          mkdir -p _site
-          cp ops/state/dashboard.html _site/index.html          # the Cockpit is the landing page
-          for f in drift.json drift.md sbom.json sbom.spdx.json drift.sarif.json; do
-            [ -f "ops/state/$f" ] && cp "ops/state/$f" _site/ || true    # standard formats, downloadable
-          done
-      - name: Upload Pages artifact
-        uses: actions/upload-pages-artifact@56afc609e74202658d3ffba0e8f6dda462b719fa   # v3
-        with:
-          path: _site
-      - name: Deploy to GitHub Pages
-        id: deploy
-        uses: actions/deploy-pages@d6db90164ac5ed86f2b6aed7e0febac5b3c0c03e            # v4

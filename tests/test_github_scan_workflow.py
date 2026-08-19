@@ -16,8 +16,16 @@ def test_workflow_is_valid_yaml():
     yaml.safe_load(WF_TEXT)          # must parse (note: YAML 1.1 turns the `on:` key into True)
 
 
-def test_runs_scheduled_and_on_demand():
-    assert "workflow_dispatch" in WF_TEXT and "schedule" in WF_TEXT
+def test_is_manual_only_never_scheduled():
+    """The product repo must NOT run a fleet scan on a schedule. The real scan runs on the
+    CUSTOMER's CI (templates/ci/), because a GitHub-hosted runner cannot reach a private GitLab
+    fleet — this workflow fired every Sunday and failed in ~10s with the variables unset. It is
+    a demo/reference run: manual only."""
+    wf = yaml.safe_load(WF_TEXT)
+    on = wf[True] if True in wf else wf["on"]        # PyYAML parses bare `on:` as the bool True
+    assert "workflow_dispatch" in on
+    assert "schedule" not in on, "the product repo must not schedule a fleet scan"
+
 
 
 def test_engine_pinned_sha_verified_and_matches_the_runner():
@@ -80,14 +88,17 @@ def test_only_reads_this_repo_writes_go_to_gitlab():
     assert wf["permissions"]["contents"] == "read"      # no write-back to the GitHub repo
 
 
-def test_pages_publish_is_gated_demo_only():
-    """Publishing the dashboard to PUBLIC GitHub Pages exposes the vuln posture (repo names,
-    CVEs, versions). It MUST stay gated on the PUBLISH_PAGES variable so it never runs for real
-    client data by default — this guard fails if someone drops the gate."""
+def test_publishes_no_pages_from_the_product_repo():
+    """STRONGER than the old gate. This job used to publish the Cockpit to GitHub Pages behind
+    `vars.PUBLISH_PAGES == 'true'`. GitHub Pages on the product repo now belongs to the
+    DOCUMENTATION site (.github/workflows/docs.yml), and report Pages belong on the customer's
+    own instance. Two workflows claiming one Pages site means whichever ran last wins — a demo
+    publish would have replaced the docs with a dashboard built from client data. Absence is a
+    stronger guarantee than a variable nobody audits."""
     wf = yaml.safe_load(WF_TEXT)
-    job = wf["jobs"]["publish-pages"]
-    assert job["if"] == "vars.PUBLISH_PAGES == 'true'"
-    assert job["needs"] == "scan"                        # publishes what the scan persisted
+    assert "publish-pages" not in wf["jobs"]
+    assert "deploy-pages" not in WF_TEXT and "upload-pages-artifact" not in WF_TEXT
+
 
 
 def test_no_internal_host_is_hardcoded_in_the_public_workflow():
