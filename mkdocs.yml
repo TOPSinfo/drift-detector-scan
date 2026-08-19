@@ -42,11 +42,19 @@ markdown_extensions:
   - attr_list
   - tables
   - toc: { permalink: true }
-  - pymdownx.superfences
   - pymdownx.details
+  - pymdownx.superfences:
+      # Mermaid renders client-side from a ```mermaid fence. Material ships the integration;
+      # no extra plugin, and the diagram source stays reviewable text in the markdown rather
+      # than a binary image nobody can diff.
+      custom_fences:
+        - name: mermaid
+          class: mermaid
+          format: !!python/name:pymdownx.superfences.fence_code_format
 
 nav:
   - Home: index.md
+  - FAQ: FAQ.md
   - Use it:
       - Claude Code plugin: PLUGIN.md
       - Teaching it a new shape: drift-absorb.md
