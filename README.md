@@ -27,8 +27,9 @@ It catches three kinds of rot on the **certified** path:
 3. **Known security holes** — public vulnerabilities in the packages you depend on.
 
 It runs as a **[Claude Code](https://docs.anthropic.com/en/docs/claude-code) plugin**. Point Claude at
-your code; `/drift-detector` runs the certified scan and an optional AI cross-check kept in a
-**separate trust tier**. Where the tool *can't* see, it says so — never a false all-clear.
+your code; `/drift-detector` runs the certified scan and, by default, a token-costing AI
+cross-check kept in a **separate trust tier**. Where the tool *can't* see, it says so — never a
+false all-clear.
 
 ### The jargon, once (plain terms)
 
@@ -62,8 +63,10 @@ Install the plugin, point it at a folder, and Claude runs the scan — keeping
 /drift-detector /path/to/a/folder          # one repo, or a folder of repos
 ```
 
-One command runs the certified planes (CVE/EOL + vendor-API sunsets) plus an optional AI
-cross-check, then opens the **Cockpit**. Anything Claude learns about a new integration shape
+One command runs the certified planes (CVE/EOL + vendor-API sunsets) alongside an AI
+cross-check — which runs by default and costs tokens — then opens the **Cockpit**. The AI
+tier may never propose a retirement date; it reports `yes`/`no`/`unknown` and stays quarantined
+from the certified findings. Anything Claude learns about a new integration shape
 persists to `~/.drift/catalog` only after the absorb gate — and makes later runs smarter.
 
 *(First run provisions its own venv and fetches the pinned ast-grep engine — needs
