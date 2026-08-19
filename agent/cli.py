@@ -943,11 +943,19 @@ def _cmd_absorb_report(args) -> int:
     """Render the absorb trail — the climb across attempts — or prune one repo's rows.
 
     A debug projection, deliberately outside the certified path: it reads only the trail, and
-    `verify` never reads it back. Exit 0 always; there is no failure state in reading a record.
+    `verify` never reads it back. Exit 0 always for the read path; there is no failure state in
+    reading a record. `--forget` is the one path that writes, so it is the one path that can
+    fail — `forget()` returns -1 (never raises) if the trail could not be rewritten, and that
+    must surface as a clear message and non-zero exit, not a silent "removed -1 attempt(s)" that
+    reads as success.
     """
     from agent.lib import absorb_trail
     if getattr(args, "forget", None):
         n = absorb_trail.forget(args.state, args.forget)
+        if n < 0:
+            print(f"absorb-report: could not rewrite the trail to forget {args.forget} "
+                  "(check the trail file/directory is writable)", file=sys.stderr)
+            return 1
         print(f"absorb-report: removed {n} attempt(s) for {args.forget}")
         return 0
     print(absorb_trail.render(absorb_trail.read(args.state, repo=getattr(args, "repo", None))))

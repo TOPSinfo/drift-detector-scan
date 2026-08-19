@@ -18,12 +18,23 @@ from __future__ import annotations
 
 import json
 import os
+import tempfile
 
 FILENAME = "absorb-trail.jsonl"
 
 
 def _path(state_dir: str) -> str:
     return os.path.join(state_dir, FILENAME)
+
+
+def _cell(text) -> str:
+    """Make a value safe for a Markdown table cell.
+
+    A literal `|` in a gate problem string would open a phantom column and misalign the row —
+    reachable because absorb.py builds those strings with !r over hand-edited YAML, which can
+    contain a pipe. Newlines would break the row outright.
+    """
+    return str(text).replace("|", "\\|").replace("\n", " ")
 
 
 def read(state_dir: str, repo: str | None = None) -> list:
@@ -112,7 +123,7 @@ def render(rows: list) -> str:
             met, miss = len(claims.get("met") or []), len(claims.get("missing") or [])
             problems = d.get("problems") or []
             verdict = "**pass**" if a.get("verdict") == "pass" else \
-                      f"reject — {problems[0]}" if problems else "reject"
+                      f"reject — {_cell(problems[0])}" if problems else "reject"
             out.append(
                 f"| {a.get('attempt')} | {len(a.get('staged') or [])} | "
                 f"{d.get('attributedBefore')} → {d.get('attributedAfter')} | "
@@ -128,11 +139,31 @@ def forget(state_dir: str, repo: str) -> int:
     Meant as habit, not housekeeping: once a repo's idiom is merged into the reviewed catalog,
     the attempts that produced it have no further value — and they are the part carrying client
     file:line data. The catalog entry is the artifact worth keeping.
+
+    Returns -1, rather than raising, if the trail could not be rewritten (e.g. a read-only
+    trail file or directory). `append` and `read` both already degrade gracefully instead of
+    raising into their caller — `forget` used to be the exception, so `absorb-report --forget`
+    could die with a raw PermissionError traceback. -1 is unambiguous against the real return
+    values (which are always >= 0) so a caller can tell "failed to prune" from "pruned nothing".
     """
     kept = [r for r in read(state_dir) if r.get("repo") != repo]
     removed = len(read(state_dir)) - len(kept)
     if removed:
-        with open(_path(state_dir), "w", encoding="utf-8") as fh:
-            for r in kept:
-                fh.write(json.dumps(r, sort_keys=True) + "\n")
+        try:
+            # Write to a temp file in the SAME directory, then os.replace() it over the
+            # original, instead of truncating the real path with "w" in place. os.replace is
+            # only atomic within a filesystem, hence same-directory: a crash mid-write of the
+            # old in-place truncate could leave a half-written file, losing rows for repos that
+            # should have been KEPT.
+            fd, tmp_path = tempfile.mkstemp(dir=state_dir, prefix=FILENAME + ".")
+            try:
+                with os.fdopen(fd, "w", encoding="utf-8") as fh:
+                    for r in kept:
+                        fh.write(json.dumps(r, sort_keys=True) + "\n")
+                os.replace(tmp_path, _path(state_dir))
+            except OSError:
+                os.unlink(tmp_path)
+                raise
+        except OSError:
+            return -1
     return removed
