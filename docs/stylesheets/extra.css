@@ -1,0 +1,30 @@
+/* FAQ question cards.
+ *
+ * Kept as real <h2> headings on purpose: a collapsible admonition (??? question) would look
+ * tidier but drops out of the right-hand table of contents, and the ToC is how people actually
+ * navigate a long FAQ. So the heading stays a heading, and `attr_list` tags it `.faq` for this
+ * rule to hang on.
+ *
+ * Every colour is a Material CSS custom property, never a literal — that is what keeps the card
+ * correct in both the light and dark palettes without a second rule.
+ */
+.md-typeset h2.faq {
+  background: var(--md-code-bg-color);
+  border-left: 4px solid var(--md-accent-fg-color);
+  border-radius: 0.15rem;
+  padding: 0.55em 0.75em;
+  margin-top: 2.2em;
+  font-size: 1.15rem;
+  line-height: 1.4;
+  scroll-margin-top: 3rem;          /* so an anchored jump does not hide it under the header */
+}
+
+/* The answer, indented to sit visually "inside" its question. */
+.md-typeset h2.faq + * {
+  margin-top: 0.9em;
+}
+
+/* A quieter rule between Q&A groups than the default full-width divider. */
+.md-typeset h2.faq::before {
+  content: "";
+}

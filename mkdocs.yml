@@ -37,6 +37,9 @@ theme:
     - content.code.copy
     - search.highlight
 
+extra_css:
+  - stylesheets/extra.css
+
 markdown_extensions:
   - admonition
   - attr_list
