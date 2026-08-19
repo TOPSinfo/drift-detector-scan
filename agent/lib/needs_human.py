@@ -14,8 +14,8 @@ verdicts have been recorded — absent, not empty-and-therefore-clean.
 Entry shape (every field required — an entry with no note is a verdict with no reasoning,
 which is what this ledger exists to refuse):
 
-    - host: www.speedship.com
-      repo: olive-nation-new
+    - host: www.example-shipper.com
+      repo: example-org/inventory-app
       by: ai-resolution
       checked: '2026-08-15'
       note: "fetched the page; it renders only the word 'Welcome' — nothing identifies an owner"
