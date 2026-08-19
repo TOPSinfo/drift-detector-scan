@@ -94,6 +94,36 @@ def _is_vendored_asset(name: str) -> bool:
     return bool(_VENDORED_FILE_RE.search(n))
 
 
+# One line this long is not hand-written. 500 is comfortably above real formatted source and
+# far below a minified bundle, whose single line routinely runs to tens of thousands of
+# characters. Only the head of the file is read: a bundle declares itself in its first bytes,
+# and a scan must not pull megabytes per match.
+_GENERATED_LINE_LEN = 500
+_GENERATED_HEAD_BYTES = 65536
+_generated_cache: dict = {}
+
+
+def _looks_generated(file_path: str) -> bool:
+    """Does this file look machine-generated? Cached — one file yields many matches.
+
+    FAILS OPEN. An unreadable or missing file returns False, so a match is kept rather than
+    silently dropped: losing a finding to an I/O error would report absence as health, which is
+    exactly what this project refuses to do. The cost of failing open is noise, which is visible;
+    the cost of failing closed is a missing finding, which is not.
+    """
+    if file_path in _generated_cache:
+        return _generated_cache[file_path]
+    verdict = False
+    try:
+        with open(file_path, "r", encoding="utf-8", errors="replace") as fh:
+            head = fh.read(_GENERATED_HEAD_BYTES)
+        verdict = any(len(line) > _GENERATED_LINE_LEN for line in head.splitlines())
+    except OSError:
+        verdict = False
+    _generated_cache[file_path] = verdict
+    return verdict
+
+
 def _is_skipped(file_path: str, repo_path: str) -> bool:
     try:
         rel = Path(file_path).resolve().relative_to(Path(repo_path).resolve())
@@ -101,7 +131,9 @@ def _is_skipped(file_path: str, repo_path: str) -> bool:
         rel = Path(file_path)
     if any(part in _SKIP_DIRS for part in rel.parts[:-1]):
         return True
-    return _is_vendored_asset(rel.name)
+    if _is_vendored_asset(rel.name):
+        return True
+    return _looks_generated(file_path)
 
 
 def run_scan(repo_path: str, ruleset_path: str, *, engine: str = "ast-grep",
