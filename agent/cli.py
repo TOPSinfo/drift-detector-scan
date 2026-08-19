@@ -939,6 +939,21 @@ def _cmd_recommend(args) -> int:
     return 0
 
 
+def _cmd_absorb_report(args) -> int:
+    """Render the absorb trail — the climb across attempts — or prune one repo's rows.
+
+    A debug projection, deliberately outside the certified path: it reads only the trail, and
+    `verify` never reads it back. Exit 0 always; there is no failure state in reading a record.
+    """
+    from agent.lib import absorb_trail
+    if getattr(args, "forget", None):
+        n = absorb_trail.forget(args.state, args.forget)
+        print(f"absorb-report: removed {n} attempt(s) for {args.forget}")
+        return 0
+    print(absorb_trail.render(absorb_trail.read(args.state, repo=getattr(args, "repo", None))))
+    return 0
+
+
 def _maybe_record_trail(args, *, repo: str, staged: list, delta: dict) -> None:
     """Record this --check attempt to the absorb trail, if --trail was asked for.
 
@@ -1611,6 +1626,12 @@ def main(argv: list[str]) -> int:
                           "the climb can be reviewed later (a debug by-product; --check "
                           "without it still writes nothing)")
     pab.set_defaults(func=_cmd_absorb)
+
+    par2 = sub.add_parser("absorb-report")   # the absorb trail -> Markdown (debug projection)
+    par2.add_argument("--state", required=True)
+    par2.add_argument("--repo", help="only this repo's attempts")
+    par2.add_argument("--forget", help="drop this repo's attempts (do it once its idiom merges)")
+    par2.set_defaults(func=_cmd_absorb_report)
 
     prc = sub.add_parser("recommend")     # which scan profile should this folder run?
     prc.add_argument("--root", required=True)

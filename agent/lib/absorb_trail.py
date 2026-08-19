@@ -83,3 +83,56 @@ def append(state_dir: str, *, repo: str, staged: list, delta: dict, now: str | N
         return True
     except (OSError, TypeError, ValueError):
         return False
+
+
+def render(rows: list) -> str:
+    """The climb, as Markdown — one table per repo, one row per attempt.
+
+    These are the gate's OWN numbers, replayed, not a re-derivation that could disagree with the
+    verdict it gave. That is the whole value: it is evidence, not a summary.
+    """
+    if not rows:
+        # Not an empty table: absence must not read as health. That confusion is the exact
+        # failure mode this project exists to prevent, and it applies to its own debug output.
+        return "# Absorb trail\n\nNo attempts recorded.\n"
+    by_repo: dict = {}
+    for r in rows:
+        by_repo.setdefault(r.get("repo", "?"), []).append(r)
+    out = ["# Absorb trail", ""]
+    for repo in sorted(by_repo):
+        attempts = sorted(by_repo[repo], key=lambda r: r.get("attempt", 0))
+        passed = any(a.get("verdict") == "pass" for a in attempts)
+        out += [f"## {repo} — {len(attempts)} attempts, "
+                f"{'PASSED' if passed else 'not yet passing'}", "",
+                "| # | staged | attributed | residue | claims | verdict |",
+                "|---|--------|-----------|---------|--------|---------|"]
+        for a in attempts:
+            d = a.get("delta") or {}
+            claims = d.get("claims") or {}
+            met, miss = len(claims.get("met") or []), len(claims.get("missing") or [])
+            problems = d.get("problems") or []
+            verdict = "**pass**" if a.get("verdict") == "pass" else \
+                      f"reject — {problems[0]}" if problems else "reject"
+            out.append(
+                f"| {a.get('attempt')} | {len(a.get('staged') or [])} | "
+                f"{d.get('attributedBefore')} → {d.get('attributedAfter')} | "
+                f"{d.get('residueBefore')} → {d.get('residueAfter')} | "
+                f"{met}/{met + miss} | {verdict} |")
+        out.append("")
+    return "\n".join(out) + "\n"
+
+
+def forget(state_dir: str, repo: str) -> int:
+    """Drop one repo's attempts; returns how many rows went. Returns 0 if there is no trail.
+
+    Meant as habit, not housekeeping: once a repo's idiom is merged into the reviewed catalog,
+    the attempts that produced it have no further value — and they are the part carrying client
+    file:line data. The catalog entry is the artifact worth keeping.
+    """
+    kept = [r for r in read(state_dir) if r.get("repo") != repo]
+    removed = len(read(state_dir)) - len(kept)
+    if removed:
+        with open(_path(state_dir), "w", encoding="utf-8") as fh:
+            for r in kept:
+                fh.write(json.dumps(r, sort_keys=True) + "\n")
+    return removed
