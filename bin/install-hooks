@@ -1,0 +1,9 @@
+#!/usr/bin/env bash
+# Point git at .githooks/ for this clone. One command, idempotent.
+set -euo pipefail
+cd "$(git rev-parse --show-toplevel)"
+git config core.hooksPath .githooks
+echo "✓ hooks installed (core.hooksPath = .githooks)"
+if [ -z "${DRIFT_INTERNAL_IDS:-}$(git config --get drift.internalIds || true)" ]; then
+  echo "! next: git config drift.internalIds '<your|internal|namespaces>'  — the pre-push guard needs it"
+fi

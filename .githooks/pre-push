@@ -1,0 +1,51 @@
+#!/usr/bin/env bash
+# Refuse to push client identifiers to a public remote.
+#
+# WHY HERE AND NOT IN CI: the push is the moment a leak becomes irreversible. A GitHub Actions
+# check runs *after* the objects have landed on a public remote, so it can only report a leak
+# that already happened — and force-pushing it away does not remove it from mirrors, forks or
+# caches. That is not hypothetical: this project has client names in its git history from
+# exactly that sequence. This hook is the last point where "no" still means anything.
+#
+# THE DENY-LIST IS NOT IN THIS FILE. It names the client namespaces, so committing it would be
+# the very leak it prevents. Provide it per-clone:
+#
+#     git config drift.internalIds 'acme|acme-corp|internal\.example\.com'
+#
+# or export DRIFT_INTERNAL_IDS in your shell. Unset = this hook REFUSES the push rather than
+# waving it through, because a guard that silently passes is worse than no guard.
+#
+# Bypass with --no-verify if you genuinely must. It is a guardrail, not a wall: it only protects
+# clones that installed it (`./bin/install-hooks`).
+set -euo pipefail
+
+ids="${DRIFT_INTERNAL_IDS:-$(git config --get drift.internalIds || true)}"
+
+if [ -z "$ids" ]; then
+  cat >&2 <<'MSG'
+✗ pre-push blocked: no client-identifier deny-list configured.
+
+  This repo is PUBLIC. Nothing is currently checking that a client repo name or the
+  internal host is not about to be published.
+
+  Set it once for this clone:
+
+      git config drift.internalIds 'ns-one|ns-two|internal\.example\.com'
+
+  (a single |-joined regex; it is never committed)
+
+  If you are pushing a fork with no internal history, bypass with:  git push --no-verify
+MSG
+  exit 1
+fi
+
+root="$(git rev-parse --show-toplevel)"
+py="$root/.venv/bin/python"; [ -x "$py" ] || py="$(command -v python3)"
+
+if ! DRIFT_INTERNAL_IDS="$ids" "$py" -m pytest "$root/tests/test_no_internal_identifiers.py" -q >/tmp/drift-prepush.log 2>&1; then
+  echo "✗ pre-push blocked: the tracked tree carries a client identifier." >&2
+  sed 's/^/    /' /tmp/drift-prepush.log >&2
+  echo "    Sanitize before pushing. See docs/how-it-stays-honest.md." >&2
+  exit 1
+fi
+echo "✓ client-identifier guard passed"
