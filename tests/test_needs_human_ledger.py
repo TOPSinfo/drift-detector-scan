@@ -30,11 +30,11 @@ def overlay(tmp_path, monkeypatch):
     return d
 
 
-def _unknown(host="www.speedship.com", repo="olive-nation-new", note="page said only 'Welcome'"):
+def _unknown(host="www.example-shipper.com", repo="example-org/inventory-app", note="page said only 'Welcome'"):
     return {"status": "unknown", "host": host, "repo": repo, "note": note}
 
 
-def _inv(host="www.speedship.com", repo="olive-nation-new"):
+def _inv(host="www.example-shipper.com", repo="example-org/inventory-app"):
     return {"generated": "2026-08-15",
             "repos": [{"path": repo, "endpoints": [
                 {"vendor": "Unknown external", "domain": host, "version": None,
@@ -50,7 +50,7 @@ def test_an_unknown_verdict_is_written_to_the_ledger(overlay):
     entries = yaml.safe_load(path.read_text())
     assert len(entries) == 1
     e = entries[0]
-    assert e["host"] == "www.speedship.com" and e["repo"] == "olive-nation-new"
+    assert e["host"] == "www.example-shipper.com" and e["repo"] == "example-org/inventory-app"
     assert e["checked"] == "2026-08-15" and e["by"] == "ai-resolution"
     assert "Welcome" in e["note"]
 
@@ -72,7 +72,7 @@ def test_without_a_ledger_entry_the_same_host_stays_queued(overlay):
 def test_the_ledger_is_scoped_to_the_repo_that_recorded_it(overlay):
     """Two clients can share one overlay dir. An unknown recorded against one repo must not
     silently settle the same host somewhere else."""
-    resolve.apply([_unknown(repo="olive-nation-new")], now="2026-08-15")
+    resolve.apply([_unknown(repo="example-org/inventory-app")], now="2026-08-15")
     other = dashboard_render._endpoints_of(_inv(repo="some-other-repo"))
     assert [e["coverage"] for e in other] == ["queued"], other
 
