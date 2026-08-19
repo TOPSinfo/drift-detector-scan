@@ -126,3 +126,59 @@ class _FakeArgs:
         self.state = kw.get("state")
         self.trail = kw.get("trail", False)
         self.now = kw.get("now")
+
+
+def test_render_shows_each_attempt_as_a_row(tmp_path):
+    absorb_trail.append(str(tmp_path), repo="acme/api", staged=["i/1"],
+                        delta=_delta(attributed_after=0, problems=["no claim met"]),
+                        now="2026-08-19")
+    absorb_trail.append(str(tmp_path), repo="acme/api", staged=["i/1", "i/2"],
+                        delta=_delta(), now="2026-08-19")
+    out = absorb_trail.render(absorb_trail.read(str(tmp_path)))
+    assert "acme/api" in out
+    assert "0 → 0" in out and "0 → 44" in out       # the climb is visible
+    assert "reject" in out and "pass" in out
+    assert "2 attempts" in out
+
+
+def test_render_of_no_attempts_says_so_rather_than_looking_clean(tmp_path):
+    # THE BUG THIS GUARDS: an empty table reads as "nothing went wrong". "No attempts recorded"
+    # reads as what it is. This project's whole thesis is that absence must not look like health.
+    out = absorb_trail.render([])
+    assert "no attempts recorded" in out.lower()
+    assert "|" not in out, "an empty table would imply a session that produced nothing to fix"
+
+
+def test_forget_removes_only_the_named_repo(tmp_path):
+    absorb_trail.append(str(tmp_path), repo="keep/me", staged=[], delta=_delta(), now="2026-08-19")
+    absorb_trail.append(str(tmp_path), repo="drop/me", staged=[], delta=_delta(), now="2026-08-19")
+    assert absorb_trail.forget(str(tmp_path), "drop/me") == 1
+    remaining = absorb_trail.read(str(tmp_path))
+    assert [r["repo"] for r in remaining] == ["keep/me"]
+
+
+def test_forget_of_an_unknown_repo_removes_nothing(tmp_path):
+    absorb_trail.append(str(tmp_path), repo="keep/me", staged=[], delta=_delta(), now="2026-08-19")
+    assert absorb_trail.forget(str(tmp_path), "never/absorbed") == 0
+    assert len(absorb_trail.read(str(tmp_path))) == 1
+
+
+def test_absorb_report_command_wires_read_render_stdout(tmp_path, capsys):
+    # The tests above exercise `render` in isolation, against hand-built row lists. This one
+    # drives the actual `absorb-report` CLI command — args -> read -> render -> stdout — so a
+    # break in that wiring (wrong state dir, wrong kwarg, printing the wrong thing) fails here
+    # even if `render` itself is correct.
+    import types
+
+    from agent import cli
+
+    absorb_trail.append(str(tmp_path), repo="acme/api", staged=["i/1"],
+                        delta=_delta(attributed_after=0, problems=["no claim met"]),
+                        now="2026-08-19")
+    absorb_trail.append(str(tmp_path), repo="acme/api", staged=["i/1", "i/2"],
+                        delta=_delta(), now="2026-08-19")
+    args = types.SimpleNamespace(state=str(tmp_path), repo=None, forget=None)
+    assert cli._cmd_absorb_report(args) == 0
+    out = capsys.readouterr().out
+    assert "acme/api" in out
+    assert "0 → 0" in out and "0 → 44" in out
