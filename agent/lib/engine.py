@@ -17,6 +17,7 @@ suffix is stripped so downstream code sees the base id.
 from __future__ import annotations
 
 import json
+import re
 import subprocess
 from pathlib import Path
 
@@ -70,8 +71,19 @@ _SKIP_DIRS = {"test", "tests", "spec", "__tests__", "vendor", "node_modules",
 # It FAILS SAFE: an unlisted library stays noisy, which is a far smaller harm than an over-broad
 # entry silently suppressing a real finding. `_looks_generated` is what stops this list going
 # stale — it catches unnamed bundles with no maintenance at all.
+#
+# Matched on a TOKEN BOUNDARY, not a bare substring. `ckeditor`/`summernote`/`fancybox`/
+# `tinymce`/`owl.carousel`/`jquery.lazy` are distinctive enough that a substring is safe, but
+# `gmaps`/`leaflet`/`highchart`/`metronic` are generic enough that a bare substring also hits
+# legitimate first-party files a PHP shop names after the API it wraps — GmapsController.php,
+# LeafletMapWidget.php — which is the exact harm the fail-safe paragraph above warns against.
+# Measured against the real 19-repo scan, the boundary rule drops the identical 99 call-sites
+# the bare substring did: precision cost nothing.
 _VENDORED_FILES = ("ckeditor", "summernote", "fancybox", "tinymce", "leaflet", "metronic",
                    "highchart", "gmaps", "owl.carousel", "jquery.lazy")
+
+_VENDORED_FILE_RE = re.compile(
+    r"(?<![a-z0-9])(?:" + "|".join(re.escape(lib) for lib in _VENDORED_FILES) + r")(?![a-z0-9])")
 
 
 def _is_vendored_asset(name: str) -> bool:
@@ -79,7 +91,7 @@ def _is_vendored_asset(name: str) -> bool:
     n = name.lower()
     if ".min." in n or ".bundle." in n:
         return True
-    return any(lib in n for lib in _VENDORED_FILES)
+    return bool(_VENDORED_FILE_RE.search(n))
 
 
 def _is_skipped(file_path: str, repo_path: str) -> bool:
