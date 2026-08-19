@@ -95,8 +95,18 @@ The tool is published; a client's repo map must not be. `tests/test_no_internal_
 scans the **whole tracked tree** for the internal host and client repo names on every change.
 
 The deny-list is itself sensitive — it *names* the namespaces — so it is not hardcoded here. It
-comes from `DRIFT_INTERNAL_IDS` in the private CI environment, and the guard skips in any public
-checkout rather than shipping the list.
+comes from `git config drift.internalIds` (or `DRIFT_INTERNAL_IDS`) per clone, and the guard
+skips in any public checkout rather than shipping the list.
+
+**It is enforced at `git push`, not in CI, and that placement is the point.** CI runs *after* a
+push has landed on the public remote — by then the names are already cloneable, mirrored and
+cached, and force-pushing them away does not undo it. This project has client names in its git
+history from exactly that sequence. The `.githooks/pre-push` hook is the last moment where "no"
+still means something. Install it with `./bin/install-hooks`.
+
+Two honest limits: the hook is bypassable with `--no-verify`, and it only protects clones that
+installed it. It is a guardrail, not a wall — on a public repo there is no unbypassable place to
+put one.
 
 Client-scoped catalog data (confirmed own-domains, unresolved hosts, repo-scoped idioms) lives in
 the private overlay, never in the package.

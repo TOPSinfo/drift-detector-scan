@@ -31,24 +31,11 @@ jobs:
         # (AST_GREP_VERSION in bin/drift-scan) so the integration tests scan byte-identically.
         run: python -m pip install -q pytest "PyYAML>=6.0" jsonschema "ast-grep-cli==0.44.1"
 
-      # The client-identifier guard (tests/test_no_internal_identifiers.py) SKIPS when
-      # DRIFT_INTERNAL_IDS is unset. That is right for a fork or a public checkout — the
-      # deny-list names the client namespaces, so it must not live in this public tree — but
-      # it was also true HERE, which meant the step below claimed to run a guard that was
-      # silently doing nothing. That guard exists because those identifiers once reached a
-      # public mirror. Fail loudly rather than skip quietly.
-      - name: The client-identifier guard must actually run on this repo
-        if: github.repository == 'TOPSinfo/drift-detector-scan'
-        env:
-          DRIFT_INTERNAL_IDS: ${{ secrets.DRIFT_INTERNAL_IDS }}
-        run: |
-          if [ -z "$DRIFT_INTERNAL_IDS" ]; then
-            echo "::error::DRIFT_INTERNAL_IDS is not set, so tests/test_no_internal_identifiers.py is SKIPPING — nothing is checking this tree for client repo names or the internal host. Add it as a repository secret (a single |-joined regex)."
-            exit 1
-          fi
-          echo "guard armed"
-
-      - name: Run tests (incl. the no-internal-identifiers guard)
-        env:
-          DRIFT_INTERNAL_IDS: ${{ secrets.DRIFT_INTERNAL_IDS }}
+      # NOTE: the client-identifier guard (tests/test_no_internal_identifiers.py) SKIPS here,
+      # deliberately. Its deny-list names the client namespaces, so it cannot live in this
+      # public tree — and CI would be the wrong place to enforce it anyway: this runs AFTER the
+      # push, by which point the names are already on a public remote and in every mirror and
+      # cache. Deleting them afterwards does not undo that; it has happened before. The guard
+      # that can still say no is the pre-push hook in .githooks/. See docs/how-it-stays-honest.md.
+      - name: Run tests
         run: python -m pytest -q
