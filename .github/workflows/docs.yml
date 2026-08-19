@@ -35,9 +35,25 @@ jobs:
       # than a warning nobody reads. A docs site that quietly loses a page is the same class of
       # problem as a scan that quietly loses a finding.
       - run: mkdocs build --strict
-      - uses: actions/upload-pages-artifact@56afc609e74202658d3ffba0e8f6dda462b719fa   # v3
+      # Inlined from actions/upload-pages-artifact@v3 rather than calling it. That action is
+      # COMPOSITE and its final step calls `actions/upload-artifact@v4` — an unpinned TAG —
+      # which this org's "all actions must be pinned to a full-length commit SHA" policy
+      # rejects transitively: the run fails at Set up job before any step executes. Pinning our
+      # own four actions was not enough, because the violation is inside someone else's action.
+      # These two steps are exactly its Linux branch (the runner is ubuntu-latest).
+      # The artifact name MUST stay `github-pages` — that is what deploy-pages looks for.
+      - name: Archive the site as a Pages artifact
+        run: |
+          tar --dereference --hard-dereference \
+              --directory site \
+              -cvf "$RUNNER_TEMP/artifact.tar" \
+              --exclude=.git --exclude=.github .
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02   # v4
         with:
-          path: site
+          name: github-pages
+          path: ${{ runner.temp }}/artifact.tar
+          retention-days: 1
+          if-no-files-found: error
 
   deploy:
     needs: build
