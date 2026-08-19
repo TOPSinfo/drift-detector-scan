@@ -10,9 +10,13 @@ WHAT THIS IS NOT: it is a debugging by-product, never part of the certified path
 not read it, it cannot influence drift.json, and `append` never raises into its caller — if the
 file cannot be written, the gate's verdict still stands. A by-product may not break the product.
 
-CLIENT DATA: rows carry repo identities and file:line locations. The file lives in the state
-directory (gitignored locally, private drift-ops for a fleet) and `forget` exists so it can be
-pruned once the reviewed catalog entry — the artifact actually worth keeping — is merged.
+CLIENT DATA: rows carry repo identities and file:line locations. The state dir this writes into
+is normally NOT this repo — commands/drift-absorb.md runs the loop against `$F/.drift-detector`,
+the CLIENT's own checkout. `.drift-detector/` is gitignored HERE (it is what protects a state
+dir that happens to live inside this repo, e.g. in tests or a local drift-ops clone), but that
+`.gitignore` has no reach into a client's tree at all. So `forget` is not a convenience: it is
+the actual retention control this file depends on, and the loop calls it once the reviewed
+catalog entry — the artifact actually worth keeping — has been merged.
 """
 from __future__ import annotations
 
@@ -112,9 +116,20 @@ def render(rows: list) -> str:
     out = ["# Absorb trail", ""]
     for repo in sorted(by_repo):
         attempts = sorted(by_repo[repo], key=lambda r: r.get("attempt", 0))
-        passed = any(a.get("verdict") == "pass" for a in attempts)
-        out += [f"## {repo} — {len(attempts)} attempts, "
-                f"{'PASSED' if passed else 'not yet passing'}", "",
+        # BUG THIS GUARDS AGAINST: this used to be `any(a["verdict"] == "pass" for a in
+        # attempts)`, so a reject -> pass -> reject sequence rendered "3 attempts, PASSED" — a
+        # proposal the gate CURRENTLY rejects reading as passed at a glance. That is
+        # absence-looking-like-health, the exact failure this project exists to prevent,
+        # showing up in its own debug output. The header must track the LAST attempt; an
+        # earlier pass is noted, not hidden, so the regression stays visible.
+        last = attempts[-1]
+        if last.get("verdict") == "pass":
+            status = "PASSED"
+        else:
+            prior_pass = next((a for a in attempts if a.get("verdict") == "pass"), None)
+            status = (f"last REJECTED (passed at #{prior_pass.get('attempt')})"
+                      if prior_pass else "not yet passing")
+        out += [f"## {repo} — {len(attempts)} attempts, {status}", "",
                 "| # | staged | attributed | residue | claims | verdict |",
                 "|---|--------|-----------|---------|--------|---------|"]
         for a in attempts:
