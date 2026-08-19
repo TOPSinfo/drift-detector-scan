@@ -51,7 +51,7 @@ Append to `eval/corpus.yaml` (validated on load; a malformed entry hard-fails):
 
 - **Never force the gate.** If a repo doesn't detect its vendor, investigate the *code*. Only three
   honest outcomes: (a) it's a real scanner weakness → add a truthful `known_gaps` from the
-  [taxonomy](../eval/taxonomy.md); (b) the specimen is mislabeled (README says X, code doesn't call
+  [taxonomy](https://github.com/TOPSinfo/drift-detector-scan/blob/master/eval/taxonomy.md); (b) the specimen is mislabeled (README says X, code doesn't call
   X) → **drop it** (`label-wrong`); (c) the vendor is genuinely uncatalogued → add a **generalizing**
   rule to `agent/vendors.yaml`, **never** the corpus repo's literal host (that's overfitting/Goodhart).
 - **Recall gains are invalid if noise rises** — the scorecard prints noise beside recall for exactly

@@ -1,0 +1,4 @@
+# Documentation-site build only. Deliberately SEPARATE from requirements.txt (test) and
+# requirements-plugin.txt (runtime): the scanner's runtime stays stdlib + PyYAML, and nothing
+# here is ever installed on a user's machine or inside the scan path.
+mkdocs-material>=9.5
