@@ -127,6 +127,24 @@ def test_a_vendored_SDK_is_still_an_integration(tmp_path):
     assert [m["path"].split("/")[-1] for m in res["matches"]] == ["Configuration.php", "Gateway.php"]
 
 
+def test_generic_library_names_require_a_word_boundary(tmp_path):
+    """THE BUG: a bare substring match against the lowercased filename has no word boundary,
+    so a generic library name like `gmaps` or `leaflet` hits legitimate first-party files.
+    `GmapsController.php` and `LeafletMapWidget.php` are exactly what a PHP shop names a
+    hand-written wrapper for the API it integrates with -- silently suppressing that is the
+    exact harm the fail-safe comment above `_VENDORED_FILES` says must never happen. The
+    bundled libraries themselves (`gmaps.core.js`, `leaflet.bundle.js`) must still be skipped."""
+    rules = _rules(tmp_path)
+    raw = astgrep_fake.canned(
+        astgrep_fake.hit("stripe-endpoint", str(tmp_path / "app/Http/GmapsController.php"), 10),
+        astgrep_fake.hit("stripe-endpoint", str(tmp_path / "app/Widgets/LeafletMapWidget.php"), 20),
+        astgrep_fake.hit("stripe-endpoint", str(tmp_path / "public/js/vendor/gmaps.core.js"), 1),
+        astgrep_fake.hit("stripe-endpoint", str(tmp_path / "public/js/vendor/leaflet.bundle.js"), 1))
+    res = run_scan(str(tmp_path), str(rules), run=lambda a: raw)
+    assert [m["path"].split("/")[-1] for m in res["matches"]] == \
+        ["GmapsController.php", "LeafletMapWidget.php"]
+
+
 def test_a_hand_written_file_calling_the_same_host_still_matches(tmp_path):
     """The guard must reject the FILE, never the vendor. A contact page legitimately using a
     map host must still be found even though a bundled library elsewhere mentions it."""
