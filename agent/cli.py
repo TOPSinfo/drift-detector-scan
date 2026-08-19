@@ -950,15 +950,41 @@ def _cmd_absorb_report(args) -> int:
     reads as success.
     """
     from agent.lib import absorb_trail
+
+    # BUG THIS GUARDS AGAINST: the writer (`_cmd_absorb`, below) keys trail rows on
+    # `scan_util.repo_scope_id(args.repo)` — the git REMOTE url, falling back to the local path
+    # only when there's no remote. This command used to match `--repo` / `--forget` against the
+    # raw string verbatim. The documented loop (commands/drift-absorb.md) passes a FOLDER PATH
+    # as $REPO, so rows stored under "git@host:acme/api.git" were invisible to
+    # `--repo /home/me/acme-api`, and `--forget /home/me/acme-api` printed "removed 0
+    # attempt(s)" and exited 0 while every row stayed on disk — a client-data deletion control
+    # silently failing. Normalise here: if the incoming value names an existing directory, run
+    # it through the SAME repo_scope_id() the writer used, so it resolves to the same key. A
+    # value that is not a directory (already a scope id, or a repo that no longer exists on
+    # disk) is used as given.
+    def _resolve(value):
+        if value and os.path.isdir(value):
+            return scan_util.repo_scope_id(value)
+        return value
+
     if getattr(args, "forget", None):
-        n = absorb_trail.forget(args.state, args.forget)
+        forget_id = _resolve(args.forget)
+        n = absorb_trail.forget(args.state, forget_id)
         if n < 0:
-            print(f"absorb-report: could not rewrite the trail to forget {args.forget} "
+            print(f"absorb-report: could not rewrite the trail to forget {forget_id} "
                   "(check the trail file/directory is writable)", file=sys.stderr)
             return 1
-        print(f"absorb-report: removed {n} attempt(s) for {args.forget}")
+        if n == 0:
+            # Make a no-op prune impossible to mistake for a successful one: list what IS in
+            # the trail so an id mismatch (the bug above) is visible instead of reading as a
+            # quiet success.
+            present = sorted({r.get("repo") for r in absorb_trail.read(args.state)})
+            print(f"absorb-report: removed nothing — no attempts recorded for {forget_id}. "
+                  f"repo id(s) in the trail: {', '.join(present) if present else '(none)'}")
+            return 0
+        print(f"absorb-report: removed {n} attempt(s) for {forget_id}")
         return 0
-    print(absorb_trail.render(absorb_trail.read(args.state, repo=getattr(args, "repo", None))))
+    print(absorb_trail.render(absorb_trail.read(args.state, repo=_resolve(getattr(args, "repo", None)))))
     return 0
 
 

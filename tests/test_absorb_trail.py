@@ -261,3 +261,85 @@ def test_verify_does_not_read_the_trail():
     with open(os.path.join(root, "agent", "lib", "verify.py"), encoding="utf-8") as fh:
         src = fh.read()
     assert "absorb_trail" not in src and absorb_trail.FILENAME not in src
+
+
+def test_absorb_report_resolves_a_directory_path_to_the_same_id_the_writer_used(tmp_path, capsys):
+    # THE BUG THIS GUARDS: `_cmd_absorb` writes trail rows keyed on
+    # scan_util.repo_scope_id(args.repo) — the git REMOTE url, falling back to the local path
+    # only when there's no remote. But `_cmd_absorb_report` used to match the raw --repo /
+    # --forget string VERBATIM, and the documented loop (commands/drift-absorb.md) passes a
+    # FOLDER PATH as $REPO. So rows stored under "https://example.com/acme/api" were invisible
+    # to `--repo <path-to-the-clone>`, and `--forget <path>` reported "removed 0 attempt(s)"
+    # while leaving every row on disk — a client-data deletion control silently failing.
+    #
+    # test_absorb_report_command_wires_read_render_stdout (above) passes the SAME string on
+    # both the write and the read side, which is exactly why it never caught this: it never
+    # exercises the writer's path -> remote-url normalisation at all.
+    import subprocess
+    import types
+
+    from agent import cli
+    from agent.lib import scan_util
+
+    repo_dir = tmp_path / "acme-api-clone"
+    repo_dir.mkdir()
+    subprocess.run(["git", "init", "-q"], cwd=str(repo_dir), check=True)
+    subprocess.run(["git", "remote", "add", "origin", "git@example.com:acme/api.git"],
+                   cwd=str(repo_dir), check=True)
+
+    state = tmp_path / "state"
+    resolved_id = scan_util.repo_scope_id(str(repo_dir))
+    assert resolved_id != str(repo_dir), "the fixture is only meaningful if resolution changes the id"
+
+    record_args = types.SimpleNamespace(state=str(state), trail=True, now="2026-08-19")
+    cli._maybe_record_trail(record_args, repo=resolved_id, staged=["i/1"], delta=_delta())
+    assert absorb_trail.read(str(state))[0]["repo"] == resolved_id
+
+    # --repo with the DIRECTORY PATH (as the documented loop passes it) must find the row.
+    report_args = types.SimpleNamespace(state=str(state), repo=str(repo_dir), forget=None)
+    assert cli._cmd_absorb_report(report_args) == 0
+    out = capsys.readouterr().out
+    assert "No attempts recorded" not in out
+    assert "0 → 44" in out
+
+    # --forget with the same DIRECTORY PATH must actually remove the row, not silently no-op.
+    forget_args = types.SimpleNamespace(state=str(state), repo=None, forget=str(repo_dir))
+    assert cli._cmd_absorb_report(forget_args) == 0
+    assert absorb_trail.read(str(state)) == [], "the row must actually be gone, not merely reported gone"
+
+
+def test_render_header_reflects_the_last_attempt_not_any_pass_ever(tmp_path):
+    # THE BUG THIS GUARDS: the header used to be `any(a["verdict"] == "pass" for a in attempts)`,
+    # so a reject -> pass -> reject sequence rendered "3 attempts, PASSED" — a proposal the gate
+    # CURRENTLY rejects reading as passed at a glance. That is absence-looking-like-health, the
+    # exact failure this project exists to prevent, in its own debug output.
+    absorb_trail.append(str(tmp_path), repo="r", staged=[], delta=_delta(problems=["p1"]),
+                        now="2026-08-19")
+    absorb_trail.append(str(tmp_path), repo="r", staged=[], delta=_delta(), now="2026-08-19")
+    absorb_trail.append(str(tmp_path), repo="r", staged=[], delta=_delta(problems=["p2"]),
+                        now="2026-08-19")
+    out = absorb_trail.render(absorb_trail.read(str(tmp_path)))
+    header_line = next(line for line in out.splitlines() if line.startswith("## r"))
+    assert header_line.strip() != "## r — 3 attempts, PASSED", \
+        "reject -> pass -> reject must not render as a bare PASSED header"
+    assert "REJECT" in header_line.upper(), "the header must reflect the LAST attempt, which rejected"
+    assert "2" in header_line, "the earlier pass (attempt #2) must still be visible, not hidden"
+
+
+def test_absorb_report_forget_of_unrecorded_repo_says_so_explicitly(tmp_path, capsys):
+    # THE BUG THIS GUARDS: `--forget` for an id with zero matching rows used to print
+    # "absorb-report: removed 0 attempt(s) for <id>" and exit 0 — indistinguishable at a glance
+    # from a successful prune. That is exactly how the Fix-1 identity mismatch went unnoticed: a
+    # real prune FAILURE looked exactly like a real prune SUCCESS.
+    import types
+
+    from agent import cli
+
+    absorb_trail.append(str(tmp_path), repo="acme/known", staged=[], delta=_delta(), now="2026-08-19")
+    args = types.SimpleNamespace(state=str(tmp_path), repo=None, forget="acme/unknown")
+    assert cli._cmd_absorb_report(args) == 0
+    out = capsys.readouterr().out
+    lower = out.lower()
+    assert "nothing" in lower or "no match" in lower, \
+        "a zero-row forget must say so explicitly, not read as a bare success"
+    assert "acme/known" in out, "list the repo ids actually present, so the mismatch is visible"
