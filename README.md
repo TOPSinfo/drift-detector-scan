@@ -223,8 +223,16 @@ agent/               the pipeline: scan · audit · run · deliver · absorb (ca
 agent/lib/           the pieces — engine, endpoint detection, OSV/EOL, ranking, delivery, verify, dashboard, config
 agent/*.yaml         the reviewed catalogs — vendors · vendor_sunsets · idioms · frameworks
 agent/assets/        the Cockpit — dashboard template + app + vendored runtime
-docs/                ROADMAP.md · drift-absorb.md (catalog-intake doctrine) · EVAL.md · schema/ (the contract)
+templates/ci/        CI templates copied into a CUSTOMER's repo by onboarding (not run here)
+deploy/drift-ops/    template for the private state/config repo a fleet needs
+eval/                the SCANNER corpus — public repos pinned at a SHA + the recall gate
+evals/               the PROMPT corpus — promptfile discipline probes (different thing, easily confused)
+docs/                the documentation site (mkdocs.yml) · schema/ (the drift.json contract)
+tests/               the suite; each test comment pins a real shipped bug
 ```
+
+`eval/` and `evals/` are genuinely different: the first measures whether the *scanner* finds
+what it should, the second whether the *promptfiles* keep their load-bearing rules.
 
 Working conventions for contributors: **[CLAUDE.md](CLAUDE.md)**.
 
