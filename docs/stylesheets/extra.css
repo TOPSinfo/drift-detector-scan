@@ -28,3 +28,78 @@
 .md-typeset h2.faq::before {
   content: "";
 }
+
+/* ── Landing hero ─────────────────────────────────────────────────────────────────────
+ * Every colour below is a Material CSS custom property, never a literal, for the same
+ * reason as the FAQ cards above: one rule then reads correctly in BOTH palettes. The
+ * ember-crimson accent is set in mkdocs.yml, so the hero inherits the product colour
+ * rather than restating it.
+ */
+.dd-hero {
+  margin: 0 0 2.5rem;
+  padding: 2.6rem 0 2.2rem;
+  border-bottom: 1px solid var(--md-default-fg-color--lightest);
+  text-align: center;
+}
+.dd-hero__eyebrow {
+  display: inline-block;
+  font-size: .68rem;
+  letter-spacing: .14em;
+  text-transform: uppercase;
+  font-weight: 700;
+  color: var(--md-accent-fg-color);
+  border: 1px solid var(--md-accent-fg-color);
+  border-radius: 2rem;
+  padding: .25em .9em;
+  margin-bottom: 1.1rem;
+}
+.dd-hero__title {
+  font-size: 2.6rem;
+  line-height: 1.12;
+  font-weight: 800;
+  margin: 0 0 .6rem;
+  letter-spacing: -.02em;
+}
+.dd-hero__sub {
+  font-size: 1.02rem;
+  line-height: 1.65;
+  max-width: 42rem;
+  margin: 0 auto 1.7rem;
+  color: var(--md-default-fg-color--light);
+}
+.dd-hero__cta { display: flex; gap: .6rem; justify-content: center; flex-wrap: wrap; }
+
+/* Responsive: the hero must not shout on a phone. */
+@media screen and (max-width: 44em) {
+  .dd-hero { padding: 1.8rem 0 1.6rem; }
+  .dd-hero__title { font-size: 1.9rem; }
+}
+
+/* Three-up feature row. Auto-fit means it reflows to 1 column on narrow screens with no
+ * media query of its own. */
+.dd-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(15rem, 1fr));
+  gap: 1rem;
+  margin: 1.6rem 0 2rem;
+}
+.dd-card {
+  border: 1px solid var(--md-default-fg-color--lightest);
+  border-radius: .3rem;
+  padding: 1.05rem 1.15rem;
+  background: var(--md-code-bg-color);
+}
+.dd-card h3 { margin: 0 0 .45rem; font-size: .95rem; }
+.dd-card p  { margin: 0; font-size: .82rem; line-height: 1.6;
+              color: var(--md-default-fg-color--light); }
+
+/* Built-by strip. Logo inverts in dark mode — the TOPS mark is dark ink on transparent,
+ * so without this it disappears against the slate background. */
+.dd-builtby {
+  display: flex; align-items: center; justify-content: center; gap: .8rem;
+  margin: 2.5rem 0 .5rem; padding-top: 1.6rem;
+  border-top: 1px solid var(--md-default-fg-color--lightest);
+  font-size: .75rem; color: var(--md-default-fg-color--light);
+}
+.dd-builtby img { height: 30px; width: auto; }
+[data-md-color-scheme="slate"] .dd-builtby img { filter: invert(1) brightness(1.6); }

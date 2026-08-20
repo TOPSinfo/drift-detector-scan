@@ -3,12 +3,41 @@ hide:
   - navigation
 ---
 
-# Know before it breaks.
+<div class="dd-hero" markdown>
+<span class="dd-hero__eyebrow">Know before it breaks</span>
 
-Drift Detector finds the third-party APIs your code calls that are **being switched off** —
-down to the exact `file:line`, each with a link to the vendor's own announcement.
+<div class="dd-hero__title">The APIs you depend on<br>are being switched off.</div>
 
-It runs as a [Claude Code](https://docs.anthropic.com/en/docs/claude-code) plugin:
+<div class="dd-hero__sub">
+Vendors retire APIs on published schedules. Your code keeps calling them until the day it
+stops working. Drift Detector finds those calls before that day — down to the exact
+<code>file:line</code>, each one carrying a link to the vendor's own announcement.
+</div>
+
+<div class="dd-hero__cta" markdown>
+[Get started](PLUGIN.md){ .md-button .md-button--primary }
+[How it works](how-it-works.md){ .md-button }
+[Common questions](FAQ.md){ .md-button }
+</div>
+</div>
+
+<div class="dd-grid" markdown>
+<div class="dd-card" markdown>
+### Finds what scanners miss
+Dependency scanners read your manifest. This reads your **code** — the endpoints, versions
+and AI models you actually call, including ones no package file mentions.
+</div>
+<div class="dd-card" markdown>
+### Every date has a receipt
+No retirement is recorded without a link to the vendor page it was read from. A date nobody
+fetched is refused by the tool itself, not by convention.
+</div>
+<div class="dd-card" markdown>
+### Says when it cannot see
+"Nothing found" and "nothing checked" are different answers, and it never confuses them.
+Unreadable code and unaudited vendors are reported, not silently passed.
+</div>
+</div>
 
 ```
 /plugin marketplace add TOPSinfo/drift-detector-scan
@@ -16,8 +45,10 @@ It runs as a [Claude Code](https://docs.anthropic.com/en/docs/claude-code) plugi
 /drift-detector /path/to/a/folder
 ```
 
-[Get started](PLUGIN.md){ .md-button .md-button--primary }
-[Common questions](FAQ.md){ .md-button }
+<div class="dd-builtby" markdown>
+<img src="assets/header-logo.svg" alt="TOPS Infosolutions">
+<span>Built by <a href="https://www.topsinfosolutions.com/">TOPS Infosolutions</a></span>
+</div>
 
 ---
 
