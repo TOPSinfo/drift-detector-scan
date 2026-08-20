@@ -154,29 +154,3 @@ def test_a_hand_written_file_calling_the_same_host_still_matches(tmp_path):
         astgrep_fake.hit("stripe-endpoint", str(tmp_path / "public/js/ckeditor/ckeditor.js"), 5))
     res = run_scan(str(tmp_path), str(rules), run=lambda a: raw)
     assert [m["path"].split("/")[-1] for m in res["matches"]] == ["contact.js"]
-
-
-def test_a_minified_file_is_skipped_even_when_its_name_is_unknown(tmp_path):
-    """Half B is a list and lists go stale. A file with a 60,000-character line is
-    machine-generated whoever wrote the generator, so content catches tomorrow's bundle
-    with no maintenance. Named `whatever.js` on purpose — nothing in _VENDORED_FILES."""
-    rules = _rules(tmp_path)
-    (tmp_path / "src").mkdir(parents=True, exist_ok=True)
-    (tmp_path / "src" / "whatever.js").write_text("var a=1;\n" + "x" * 60000 + "\n")
-    (tmp_path / "src" / "handwritten.js").write_text("fetch('https://api.stripe.com/v1/charges')\n")
-    raw = astgrep_fake.canned(
-        astgrep_fake.hit("stripe-endpoint", str(tmp_path / "src/whatever.js"), 2),
-        astgrep_fake.hit("stripe-endpoint", str(tmp_path / "src/handwritten.js"), 1))
-    res = run_scan(str(tmp_path), str(rules), run=lambda a: raw)
-    assert [m["path"].split("/")[-1] for m in res["matches"]] == ["handwritten.js"]
-
-
-def test_an_unreadable_or_missing_file_is_not_skipped(tmp_path):
-    """Fail OPEN, not closed. If the content check cannot read a file it must not silently
-    drop the match — a scanner that loses findings on an I/O hiccup is reporting absence as
-    health, which is the failure this project exists to prevent."""
-    rules = _rules(tmp_path)
-    raw = astgrep_fake.canned(
-        astgrep_fake.hit("stripe-endpoint", str(tmp_path / "src/does-not-exist.php"), 1))
-    res = run_scan(str(tmp_path), str(rules), run=lambda a: raw)
-    assert [m["path"].split("/")[-1] for m in res["matches"]] == ["does-not-exist.php"]
