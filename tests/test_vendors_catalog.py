@@ -90,3 +90,36 @@ def test_usps_is_scoped_to_the_two_real_api_hosts():
     for host in ("tools.usps.com", "www.usps.com"):
         miss = classify_url.classify_host(host, v)
         assert miss is None or miss.vendor != "USPS", (host, miss)
+
+
+# ── eBay Post-Order: a pathSignature, because the host is never on the line ──────────
+# Measured on a 19-repo corpus: 50 versioned `post-order/vN/` literals across 3 repos, every
+# one inside a file named Ebay_post_order_api.php under an ebay/ directory, zero
+# counter-examples. The wrapper stores bare paths and builds the host elsewhere, so neither
+# host classification nor the single-vendor concat idiom can reach them.
+
+def test_ebay_declares_a_post_order_path_signature():
+    v = _vendors()
+    ebay = next(x for x in v if x.vendor == "eBay")
+    assert ebay.path_signature, "eBay must declare a pathSignature for the Post-Order API"
+    got = classify_url.path_signature_match("post-order/v2/cancellation/12345", v)
+    assert got and got[0].vendor == "eBay"
+    assert got[1] == "v2", "group 1 of the signature is the version"
+
+
+def test_the_post_order_signature_does_not_match_a_lookalike_segment():
+    """The literals in the wild carry NO leading slash ('post-order/v2/cancellation'), so the
+    signature cannot require one — which is exactly what would let it match the tail of an
+    unrelated segment. A boundary is required instead, or an app's own /my-post-order/v2/
+    route would be tagged as eBay."""
+    v = _vendors()
+    assert classify_url.path_signature_match("my-post-order/v2/thing", v) is None
+    assert classify_url.path_signature_match("/post-order/v2/thing", v) is not None
+    assert classify_url.path_signature_match("post-order/v2/thing", v) is not None
+
+
+def test_the_post_order_signature_does_not_steal_shopify_paths():
+    """Two signatures now exist; longest-match-wins must keep them apart."""
+    v = _vendors()
+    got = classify_url.path_signature_match("/admin/api/2023-10/shop.json", v)
+    assert got and got[0].vendor == "Shopify" and got[1] == "2023-10"
