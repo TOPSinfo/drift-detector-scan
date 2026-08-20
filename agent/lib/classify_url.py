@@ -45,8 +45,46 @@ _IGNORE = {
 _LABEL = re.compile(r"^[a-z0-9_-]+$", re.IGNORECASE)
 
 
+# XML namespace declarations. The value is an IDENTIFIER for a vocabulary, never a resource
+# anyone fetches — `xmlns="http://mws.amazonservices.com/schema/2011-10-01"` is not a call to
+# MWS. SOAP-era SDKs declare one per response class, so on a corpus scan these swamp exactly
+# the vendors that have them: 492 of 4273 attributed call-sites (11.5%), and for Amazon MWS
+# 114 of 151 — three quarters of that vendor's apparent usage.
+#
+# `_IGNORE` cannot express this. It filters by HOST, and the namespace host is the vendor's
+# OWN API host, so ignoring it would delete that vendor's real call-sites along with these.
+#
+# BOTH forms are needed, and that is the whole lesson: an earlier attempt matched only the
+# attribute form and removed nothing measurable, because these SDKs declare the same
+# namespace both ways in the same file — filtering one left the loc attributed by the other.
+# Quotes are optionally BACKSLASH-ESCAPED: the SDKs build these inside double-quoted PHP
+# strings, so matching only bare quotes missed every real occurrence.
+_NS_PATTERNS = (
+    # xmlns="…" / xmlns:prefix="…"
+    r"""xmlns(?::[A-Za-z_][\w.\-]*)?\s*=\s*\\?["']([^"'\\\s>]+)""",
+    # $xpath->registerNamespace('a', '…') — DOMXPath / SimpleXML
+    r"""register(?:XPath)?Namespace\s*\(\s*\\?["'][^"']*\\?["']\s*,\s*\\?["']([^"'\\\s>]+)""",
+)
+_NS_RES = tuple(re.compile(p, re.IGNORECASE) for p in _NS_PATTERNS)
+
+
 def extract_urls(text: str) -> list:
-    return _URL_RE.findall(text or "")
+    """URLs in `text`, excluding any that is an XML namespace identifier.
+
+    Per-URL, not per-line: a SOAP client routinely declares the namespace and posts to the
+    real endpoint on the SAME line, so dropping the whole line would lose the actual call.
+    """
+    text = text or ""
+    ns_spans = [m.span(1) for rx in _NS_RES for m in rx.finditer(text)]
+    out = []
+    for m in _URL_RE.finditer(text):
+        # Overlap on the START offset, not containment: _URL_RE greedily takes the trailing
+        # backslash of an escaped quote, so the URL span runs one character past the
+        # namespace value and strict containment missed every escaped one.
+        if any(a <= m.start() < b for a, b in ns_spans):
+            continue
+        out.append(m.group(0))
+    return out
 
 
 def host_of(url: str) -> str:
