@@ -277,3 +277,33 @@ def test_the_php_anthropic_client_maps_to_the_vendor():
     c = sdk_clients.load()
     assert c.get("composer/anthropic-ai/sdk", {}).get("vendor") == "Anthropic"
     assert c["composer/anthropic-ai/sdk"]["host"] == "api.anthropic.com"
+
+
+def test_model_scoped_entries_quote_their_own_date():
+    """The research gate refuses a `retiring` verdict whose date is absent from the fetched
+    excerpt. Model retirements added by hand skip that gate entirely — dozens of rows are
+    transcribed from one page, and a transposed digit would be invisible.
+
+    So the same check is applied here: for every operation-scoped entry whose note quotes the
+    vendor's own row, the entry's `retires` date must appear IN that quote. This is what makes
+    a bulk hand-transcription auditable rather than trusted."""
+    import yaml
+    from agent import absorb
+    rows = yaml.safe_load(open("agent/vendor_sunsets.yaml", encoding="utf-8"))
+    # Scoped to vendors that declare a modelSignature — the model retirements transcribed in
+    # bulk from one table. Other entries quote an announcement TITLE ("Six Dispute Calls
+    # Decommissioned"), which correctly carries no date, and policing those would be wrong.
+    sig_vendors = {v["vendor"] for v in
+                   yaml.safe_load(open("agent/vendors.yaml", encoding="utf-8"))
+                   if v.get("modelSignature")}
+    checked, bad = 0, []
+    for e in rows:
+        note, date = str(e.get("note") or ""), e.get("retires")
+        if not date or '"' not in note or e.get("vendor") not in sig_vendors:
+            continue
+        checked += 1
+        if not absorb.date_in_text(date, note):
+            bad.append(f"{e.get('vendor')} {e.get('operation') or e.get('version')} "
+                       f"retires={date} not present in its quoted note")
+    assert checked >= 20, f"expected the quoted model entries to be covered, saw {checked}"
+    assert not bad, "dates that do not appear in their own quoted source row:\n" + "\n".join(bad)
