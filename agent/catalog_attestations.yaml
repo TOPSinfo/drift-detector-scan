@@ -8,6 +8,11 @@
   source: https://advertising.amazon.com/API/docs/en-us/release-notes/deprecations
   by: ai-research
   note: retirement found (2023-08-31)
+- vendor: Amazon MWS
+  checked: '2026-08-20'
+  source: https://developer.amazonservices.com/august2022
+  by: ai-research
+  note: retirement found (2023-12-31)
 - vendor: Amazon SP-API
   checked: '2026-07-20'
   source: https://developer-docs.amazon/sp-api/docs/sp-api-deprecations

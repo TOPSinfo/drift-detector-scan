@@ -237,3 +237,32 @@ def test_the_usps_replacement_host_is_not_condemned_by_the_web_tools_sunset():
     ]}]}
     out = audit_inventory(doc, "2026-08-14", sunsets=loaded, **_NOOP)
     assert [x for x in out["findings"] if x["kind"] == "sunset" and x["ref"] == "USPS"] == []
+
+
+# ── Amazon MWS: an undated whole-API retirement is a half-finding ────────────────
+# The seed entry carried `version: "*"` with NO `retires`, and a note that said
+# "Confirm the current cut-off date for your marketplace" — an open TODO that shipped.
+# A repo with 41 MWS call-sites therefore read "Amazon MWS (all versions) deprecated" with
+# no date: true, but it cannot be prioritised, and it does not say the thing that matters —
+# that the cut-off is years in the PAST. Date fetched 2026-08-20 from Amazon's own MWS
+# developer site and passed through the research gate's verbatim-date check.
+
+def test_amazon_mws_retirement_is_dated():
+    import yaml
+    rows = yaml.safe_load(open("agent/vendor_sunsets.yaml", encoding="utf-8"))
+    mws = [e for e in rows if e.get("vendor") == "Amazon MWS"]
+    assert len(mws) == 1, "one whole-API MWS entry, not a duplicate appended alongside it"
+    e = mws[0]
+    assert e.get("retires") == "2023-12-31"
+    assert e.get("version") == "*"
+    assert e.get("source"), "a date with no source is exactly what the absorb gate refuses"
+
+
+def test_amazon_mws_source_is_not_the_dead_migration_url():
+    """The previous source (developer-docs.amazon…/migrating-from-amazon-mws) now 404s —
+    verified this session. A citation that no longer resolves cannot be re-checked by a
+    reviewer, which is the whole purpose of carrying one."""
+    import yaml
+    rows = yaml.safe_load(open("agent/vendor_sunsets.yaml", encoding="utf-8"))
+    e = [x for x in rows if x.get("vendor") == "Amazon MWS"][0]
+    assert "migrating-from-amazon-mws" not in str(e.get("source"))
