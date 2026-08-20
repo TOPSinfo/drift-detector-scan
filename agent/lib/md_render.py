@@ -223,8 +223,13 @@ def render_markdown(payload: dict, now: str) -> str:
         for a in group:
             when = a.get("date") or a.get("fix_version") or "—"
             # call-sites the reader can act on (the located files), not finding_count —
-            # which for a family-scoped sunset is ~always 1 and tells the reader nothing
-            sites = len(a.get("files") or []) or a.get("finding_count", 0)
+            # which for a family-scoped sunset is ~always 1 and tells the reader nothing.
+            # file_count is the TRUE total; `files` is a sample capped at _MAX_FILES, so
+            # reading len() off it reported "6" for a 22-call-site retirement. Falls back
+            # for payloads built before the field existed.
+            sites = a.get("file_count")
+            if sites is None:
+                sites = len(a.get("files") or []) or a.get("finding_count", 0)
             rows.append([_repo(a), _action_label(a), a.get("status", ""),
                          when, sites, _first_loc(a)])
         L.extend(_table(cols, rows))

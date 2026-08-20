@@ -15,6 +15,13 @@ from agent.lib.ranking import severity_rank, semver_key, is_version
 
 _MAX_FILES = 6
 
+
+def _group_files(group: list) -> list:
+    """Every distinct call-site across an action's findings, order-preserved."""
+    return list(OrderedDict.fromkeys(
+        p for f in group for p in (f.get("files") or [])))
+
+
 # Only `cve` actions get a command: an EOL means upgrading a language runtime or framework
 # major, and a SUNSET means migrating to a different vendor API. Neither is a one-liner.
 _COMMANDS = {
@@ -121,8 +128,13 @@ def build_actions(findings: list) -> list:
             "finding_count": len(group),
             "critical_count": sum(1 for f in group if str(f.get("severity", "")).upper() == "CRITICAL"),
             "first_seen": min((f["first_seen"] for f in group if f.get("first_seen")), default=None),
-            "files": list(OrderedDict.fromkeys(
-                p for f in group for p in (f.get("files") or [])))[:_MAX_FILES],
+            # The UNION across the group, counted BEFORE it is capped. `files` is a
+            # display sample; `file_count` is the number the reader sizes the work by,
+            # and the two are not the same once a group exceeds _MAX_FILES. Counted as
+            # a union rather than a sum of per-finding totals so overlapping findings
+            # (two advisories on one call-site) do not inflate the exposure.
+            "file_count": len(_group_files(group)),
+            "files": _group_files(group)[:_MAX_FILES],
             "fixes": group,
             "sources": [u for u in OrderedDict.fromkeys(
                 f.get("source_url") for f in group) if u],

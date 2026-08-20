@@ -31,6 +31,19 @@ def _runtime_products(repo: dict):
         yield name, (fw or {}).get("ver"), "framework"
 
 
+_DETAIL_FILES = 6
+
+
+def _used_at(files: list) -> str:
+    """The `used at …` clause. Prose a human reads, so the loc list is capped — but a cap
+    that hides its own existence is the bug this exists to prevent: a reader seeing six
+    paths and no more must not conclude there were six. The full list stays on the
+    finding's `files`; only this sentence is abridged, and it says so."""
+    shown = ", ".join(files[:_DETAIL_FILES])
+    extra = len(files) - _DETAIL_FILES
+    return f"{shown} (+{extra} more)" if extra > 0 else shown
+
+
 def _sunset_recommendation(replacement, retires, now: str) -> str:
     """Advice that reads correctly against TODAY. "plan migration before 2025-01-21" is
     nonsense once that date has passed — the API is already gone, not something to plan
@@ -83,7 +96,7 @@ def _sunset_findings(repo: dict, sun_index: dict, now: str) -> list:
                     files += e.get("files", [])
             if not files:
                 continue
-            files = list(dict.fromkeys(files))[:6]
+            files = list(dict.fromkeys(files))
             status = vendor_sunsets.status_for(entry.get("retires"), now, confirmed=confirmed)
             if eop:
                 vlabel = eop                          # the operation IS the thing retired
@@ -102,7 +115,7 @@ def _sunset_findings(repo: dict, sun_index: dict, now: str) -> list:
                 "repo": path, "kind": "sunset", "ref": vendor, "version": cver, "domain": edomain,
                 "operation": eop, "path": epath,
                 "status": status, "severity": "SUNSET",
-                "detail": f"{vendor} {vlabel} {when}{verify} · used at " + ", ".join(files),
+                "detail": f"{vendor} {vlabel} {when}{verify} · used at " + _used_at(files),
                 "date": entry.get("retires"), "source_url": entry.get("source", ""), "tier": 1,
                 "recommendation": rec, "files": files,
             })
@@ -127,7 +140,7 @@ def _lifecycle_findings(repo: dict, now: str) -> list:
         groups.setdefault((vendor, version, lc["retires"], lc["source"], lc["replacement"]),
                           []).append(e)
     for (vendor, version, retires, source, replacement), eps in groups.items():
-        files = list(dict.fromkeys(f for e in eps for f in e.get("files", [])))[:6]
+        files = list(dict.fromkeys(f for e in eps for f in e.get("files", [])))
         status = vendor_sunsets.status_for(retires, now, confirmed=True)
         # date-aware: a past retirement is "already gone", not "before <past date>"
         rec = (f"{replacement} — already retired {retires}" if str(retires) <= now
@@ -137,7 +150,7 @@ def _lifecycle_findings(repo: dict, now: str) -> list:
             "domain": None, "operation": None, "path": None,
             "status": status, "severity": "SUNSET",
             "detail": f"{vendor} {version} accessible until {retires} (computed from the "
-                      f"published version-support rule) · used at " + ", ".join(files),
+                      f"published version-support rule) · used at " + _used_at(files),
             "date": retires, "source_url": source, "tier": 1,
             "recommendation": rec, "files": files,
         })

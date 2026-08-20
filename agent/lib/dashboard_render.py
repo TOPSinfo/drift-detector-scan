@@ -55,6 +55,7 @@ def _project_action(a: dict) -> dict:
         "status": a.get("status"), "finding_count": a.get("finding_count"),
         "critical_count": a.get("critical_count"), "first_seen": a.get("first_seen"),
         "cves": cves[:_MAX_CVES], "sources": a.get("sources", []), "files": a.get("files", []),
+        "file_count": a.get("file_count"),
     }
 
 

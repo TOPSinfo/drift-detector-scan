@@ -4,7 +4,12 @@
   "title": "Drift Detector report (drift.json)",
   "description": "The canonical machine-readable output of a Drift Detector scan. drift.md and dashboard.html are verified projections of this document; drift-scan verify checks that they agree. Structural conformance is checked here; the SEMANTIC invariants (a tile count equals the rows it summarizes, no two findings render identically) live in agent/lib/verify.py, because JSON Schema cannot express them.",
   "type": "object",
-  "required": ["schemaVersion", "generated", "counts", "actions"],
+  "required": [
+    "schemaVersion",
+    "generated",
+    "counts",
+    "actions"
+  ],
   "properties": {
     "schemaVersion": {
       "const": "drift/v1",
@@ -17,19 +22,66 @@
     "counts": {
       "type": "object",
       "description": "Summary tallies. Each is DERIVED from the arrays below and must equal them — that equality is enforced by verify.py, not by this schema.",
-      "required": ["fixes", "sunsets", "eol", "critical", "unaudited", "reposScanned", "reposAffected"],
+      "required": [
+        "fixes",
+        "sunsets",
+        "eol",
+        "critical",
+        "unaudited",
+        "reposScanned",
+        "reposAffected"
+      ],
       "properties": {
-        "fixes": {"type": "integer", "minimum": 0, "description": "Action-required findings (DEPRECATED)."},
-        "sunsets": {"type": "integer", "minimum": 0, "description": "Vendor API retirements."},
-        "eol": {"type": "integer", "minimum": 0, "description": "Runtime/framework end-of-life."},
-        "critical": {"type": "integer", "minimum": 0, "description": "Critical-severity CVEs."},
-        "unaudited": {"type": "integer", "minimum": 0, "description": "Vendors called but whose retirement list is unchecked (UNAUDITED or STALE)."},
-        "apis": {"type": "integer", "minimum": 0},
-        "unknown": {"type": "integer", "minimum": 0},
-        "private": {"type": "integer", "minimum": 0},
-        "unscannable": {"type": "integer", "minimum": 0, "description": "Sources requested but unreadable (404/no-access URL, typo, folder with no code). Equals rootsUnscannable length; 'cannot see' is not 'clean'."},
-        "reposScanned": {"type": "integer", "minimum": 0},
-        "reposAffected": {"type": "integer", "minimum": 0}
+        "fixes": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Action-required findings (DEPRECATED)."
+        },
+        "sunsets": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Vendor API retirements."
+        },
+        "eol": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Runtime/framework end-of-life."
+        },
+        "critical": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Critical-severity CVEs."
+        },
+        "unaudited": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Vendors called but whose retirement list is unchecked (UNAUDITED or STALE)."
+        },
+        "apis": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "unknown": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "private": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "unscannable": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Sources requested but unreadable (404/no-access URL, typo, folder with no code). Equals rootsUnscannable length; 'cannot see' is not 'clean'."
+        },
+        "reposScanned": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "reposAffected": {
+          "type": "integer",
+          "minimum": 0
+        }
       }
     },
     "actions": {
@@ -37,29 +89,111 @@
       "description": "One remediation job per (repo, and — for a sunset — the retiring operation/path). NOT one per finding: 30 CVEs against a package are one upgrade.",
       "items": {
         "type": "object",
-        "required": ["repo", "ref", "kind", "status"],
+        "required": [
+          "repo",
+          "ref",
+          "kind",
+          "status"
+        ],
         "properties": {
-          "repo": {"type": "string"},
-          "ref": {"type": "string", "description": "The vendor (sunset) or ecosystem/package (CVE)."},
-          "unit": {"type": ["string", "null"], "description": "For a sunset, the exact thing retiring — operation, apiPath, host, or version. This is what keeps twelve dead calls from collapsing into one row."},
-          "date": {"type": ["string", "null"], "description": "Retirement/EOL date, YYYY-MM-DD, or null."},
-          "kind": {"enum": ["sunset", "eol", "cve"]},
-          "refKind": {"type": ["string", "null"], "enum": ["runtime", "framework", null], "description": "For an eol action, whether the ref is a runtime (DevOps) or a framework (Developer). null for cve/sunset."},
-          "owner": {"enum": ["devops", "developer"], "description": "The delivery stream that fixes this. DERIVED from (kind, refKind) and re-checked by verify: cve + runtime-eol = devops; sunset + framework-eol = developer."},
-          "status": {"enum": ["DEPRECATED", "REVIEW"]},
-          "worst": {"type": ["string", "null"]},
-          "recommendation": {"type": ["string", "null"]},
-          "finding_count": {"type": "integer", "minimum": 0},
-          "fix_version": {"type": ["string", "null"]},
+          "repo": {
+            "type": "string"
+          },
+          "ref": {
+            "type": "string",
+            "description": "The vendor (sunset) or ecosystem/package (CVE)."
+          },
+          "unit": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "For a sunset, the exact thing retiring — operation, apiPath, host, or version. This is what keeps twelve dead calls from collapsing into one row."
+          },
+          "date": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Retirement/EOL date, YYYY-MM-DD, or null."
+          },
+          "kind": {
+            "enum": [
+              "sunset",
+              "eol",
+              "cve"
+            ]
+          },
+          "refKind": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "enum": [
+              "runtime",
+              "framework",
+              null
+            ],
+            "description": "For an eol action, whether the ref is a runtime (DevOps) or a framework (Developer). null for cve/sunset."
+          },
+          "owner": {
+            "enum": [
+              "devops",
+              "developer"
+            ],
+            "description": "The delivery stream that fixes this. DERIVED from (kind, refKind) and re-checked by verify: cve + runtime-eol = devops; sunset + framework-eol = developer."
+          },
+          "status": {
+            "enum": [
+              "DEPRECATED",
+              "REVIEW"
+            ]
+          },
+          "worst": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "recommendation": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "finding_count": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "fix_version": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
           "files": {
             "type": "array",
             "items": {
               "type": "object",
               "properties": {
-                "loc": {"type": "string", "description": "file:line of the call-site."},
-                "href": {"type": ["string", "null"], "description": "A pinned blob permalink, or null when the source host is unknown."}
+                "loc": {
+                  "type": "string",
+                  "description": "file:line of the call-site."
+                },
+                "href": {
+                  "type": [
+                    "string",
+                    "null"
+                  ],
+                  "description": "A pinned blob permalink, or null when the source host is unknown."
+                }
               }
             }
+          },
+          "file_count": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "Total distinct call-sites for this action. `files` is a sample capped for display; this is the true count."
           }
         }
       }
@@ -70,12 +204,33 @@
       "items": {
         "type": "object",
         "properties": {
-          "vendor": {"type": "string"},
-          "verdict": {"enum": ["CURRENT", "STALE", "UNAUDITED"]},
-          "callSites": {"type": "integer", "minimum": 0},
-          "catalogEntries": {"type": "integer", "minimum": 0},
-          "checked": {"type": ["string", "null"]},
-          "source": {"type": "string"}
+          "vendor": {
+            "type": "string"
+          },
+          "verdict": {
+            "enum": [
+              "CURRENT",
+              "STALE",
+              "UNAUDITED"
+            ]
+          },
+          "callSites": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "catalogEntries": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "checked": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "source": {
+            "type": "string"
+          }
         }
       }
     },
@@ -85,24 +240,55 @@
       "items": {
         "type": "object",
         "properties": {
-          "repo": {"type": "string"},
-          "grade": {"enum": ["HIGH", "PARTIAL", "LOW"]},
-          "attributed": {"type": "integer", "minimum": 0},
-          "unattributedPaths": {"type": "integer", "minimum": 0},
-          "unresolvedSinks": {"type": "integer", "minimum": 0}
+          "repo": {
+            "type": "string"
+          },
+          "grade": {
+            "enum": [
+              "HIGH",
+              "PARTIAL",
+              "LOW"
+            ]
+          },
+          "attributed": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "unattributedPaths": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "unresolvedSinks": {
+            "type": "integer",
+            "minimum": 0
+          }
         }
       }
     },
-    "coverageNotes": {"type": "array", "items": {"type": "string"}},
+    "coverageNotes": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
     "rootsUnscannable": {
       "type": "array",
       "description": "Sources requested but unreadable, carried from inventory coverage so every projection surfaces them and verify enforces it. 'Cannot see' is never 'clean'.",
       "items": {
         "type": "object",
-        "required": ["root", "reason"],
+        "required": [
+          "root",
+          "reason"
+        ],
         "properties": {
-          "root": {"type": "string", "description": "The requested source (URL or path) that could not be read."},
-          "reason": {"type": "string", "description": "Why it could not be read, in the operator's terms."}
+          "root": {
+            "type": "string",
+            "description": "The requested source (URL or path) that could not be read."
+          },
+          "reason": {
+            "type": "string",
+            "description": "Why it could not be read, in the operator's terms."
+          }
         }
       }
     },
@@ -112,27 +298,93 @@
       "items": {
         "type": "object",
         "properties": {
-          "repo": {"type": "string"},
-          "domain": {"type": ["string", "null"]},
-          "vendor": {"type": ["string", "null"]},
-          "version": {"type": ["string", "null"]},
-          "classified": {"type": "boolean", "description": "True for a catalogued vendor — always hostClass 'api'."},
-          "hostClass": {"enum": ["api", "api-lead", "social-widget", "asset-cdn", "analytics", "vendored-lib", "boilerplate", "own-infra", "unclassified"]},
-          "coverage": {"enum": ["tracked", "queued", "needs-human", "blocked", "na"]},
+          "repo": {
+            "type": "string"
+          },
+          "domain": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "vendor": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "version": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "classified": {
+            "type": "boolean",
+            "description": "True for a catalogued vendor — always hostClass 'api'."
+          },
+          "hostClass": {
+            "enum": [
+              "api",
+              "api-lead",
+              "social-widget",
+              "asset-cdn",
+              "analytics",
+              "vendored-lib",
+              "boilerplate",
+              "own-infra",
+              "unclassified"
+            ]
+          },
+          "coverage": {
+            "enum": [
+              "tracked",
+              "queued",
+              "needs-human",
+              "blocked",
+              "na"
+            ]
+          },
           "ownInfraReason": {
             "type": "string",
             "description": "Present only when hostClass is 'own-infra': WHY the host was claimed as this repo's OWN infrastructure, naming the exact signal and the matched value (agent/lib/own_infra.py). Two possible signals, deliberately different weight: a repo-name TOKEN guess (e.g. \"repo token 'zenithapp'\") is a heuristic, not certain, so the endpoint's coverage stays 'queued' — it can still surface as a real third party through drift-scan research. A git-remote-org DOMAIN claim (e.g. \"git remote org domain 'devhost.io'\") is the organisation's own identity, strong enough that coverage becomes 'na' — dropped from the research backlog. Absent when no signal claims the host, including when the unrelated multi-host own-infra heuristic (endpoints.py's _tag_own_infra) retagged it instead — that path carries no reason at all."
           },
-          "file_count": {"type": "integer", "minimum": 0},
-          "files": {"type": "array", "items": {"type": "string"}}
+          "file_count": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "files": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
         }
       }
     },
-    "shapes": {"type": "array"},
-    "private": {"type": "array"},
-    "residueSamples": {"type": "array"},
-    "sdkMediated": {"type": "array"},
-    "delta": {"type": ["object", "null"]},
-    "inventoryDrift": {"type": ["object", "null"]}
+    "shapes": {
+      "type": "array"
+    },
+    "private": {
+      "type": "array"
+    },
+    "residueSamples": {
+      "type": "array"
+    },
+    "sdkMediated": {
+      "type": "array"
+    },
+    "delta": {
+      "type": [
+        "object",
+        "null"
+      ]
+    },
+    "inventoryDrift": {
+      "type": [
+        "object",
+        "null"
+      ]
+    }
   }
 }
