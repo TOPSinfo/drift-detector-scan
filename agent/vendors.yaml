@@ -9,7 +9,15 @@
 - { vendor: Amazon SP-API,     techKey: api:amazon-sp-api,       domains: [sellingpartnerapi] }
 - { vendor: Amazon MWS,        techKey: api:amazon-mws,          domains: [amazonservices] }   # `amazonservices` fragment catches EVERY regional MWS TLD (.co.uk/.de/.ca/…), not just .com — MWS is deprecated, so the regional endpoints must flag too
 - { vendor: Amazon Ads API,    techKey: api:amazon-ads,          domains: [advertising-api] }
-- { vendor: eBay,              techKey: api:ebay,                domains: [ebay.com] }
+# eBay's Post-Order API is reached through a wrapper that stores BARE paths
+# ('post-order/v2/cancellation/{id}') and builds the host elsewhere, so neither host
+# classification nor the single-vendor concat idiom can see it. The `(?:^|/)` boundary is
+# load-bearing: the literals in the wild carry no leading slash, so the signature cannot
+# require one — and without a boundary it would also match an app's own /my-post-order/v2/.
+# NOTE eBay reuses version strings across dead and live APIs (see vendor_sunsets.yaml), so a
+# future Post-Order retirement must be scoped by `path` or `domain`, never by `version: v2`
+# alone — that would flag every other eBay v2 API too.
+- { vendor: eBay,              techKey: api:ebay,                domains: [ebay.com], pathSignature: '(?:^|/)post-order/(v[0-9]+)/' }
 - { vendor: Walmart,           techKey: api:walmart-marketplace, domains: [walmartapis.com] }
 - { vendor: Etsy,              techKey: api:etsy,                domains: [etsy.com] }
 # pathSignature: the Admin API path `/admin/api/{YYYY-MM}/` is host-independent — merchant
