@@ -77,6 +77,8 @@ assurance.
 | Tickets | Filed automatically into your issue tracker, updated as things change |
 | Machine files | Standard formats your other security tools can read |
 
+Every number on those surfaces is explained in **[Reading the report](reading-the-report.md)**.
+
 ## What it does not do
 
 - It does not fix anything. It tells you what to fix and where.

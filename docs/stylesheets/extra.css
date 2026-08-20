@@ -53,6 +53,9 @@
   padding: .25em .9em;
   margin-bottom: 1.1rem;
 }
+/* A real <h1>: without one, Material prints the nav title ('Home') above the hero.
+ * Both selectors so Material's .md-typeset h1 rules do not win on specificity. */
+.md-typeset .dd-hero__title,
 .dd-hero__title {
   font-size: 2.6rem;
   line-height: 1.12;
@@ -101,5 +104,42 @@
   border-top: 1px solid var(--md-default-fg-color--lightest);
   font-size: .75rem; color: var(--md-default-fg-color--light);
 }
-.dd-builtby img { height: 30px; width: auto; }
-[data-md-color-scheme="slate"] .dd-builtby img { filter: invert(1) brightness(1.6); }
+.dd-builtby img { height: 30px; width: auto; }   /* dark-mode handling below */
+
+/* ── TOPS brand palette ───────────────────────────────────────────────────────────────
+ * Hexes taken from docs/assets/header-logo.svg, not picked by eye:
+ *   #27AAE1  cyan   — the cube mark; the primary/header colour
+ *   #585EAA  indigo — secondary
+ *   #F06649  coral  — accent (links, buttons); also ~the product's ember-crimson
+ * Material has no named colour near #27AAE1, hence `primary: custom` in mkdocs.yml with
+ * the real values here. Every other rule in this file reads Material's variables, so
+ * setting them at the root re-colours the whole site including components we never touch.
+ */
+:root,
+[data-md-color-scheme="default"] {
+  --md-primary-fg-color:        #27AAE1;
+  --md-primary-fg-color--light: #5CC3EC;
+  --md-primary-fg-color--dark:  #1B87B4;
+  --md-primary-bg-color:        #FFFFFF;
+  --md-primary-bg-color--light: rgba(255,255,255,.7);
+  --md-accent-fg-color:         #F06649;
+  --md-accent-fg-color--transparent: rgba(240,102,73,.1);
+}
+
+/* Dark palette: the same brand hues, lifted so they stay legible on slate. A brand colour
+ * tuned for white will read muddy on a dark ground, so primary lightens rather than being
+ * reused unchanged. */
+[data-md-color-scheme="slate"] {
+  --md-primary-fg-color:        #1B87B4;
+  --md-primary-fg-color--light: #5CC3EC;
+  --md-primary-fg-color--dark:  #14688A;
+  --md-accent-fg-color:         #FF7F63;
+  --md-accent-fg-color--transparent: rgba(255,127,99,.12);
+}
+
+/* The built-by strip carries the FULL logo, whose wordmark is near-black (#0C0C0C) and so
+ * vanishes on slate. invert() alone would also flip the cyan to orange; the hue-rotate puts
+ * the hue back, so the mark stays recognisably TOPS in dark mode. */
+[data-md-color-scheme="slate"] .dd-builtby img {
+  filter: invert(1) hue-rotate(180deg);
+}

@@ -6,7 +6,7 @@ hide:
 <div class="dd-hero" markdown>
 <span class="dd-hero__eyebrow">Know before it breaks</span>
 
-<div class="dd-hero__title">The APIs you depend on<br>are being switched off.</div>
+<h1 class="dd-hero__title">The APIs you depend on<br>are being switched off.</h1>
 
 <div class="dd-hero__sub">
 Vendors retire APIs on published schedules. Your code keeps calling them until the day it
@@ -17,6 +17,7 @@ stops working. Drift Detector finds those calls before that day — down to the 
 <div class="dd-hero__cta" markdown>
 [Get started](PLUGIN.md){ .md-button .md-button--primary }
 [How it works](how-it-works.md){ .md-button }
+[Reading the report](reading-the-report.md){ .md-button }
 [Common questions](FAQ.md){ .md-button }
 </div>
 </div>
