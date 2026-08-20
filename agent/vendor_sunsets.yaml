@@ -42,6 +42,17 @@
   source: https://developer.amazonservices.com/august2022
   note: 'Amazon August 2022 newsletter: "Amazon also recently posted an announcement sharing that MWS will no longer be available for use after December 31, 2023, and included the 2023 due dates for private app developers to migrate to SP-API." Migrate to SP-API.'
 
+# OpenAI MODEL retirement — operation-scoped, which is how model deprecations reach a
+# file:line (see modelSignature in vendors.yaml). Date read off OpenAI's own deprecations
+# table 2026-08-20 and quoted verbatim below. Scoped to the model id, NOT to the vendor or a
+# version: api.openai.com is very much alive, and every other model on it keeps working.
+- vendor: OpenAI
+  operation: gpt-3.5-turbo
+  retires: "2026-10-23"
+  replacement: gpt-5.6-terra
+  source: https://developers.openai.com/api/docs/deprecations
+  note: 'OpenAI deprecations table: "gpt-3.5-turbo-0125 | gpt-3.5-turbo, gpt-3.5-turbo-completions" with shutdown date October 23, 2026. Migrate to gpt-5.6-terra.'
+
 # eBay legacy "traditional" APIs — deprecated 2024-01-04, DECOMMISSIONED 2025-02-05 (already dead).
 # Domain-scoped so the live OAuth/REST host (api.ebay.com) and modern Sell/Buy APIs are NOT flagged.
 # Source: eBay Developers Program API Deprecation Status + Q3 2024 newsletter.

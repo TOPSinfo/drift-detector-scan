@@ -276,6 +276,48 @@ def scan_endpoints(matches: list, repo_root: str, vendors: list, *, max_files: i
                     path, rel, lineno, inferred=True)
                 attributed_locs.add(f"{rel}:{lineno}")
 
+    # --- vendor modelSignature: the AI category deprecates MODELS ------------------
+    # OpenAI, Groq and Mistral all publish dated deprecation schedules, and every date
+    # attaches to a MODEL identifier — never a host, path or API version, which are the only
+    # things a catalog entry could be scoped by. So a CRM defaulting to `gpt-3.5-turbo`
+    # across four services reported zero findings with that model's shutdown two months out.
+    #
+    # A model id names its vendor as unambiguously as a pathSignature does. Attributing it as
+    # the OPERATION reuses the scope the sunset catalog already supports (14 entries use it),
+    # so no new catalog concept is needed — only a way to see the id.
+    #
+    # THE GUARD: the vendor must already be classified in this repo by host. A model id
+    # corroborates an integration the scan already saw; it never creates one. Without this a
+    # migration note, a comparison table or a changelog entry naming a model would invent an
+    # integration the repo does not have — the failure mode that matters most here, because
+    # model ids are discussed in prose far more often than hosts are. Measured: one repo in a
+    # 19-repo corpus names a gpt- model without calling OpenAI, and this guard excludes it.
+    #
+    # KNOWN GAP — SDK-mediated repos are missed. A repo that depends on the official client
+    # package and never writes the host literal is classified `sdk-client` from its manifest,
+    # but that endpoint is injected in inventory_scan AFTER scan_endpoints returns, so it is
+    # not in `groups` here and the guard rejects its models. One corpus repo is exactly this:
+    # it calls OpenAI via composer.json and defaults to gpt-3.5-turbo in three controllers,
+    # and gets no finding. Closing it means threading the SDK-declared vendors into
+    # scan_endpoints (repo_scan.py) — a cross-layer change, deliberately not bolted on here.
+    classified_now = {r["techKey"] for r in groups.values() if r["techKey"]}
+    for m in matches:
+        if m.get("kind") != "model":
+            continue
+        v = by_tk.get(m.get("techKey") or "")
+        if v is None or not v.model_signature or v.techKey not in classified_now:
+            continue
+        rel = _relpath(m.get("path", ""), repo_root)
+        lineno = int(m.get("line", 0) or 0)
+        text = m.get("text") or _read_line(repo_root, rel, lineno, line_cache)
+        hit = re.search(v.model_signature, text or "")
+        if not hit:
+            continue
+        # the model ID itself, not the surrounding literal: the sunset join is an exact
+        # string match on `operation`, so a wider capture would never match an entry
+        add(v.vendor, v.techKey, v.domains[0] if v.domains else "", None,
+            hit.group(0), rel, lineno, operation=hit.group(0), inferred=True)
+
     # --- vendor pathSignature on bare path literals ------------------------------
     # A vendor that declares a `pathSignature` has stated that this path shape identifies it
     # REGARDLESS OF HOST. The `kind == "url"` arm already honours that, but only on a line that

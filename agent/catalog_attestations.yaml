@@ -176,6 +176,13 @@
     Individual GA APIs carry 24 months'' notice via the changelog (developer.microsoft.com/graph/changelog);
     none of the retiring surfaces (Azure AD Graph on graph.windows.net, EWS, the Security
     legacy Alerts API) are on graph.microsoft.com, so marketplacehub''s usage is unaffected.'
+- vendor: Microsoft Identity
+  checked: '2026-08-20'
+  source: https://learn.microsoft.com/en-us/entra/identity-platform/reference-breaking-changes
+  by: ai-research
+  note: 'Entra ID breaking-changes page read in full 2026-08-20: many dated BEHAVIOUR
+    changes (case-sensitive FIC matching, auth-code reuse, POST parsing) but no dated
+    retirement of the v1.'
 - vendor: OpenAI
   checked: '2026-08-11'
   source: https://developers.openai.com/api/docs/deprecations

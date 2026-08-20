@@ -173,6 +173,18 @@ def build_astgrep_ruleset(vendors: list | None = None,
         meta = {"vendor": v.vendor, "techKey": v.techKey, "kind": "endpoint"}
         for lang in langs:
             docs.append(_ast_literal_rule(f"{vendor_slug(v.vendor)}-endpoint", rx, lang, meta))
+    # Model identifiers, for vendors that DECLARE a modelSignature. The regex is the vendor's
+    # own (`gpt-[0-9]…`), so only vendors that opted in emit these rules — a repo calling a
+    # vendor with no signature is scanned exactly as before. endpoints.py additionally
+    # requires the vendor to be classified by host before attributing, so a rule firing on a
+    # doc that merely names a model cannot invent an integration.
+    for v in (vendors or []):
+        if not v.model_signature:
+            continue
+        meta = {"vendor": v.vendor, "techKey": v.techKey, "kind": "model"}
+        for lang in langs:
+            docs.append(_ast_literal_rule(f"{vendor_slug(v.vendor)}-model",
+                                          v.model_signature, lang, meta))
     for lang in langs:
         docs.append(_ast_literal_rule(
             # Derived from classify_url._VERSION_SEG, never restated: the two had
