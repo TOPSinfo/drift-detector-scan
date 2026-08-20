@@ -278,7 +278,10 @@ def check_md_matches_payload(md_text: str, payload: dict) -> None:
         (which GitHub renders as dropped cells) fails here instead of silently;
       • summary parity — the numbers in the Summary table equal the payload counts, so a
         headline number cannot drift from the data (bug #1's class);
-      • row identity — no two rows in a findings table are byte-identical (bug #2's class).
+      • row identity — no two rows in a findings table are byte-identical (bug #2's class);
+      • call-site parity — the "Call-sites" cell equals the action's file_count, so a
+        column that sizes a reader's work cannot be rendered off a display-capped
+        list (the 22-shown-as-6 class).
     """
     tables = _parse_md_tables(md_text)
 
@@ -317,6 +320,38 @@ def check_md_matches_payload(md_text: str, payload: dict) -> None:
                                     f"two findings rows render identically: {row} — a "
                                     f"reader cannot tell them apart")
                 seen.add(key)
+
+    # ── call-site parity ───────────────────────────────────────────────────────────
+    # Re-derived from the payload rather than imported from md_render: verify must be able
+    # to DISAGREE with the renderer, which is the whole reason it re-parses the file.
+    # Keyed on (repo, first call-site) — the pair the row itself displays. Where two
+    # actions collide on that key, any of their counts is accepted rather than guessed at,
+    # so a collision weakens this check instead of raising a false alarm.
+    expected: dict = {}
+    for a in payload.get("actions", []):
+        fc = a.get("file_count")
+        if fc is None:
+            continue
+        files = a.get("files") or []
+        f0 = files[0] if files else None
+        loc = (f0.get("loc", "") if isinstance(f0, dict) else str(f0)) if f0 else ""
+        key = (str(a.get("repoLabel") or a.get("repo") or ""), loc)
+        expected.setdefault(key, set()).add(str(fc))
+
+    for t in tables:
+        h = t["header"]
+        if "First call-site" not in h or "Call-sites" not in h:
+            continue
+        i_sites, i_loc = h.index("Call-sites"), h.index("First call-site")
+        for row in t["rows"]:
+            if max(i_sites, i_loc) >= len(row):
+                continue
+            want = expected.get((row[0], row[i_loc]))
+            if want and row[i_sites] not in want:
+                raise Violation("md-call-site-parity",
+                                f"row {row[0]!r}/{row[i_loc]!r} shows {row[i_sites]} "
+                                f"call-sites, payload says {'/'.join(sorted(want))} — the "
+                                f"Markdown understates the exposure a reader must size")
 
 
 def check_unscannable_surfaced(md_text: str, payload: dict) -> None:

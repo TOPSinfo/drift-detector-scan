@@ -292,3 +292,31 @@ def test_past_sunset_findings_do_not_say_migrate_before_a_gone_date():
     f = next(x for x in audit["findings"] if x.get("path") == "/fba/inbound/v0")
     assert "already retired" in f["recommendation"]
     assert "before 2025-01-21" not in f["recommendation"]     # the exact PM complaint
+
+
+# ── evidence must not be discarded before anything can count it ──────────────────
+
+def test_lifecycle_finding_keeps_every_call_site_not_the_first_six():
+    """REGRESSION (2026-08-20): `files` was truncated to 6 inside audit, so the true
+    call-site total was destroyed at the source — actions and every renderer downstream
+    could only ever see 6. Capping for display is fine; capping the EVIDENCE is not,
+    because nothing downstream can recover a number that was already thrown away."""
+    from agent.audit import _lifecycle_findings
+    eps = [{"vendor": "Shopify", "version": "2023-10",
+            "files": [f"app/Shopify_{i}.php:{i}"]} for i in range(22)]
+    repo = {"path": "example-org/inventory-app", "endpoints": eps}
+    f = [x for x in _lifecycle_findings(repo, "2026-08-20") if x["ref"] == "Shopify"][0]
+    assert f["date"] == "2024-10-16"          # retired, per the published Shopify rule
+    assert len(f["files"]) == 22
+
+
+def test_finding_detail_prose_stays_bounded_and_admits_what_it_omitted():
+    """The `detail` string is prose a human reads — it must NOT list 22 paths. It caps,
+    but says so, rather than trailing off as though six were all there were."""
+    from agent.audit import _lifecycle_findings
+    eps = [{"vendor": "Shopify", "version": "2023-10",
+            "files": [f"app/Shopify_{i}.php:{i}"]} for i in range(22)]
+    f = [x for x in _lifecycle_findings({"path": "r", "endpoints": eps}, "2026-08-20")
+         if x["ref"] == "Shopify"][0]
+    assert f["detail"].count("app/Shopify_") == 6
+    assert "+16 more" in f["detail"]

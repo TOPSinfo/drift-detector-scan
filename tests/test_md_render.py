@@ -320,3 +320,49 @@ def test_coverage_tree_labels_cannot_break_out_of_the_fence():
     # heading on its own line — that's what "broke out of the fence" means
     assert "\n# INJECTED" not in section
     assert "\n\n# INJECTED" not in out
+
+
+def test_call_sites_column_reports_the_true_total_not_the_capped_list_length():
+    """REGRESSION (2026-08-20): the column is headed "Call-sites", and it was computed as
+    len(files) — a list deliberately capped at 6. A repo with 22 call-sites on a retired
+    Shopify version therefore rendered "6". The number a reader uses to size the work must
+    come from file_count, not from however many locs we chose to print."""
+    p = _payload(actions=[{"kind": "sunset", "ref": "Shopify", "unit": "2023-10",
+                           "status": "RETIRED", "date": "2024-10-16", "finding_count": 1,
+                           "file_count": 22,
+                           "files": [{"loc": f"app/S{i}.php:{i}"} for i in range(6)]}])
+    rows = [l for l in md.render_markdown(p, "2026-08-20").splitlines()
+            if l.startswith("|") and "Shopify" in l and "2024-10-16" in l]
+    row = rows[0]
+    cells = [c.strip() for c in row.split("|")]
+    assert "22" in cells, f"Call-sites column showed the capped length, not the total: {row}"
+
+
+def test_call_sites_column_falls_back_when_file_count_is_absent():
+    """Older payloads (and CVE actions built before this field existed) carry no file_count.
+    They must keep rendering their previous number rather than a blank or a zero."""
+    p = _payload()
+    out = md.render_markdown(p, "2026-08-20")
+    row = [l for l in out.splitlines()
+           if l.startswith("|") and "/fba/inbound/v0" in l][0]
+    assert "1" in [c.strip() for c in row.split("|")]
+
+
+def test_parity_catches_a_call_sites_cell_that_understates_the_payload():
+    """REGRESSION (2026-08-20): the Call-sites column was rendered from len(files) — a list
+    capped at 6 — so a 22-call-site retirement published as "6" and verify said the report
+    was self-consistent. It WAS consistent with the capped list; it disagreed with the data.
+    A column that sizes a reader's work must be pinned to the payload, not to how many
+    sample locs the renderer chose to print."""
+    import pytest
+    from agent.lib.verify import check_md_matches_payload, Violation
+    p = _payload(actions=[{"kind": "sunset", "ref": "Shopify", "unit": "2023-10",
+                           "repo": "example-org/inventory-app", "status": "RETIRED",
+                           "date": "2024-10-16", "finding_count": 1, "file_count": 22,
+                           "files": [{"loc": f"app/S{i}.php:{i}"} for i in range(6)]}])
+    out = md.render_markdown(p, "2026-08-20")
+    assert "| 22 |" in out
+    tampered = out.replace("| 22 |", "| 6 |")          # exactly what the bug shipped
+    with pytest.raises(Violation) as e:
+        check_md_matches_payload(tampered, p)
+    assert e.value.check == "md-call-site-parity"

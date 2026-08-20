@@ -199,3 +199,38 @@ def test_apply_lifecycle_excludes_muted_findings_from_actions(tmp_path):
 
     assert [a["ref"] for a in audit["actions"]] == ["npm/kept"]
     assert {f["ref"] for f in audit["findings"]} == {"npm/muted", "npm/kept"}
+
+
+# ── the Call-sites column must not silently max out ──────────────────────────────
+# REGRESSION (example-org/inventory-app, 2026-08-20): a repo with 22 call-sites on the RETIRED
+# Shopify 2023-10 version reported "6" under a column headed "Call-sites". audit.py capped
+# `files` at 6 BEFORE actions.py ever saw them, and actions.py capped again; md_render then
+# computed the column as len(files). Nothing carried the true total, so no renderer could
+# say "+16 more" — the exposure read as a quarter of its real size. Truncation is fine;
+# truncation that presents itself as the whole count is the defect.
+
+def _sunset(repo="r", ref="Shopify", files=(), **kw):
+    return {"repo": repo, "ref": ref, "kind": "sunset", "version": "2023-10",
+            "severity": "SUNSET", "status": "RETIRED", "detail": "d", "tier": 1,
+            "date": "2024-10-16", "recommendation": "migrate",
+            "files": list(files), "file_count": len(files), **kw}
+
+
+def test_action_carries_the_true_call_site_total_while_capping_the_list():
+    locs = [f"app/Shopify_{i}.php:{i}" for i in range(22)]
+    a = build_actions([_sunset(files=locs)])[0]
+    assert a["file_count"] == 22            # the truth the reader needs
+    assert len(a["files"]) == 6             # the list stays bounded
+
+
+def test_call_site_total_is_a_union_not_a_sum_when_findings_share_files():
+    # two findings in one action, overlapping locs: 4 distinct sites, not 6. A naive sum of
+    # per-finding counts would double-count the shared two and overstate the exposure.
+    a = build_actions([_sunset(files=["a.php:1", "b.php:2", "c.php:3"]),
+                       _sunset(files=["b.php:2", "c.php:3", "d.php:4"])])[0]
+    assert a["file_count"] == 4
+
+
+def test_action_with_no_files_reports_zero_not_a_missing_key():
+    a = build_actions([_sunset(files=[])])[0]
+    assert a["file_count"] == 0
