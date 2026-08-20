@@ -111,7 +111,7 @@ They never merge. They are shown side by side and separated by construction.
 
 ```mermaid
 flowchart TD
-    R[/drift-detector] --> D[Deterministic scan<br/>zero LLM tokens]
+    R["/drift-detector"] --> D[Deterministic scan<br/>zero LLM tokens]
     R --> A[AI cross-check<br/>reads the repos]
     D --> J[(drift.json<br/>CERTIFIED)]
     A --> L[(leads.json<br/>UNVERIFIED)]
