@@ -266,3 +266,14 @@ def test_amazon_mws_source_is_not_the_dead_migration_url():
     rows = yaml.safe_load(open("agent/vendor_sunsets.yaml", encoding="utf-8"))
     e = [x for x in rows if x.get("vendor") == "Amazon MWS"][0]
     assert "migrating-from-amazon-mws" not in str(e.get("source"))
+
+
+def test_the_php_anthropic_client_maps_to_the_vendor():
+    """REGRESSION: only the npm package (@anthropic-ai/sdk) was mapped, so a PHP repo
+    depending on composer/anthropic-ai/sdk was never classified as calling Anthropic — and
+    with no host literal anywhere, its pinned claude-* model ids could not be corroborated
+    either. The vendor was invisible despite the dependency being declared."""
+    from agent.lib import sdk_clients
+    c = sdk_clients.load()
+    assert c.get("composer/anthropic-ai/sdk", {}).get("vendor") == "Anthropic"
+    assert c["composer/anthropic-ai/sdk"]["host"] == "api.anthropic.com"

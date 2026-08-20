@@ -33,6 +33,13 @@ class Vendor:
     # one — and a model id is the only thing those dates attach to. Declaring it lets the
     # engine attribute the id as the endpoint's OPERATION, which the sunset catalog already
     # scopes by, so "gpt-3.5-turbo retires 2026-10-23" can reach a file:line.
+    #
+    # ONLY for vendors whose model ids are their OWN (`gpt-`, `claude-`). Aggregators that
+    # host other people's models — Groq, OpenRouter, Together — must NOT declare one: an id
+    # like `llama-3.3-70b-versatile` runs on all of them plus self-hosted Ollama, so it
+    # identifies the MODEL, not the provider, and attributing it would name a vendor the repo
+    # may not call. Their retirements are real (Groq publishes dates) but need a different
+    # handle than the id alone.
     model_signature: str | None = None
 
 

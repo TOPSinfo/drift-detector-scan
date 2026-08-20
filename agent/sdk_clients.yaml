@@ -51,6 +51,10 @@
 - { package: composer/openai-php/client,         vendor: OpenAI,        host: api.openai.com }
 - { package: composer/openai-php/laravel,        vendor: OpenAI,        host: api.openai.com }
 - { package: npm/openai,                          vendor: OpenAI,        host: api.openai.com }
+# The PHP client. Only the npm package was mapped, so a composer repo depending on this was
+# never classified as calling Anthropic — and with no host literal in its code, the claude-*
+# model ids it pins had nothing to corroborate them either. Found on a real corpus repo.
+- { package: "composer/anthropic-ai/sdk",       vendor: Anthropic,     host: api.anthropic.com }
 - { package: "npm/@anthropic-ai/sdk",            vendor: Anthropic,     host: api.anthropic.com }
 
 # ── Marketplace / Amazon SP-API (Go) ─────────────────────────────────────────────────────
