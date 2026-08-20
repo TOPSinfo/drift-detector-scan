@@ -97,10 +97,35 @@ _VENDORED_FILE_RE = re.compile(
     r"(?<![a-z0-9])(?:" + "|".join(re.escape(lib) for lib in _VENDORED_FILES) + r")(?![a-z0-9])")
 
 
+# Generated SERVICE DESCRIPTORS shipped inside an SDK. An SDK vendors a spec for every
+# service its vendor sells, not the ones you use: the AWS PHP SDK carries ~200, so a repo
+# calling S3 and SQS also holds machine-generated specs for CloudSearch, CloudFormation,
+# Route53 and the rest — each yielding a distinct host with one "call-site" nobody makes.
+# Measured at 174 attributed call-sites, and the reason "Amazon AWS" looked like the
+# fleet's largest integration.
+#
+# Matched by FILENAME for the same reason as _VENDORED_FILES: the SDK's real client code
+# sits in the same tree (Aws/S3/S3Client.php next to Aws/data/s3/…/api-2.json.php), so a
+# directory rule would take both — the failure the vendored-asset spec rejected. These
+# names are generated and unmistakable; nothing hand-written is called `api-2.json.php`.
+_SDK_DATA_FILES = ("api-1.json", "api-2.json", "paginators-1.json", "waiters-1.json",
+                   "waiters-2.json", "smoke.json", "endpoints.json", "manifest.json",
+                   "aliases.json", "endpoints_prefix_history.json")
+
+
+def _is_sdk_descriptor(name: str) -> bool:
+    """A generated API-specification file — it DESCRIBES an API rather than calling one."""
+    n = name.lower()
+    # a bare stem or a language wrapper around it (`api-2.json`, `api-2.json.php`)
+    return any(n == d or n.startswith(d + ".") for d in _SDK_DATA_FILES)
+
+
 def _is_vendored_asset(name: str) -> bool:
     """Is this FILENAME a checked-in third-party library or a build artifact?"""
     n = name.lower()
     if ".min." in n or ".bundle." in n:
+        return True
+    if _is_sdk_descriptor(n):
         return True
     return bool(_VENDORED_FILE_RE.search(n))
 

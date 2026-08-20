@@ -313,6 +313,21 @@
   source: "https://docs.mistral.ai/getting-started/models/models_overview/#:~:text=open-mixtral-8x7b"
   note: 'Mistral deprecation table: "Mixtral 8x7B `0.1` open-mixtral-8x7b 11/30/2024 3/30/2025" — retirement 2025-03-30.'
 
+# TheMarket.com (themarket.co.nz) — the MARKETPLACE ITSELF closed, not an API version.
+# The Warehouse Group shut the front-end down after a NZ$23.7m loss; the back-end was folded
+# into thewarehouse.co.nz, and themarket.com/nz now redirects there.
+# NO `retires` date on purpose: every source gives "by late June" (2024) and nothing states a
+# day. Writing 2024-06-30 would invent a precision the announcement does not have, so this is
+# an undated whole-API closure — still enough for `whole-api-retired` to take it off the
+# human work-order, which had been asking someone to log into a seller portal that no longer
+# exists. Trade-press sourced because the first-party site is gone (same as Catch).
+- vendor: TheMarket
+  version: "*"
+  status: deprecated-no-date
+  replacement: The Warehouse marketplace (thewarehouse.co.nz)
+  source: https://insideretail.co.nz/2024/05/13/the-warehouse-gives-up-on-themarket-com/
+  note: 'Inside Retail NZ 2024-05-13: "The Warehouse Group has confirmed it will shut down TheMarket.com by late June." CEO: "we will close the front-end of the platform." Marketplace closed; migrate off.'
+
 # eBay legacy "traditional" APIs — deprecated 2024-01-04, DECOMMISSIONED 2025-02-05 (already dead).
 # Domain-scoped so the live OAuth/REST host (api.ebay.com) and modern Sell/Buy APIs are NOT flagged.
 # Source: eBay Developers Program API Deprecation Status + Q3 2024 newsletter.
