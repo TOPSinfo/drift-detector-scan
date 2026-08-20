@@ -103,7 +103,8 @@ def _relpath(path: str, repo_root: str) -> str:
 
 
 def scan_endpoints(matches: list, repo_root: str, vendors: list, *, max_files: int = 20,
-                   idioms: list | None = None, repo_id: str | None = None) -> dict:
+                   idioms: list | None = None, repo_id: str | None = None,
+                   sdk_vendors: set | None = None) -> dict:
     by_tk = {v.techKey: v for v in vendors}
     by_name = {v.vendor: v for v in vendors}
     line_cache: dict = {}
@@ -293,19 +294,23 @@ def scan_endpoints(matches: list, repo_root: str, vendors: list, *, max_files: i
     # model ids are discussed in prose far more often than hosts are. Measured: one repo in a
     # 19-repo corpus names a gpt- model without calling OpenAI, and this guard excludes it.
     #
-    # KNOWN GAP — SDK-mediated repos are missed. A repo that depends on the official client
-    # package and never writes the host literal is classified `sdk-client` from its manifest,
-    # but that endpoint is injected in inventory_scan AFTER scan_endpoints returns, so it is
-    # not in `groups` here and the guard rejects its models. One corpus repo is exactly this:
-    # it calls OpenAI via composer.json and defaults to gpt-3.5-turbo in three controllers,
-    # and gets no finding. Closing it means threading the SDK-declared vendors into
-    # scan_endpoints (repo_scan.py) — a cross-layer change, deliberately not bolted on here.
+    # `sdk_vendors` carries the manifest-declared vendors, which repo_scan resolves BEFORE
+    # this runs. Without it the guard missed every SDK-mediated repo: sdk_clients injects
+    # those endpoints in inventory_scan, after scan_endpoints has already returned.
     classified_now = {r["techKey"] for r in groups.values() if r["techKey"]}
+    sdk_declared = sdk_vendors or set()
     for m in matches:
         if m.get("kind") != "model":
             continue
         v = by_tk.get(m.get("techKey") or "")
-        if v is None or not v.model_signature or v.techKey not in classified_now:
+        if v is None or not v.model_signature:
+            continue
+        # corroborated by a host literal we classified, OR by the repo depending on this
+        # vendor's official client package. The manifest dependency is a READ FACT, the same
+        # standing sdk_clients gives it — and "use the SDK, never write the host" is the
+        # common modern shape, so host-only corroboration missed it. Still PER-VENDOR: an
+        # OpenAI dependency never licenses attributing a Groq model.
+        if v.techKey not in classified_now and v.vendor not in sdk_declared:
             continue
         rel = _relpath(m.get("path", ""), repo_root)
         lineno = int(m.get("line", 0) or 0)

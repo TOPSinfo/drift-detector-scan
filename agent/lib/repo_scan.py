@@ -8,7 +8,7 @@ from agent.lib.record_routing import partition_records
 from agent.lib.engine import run_scan
 from agent.lib.endpoints import build_endpoints, scan_endpoints
 from agent.lib.superset import to_superset_repo
-from agent.lib import lockfile, private_sources
+from agent.lib import lockfile, private_sources, sdk_clients
 
 
 def scan_repo(repo_abs, repo_name, repo_id, vendors, rules_path, *,
@@ -23,9 +23,16 @@ def scan_repo(repo_abs, repo_name, repo_id, vendors, rules_path, *,
     # a path-constant idiom is repo-scoped: pass the repo's git identity (its remote, or the
     # local checkout path as a fallback) so a wrapper's constants attribute only in ITS repo.
     # scan_util.repo_scope_id is the ONE derivation the absorb gate must share (see its docstring).
+    # Vendors this repo DEPENDS ON by manifest (the official client package). Resolved here
+    # because scan_endpoints needs it, and sdk_clients' own endpoint injection happens later
+    # in inventory_scan — too late to corroborate a model id. Same catalog, read twice.
+    _clients = sdk_clients.load()
+    sdk_vendors = {c["vendor"] for r in partitioned.get("sdks", [])
+                   for c in [_clients.get(f"{r.ecosystem}/{r.name}")] if c}
     scanned_eps = scan_endpoints(scan["matches"], repo_abs, vendors,
                                  idioms=idiom_instances,
-                                 repo_id=scan_util.repo_scope_id(repo_abs, meta))
+                                 repo_id=scan_util.repo_scope_id(repo_abs, meta),
+                                 sdk_vendors=sdk_vendors)
     endpoints = [e for e in scanned_eps["endpoints"] if e.get("domain")]
 
     record = to_superset_repo(meta, partitioned, endpoints)
