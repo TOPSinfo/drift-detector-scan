@@ -19,6 +19,11 @@ edit_uri: edit/master/docs/
 
 theme:
   name: material
+  # The TOPS mark in the header. Vendored under docs/assets/ rather than hot-linked:
+  # the site must build and render with no network, and an upstream path change must
+  # not silently blank the logo.
+  logo: assets/tops-menu_sm.svg
+  favicon: assets/tops-menu_sm.svg
   palette:
     # ember-crimson is the product accent (see CLAUDE.md § Branding)
     - media: "(prefers-color-scheme: light)"
@@ -43,6 +48,9 @@ extra_css:
 markdown_extensions:
   - admonition
   - attr_list
+  # the landing hero is HTML wrapping markdown (buttons, links); without this the
+  # markdown inside those divs renders literally
+  - md_in_html
   - tables
   - toc: { permalink: true }
   - pymdownx.details
@@ -57,6 +65,7 @@ markdown_extensions:
 
 nav:
   - Home: index.md
+  - How it works: how-it-works.md
   - FAQ: FAQ.md
   - Use it:
       - Claude Code plugin: PLUGIN.md
@@ -76,3 +85,5 @@ validation:
   links:
     absolute_links: ignore
     unrecognized_links: ignore
+
+copyright: Built by <a href="https://www.topsinfosolutions.com/">TOPS Infosolutions</a>
