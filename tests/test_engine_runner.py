@@ -154,3 +154,57 @@ def test_a_hand_written_file_calling_the_same_host_still_matches(tmp_path):
         astgrep_fake.hit("stripe-endpoint", str(tmp_path / "public/js/ckeditor/ckeditor.js"), 5))
     res = run_scan(str(tmp_path), str(rules), run=lambda a: raw)
     assert [m["path"].split("/")[-1] for m in res["matches"]] == ["contact.js"]
+
+
+def test_sdk_service_descriptors_are_not_call_sites(tmp_path):
+    """An SDK ships a descriptor for EVERY service its vendor sells, not the ones you use.
+    The AWS PHP SDK vendors ~200 of them, so a repo calling S3 and SQS also carries machine-
+    generated specs for CloudSearch, CloudFormation, Route53 and the rest — each contributing
+    a distinct host with one "call-site" the app never makes. Measured: 174 attributed
+    call-sites in the corpus, and it is why "Amazon AWS" looked like the fleet's biggest
+    integration.
+
+    Matched by FILENAME, deliberately. The same tree holds the SDK's real client code, so a
+    directory rule cannot separate them — see test_a_vendored_SDK_is_still_an_integration.
+    These names are generated and unmistakable; nothing hand-written is called
+    `api-2.json.php` or `paginators-1.json.php`."""
+    rules = _rules(tmp_path)
+    raw = astgrep_fake.canned(
+        astgrep_fake.hit("stripe-endpoint", str(tmp_path / "app/Services/Pay.php"), 3),
+        astgrep_fake.hit("stripe-endpoint",
+                         str(tmp_path / "libraries/aws/Aws/data/cloudsearch/2013-01-01/api-2.json.php"), 3),
+        astgrep_fake.hit("stripe-endpoint",
+                         str(tmp_path / "libraries/aws/Aws/data/ec2/2016-11-15/paginators-1.json.php"), 3),
+        astgrep_fake.hit("stripe-endpoint",
+                         str(tmp_path / "libraries/aws/Aws/data/s3/2006-03-01/waiters-2.json.php"), 3),
+        astgrep_fake.hit("stripe-endpoint",
+                         str(tmp_path / "libraries/aws/Aws/data/rds/2014-10-31/smoke.json.php"), 3),
+        astgrep_fake.hit("stripe-endpoint",
+                         str(tmp_path / "libraries/aws/Aws/data/endpoints.json.php"), 3))
+    res = run_scan(str(tmp_path), str(rules), run=lambda a: raw)
+    assert [m["path"].split("/")[-1] for m in res["matches"]] == ["Pay.php"]
+
+
+def test_the_sdks_own_client_code_is_still_scanned(tmp_path):
+    """The boundary. Skipping the descriptors must not skip the SDK code beside them — that
+    code carries the host the app actually calls, which is the whole basis of sdk-mediated
+    attribution."""
+    rules = _rules(tmp_path)
+    raw = astgrep_fake.canned(
+        astgrep_fake.hit("stripe-endpoint", str(tmp_path / "libraries/aws/Aws/S3/S3Client.php"), 12),
+        astgrep_fake.hit("stripe-endpoint", str(tmp_path / "libraries/aws/Aws/Sqs/SqsClient.php"), 78))
+    res = run_scan(str(tmp_path), str(rules), run=lambda a: raw)
+    assert sorted(m["path"].split("/")[-1] for m in res["matches"]) == \
+        ["S3Client.php", "SqsClient.php"]
+
+
+def test_an_app_file_merely_containing_data_in_its_name_is_kept(tmp_path):
+    """The rule matches whole generated descriptor filenames, not the word 'data' or 'json',
+    so an app's own api.php or data.json.php is unaffected."""
+    rules = _rules(tmp_path)
+    raw = astgrep_fake.canned(
+        astgrep_fake.hit("stripe-endpoint", str(tmp_path / "app/api.php"), 1),
+        astgrep_fake.hit("stripe-endpoint", str(tmp_path / "app/config/data.json.php"), 1),
+        astgrep_fake.hit("stripe-endpoint", str(tmp_path / "app/Http/ApiController.php"), 1))
+    res = run_scan(str(tmp_path), str(rules), run=lambda a: raw)
+    assert len(res["matches"]) == 3
