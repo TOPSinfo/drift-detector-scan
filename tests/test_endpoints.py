@@ -969,3 +969,34 @@ def test_a_vendor_without_a_model_signature_is_unaffected(tmp_path):
     plain = Vendor("OpenAI", "api:openai", ("api.openai.com",), DEFAULT_VERSION_REGEX)
     out = scan_endpoints(ms, str(tmp_path), [plain])
     assert all(not e.get("operation") for e in out["endpoints"])
+
+
+def test_model_literal_is_attributed_when_the_vendor_comes_from_the_SDK_manifest(tmp_path):
+    """REGRESSION (a corpus repo): a repo that depends on the official client package and
+    NEVER writes the host literal is classified `sdk-client` from its manifest — but that
+    endpoint is injected after scan_endpoints returns, so the host-only guard rejected its
+    models. That repo defaults to gpt-3.5-turbo in three controllers and got no finding.
+
+    "Use the SDK, never write the host" is the common modern shape, so the guard has to accept
+    a manifest-declared vendor as corroboration too — it is a read fact, same as a host."""
+    _write(tmp_path, "svc.php", "$this->model = config('ai.model', 'gpt-3.5-turbo');\n")
+    ms = [_model("svc.php", 1, "$this->model = config('ai.model', 'gpt-3.5-turbo');")]
+    out = scan_endpoints(ms, str(tmp_path), [_OPENAI, _SP], sdk_vendors={"OpenAI"})
+    got = [e for e in out["endpoints"] if e.get("operation") == "gpt-3.5-turbo"]
+    assert got and got[0]["vendor"] == "OpenAI"
+    assert got[0]["files"] == ["svc.php:1"]
+
+
+def test_sdk_declared_vendor_does_not_weaken_the_guard_for_others(tmp_path):
+    """Declaring OpenAI's SDK must not license attributing SOMEONE ELSE's model. The guard is
+    per-vendor, so a repo with the OpenAI SDK and a stray Groq model id still attributes only
+    the OpenAI one."""
+    groq = Vendor("Groq", "api:groq", ("api.groq.com",), DEFAULT_VERSION_REGEX,
+                  model_signature=r"llama-[0-9][\w.\-]*")
+    _write(tmp_path, "svc.php", "$a = 'gpt-3.5-turbo'; $b = 'llama-3.3-70b-versatile';\n")
+    ms = [_model("svc.php", 1, "$a = 'gpt-3.5-turbo'; $b = 'llama-3.3-70b-versatile';"),
+          _model("svc.php", 1, "$a = 'gpt-3.5-turbo'; $b = 'llama-3.3-70b-versatile';",
+                 vendor="Groq", tk="api:groq")]
+    out = scan_endpoints(ms, str(tmp_path), [_OPENAI, groq], sdk_vendors={"OpenAI"})
+    ops = sorted({e["operation"] for e in out["endpoints"] if e.get("operation")})
+    assert ops == ["gpt-3.5-turbo"], f"Groq was not corroborated in this repo: {ops}"
