@@ -161,3 +161,50 @@ def test_one_stray_unreadable_file_does_not_condemn_a_readable_repo():
     v, _ = shapes.verdict(50, {"pathLiterals": [], "sinks": []}, cov,
                           unmodeled=1, modeled=200)
     assert v == "KNOWN"
+
+
+# ── an uncatalogued vendor is a DIFFERENT blindness from having found nothing ──────
+# REGRESSION (a fleet repo, found 2026-08-20): a repo whose whole purpose is a Temu
+# integration reported `attributed: 0` and the reason `sdk-only-no-callsite`. Both were
+# misleading. The scan HAD extracted https://openapi-b-global.temu.com/openapi/router at
+# its own client class — it saw the endpoint perfectly. Temu simply is not in
+# vendors.yaml, so the host classified as Unknown, and `attributed` counts only catalogued
+# vendors.
+#
+# "We make calls we cannot trace" and "we found the call and cannot name the vendor" are
+# different problems with different fixes — the first needs an idiom, the second needs a
+# catalog entry. Reporting the first when it is the second sends the reader to the wrong
+# work, and hides the single cheapest fix the tool has.
+
+def test_an_unclassified_api_host_is_named_as_such():
+    from agent.lib import shapes
+    v, reasons = shapes.verdict(
+        attributed=0,
+        residue={"pathLiterals": [], "sinks": [{"loc": "src/Client.php:97"}]},
+        coverage={"php": ["sink", "url"]},
+        unclassified_api_hosts=1)
+    assert v == "UNKNOWN"
+    assert "uncatalogued-vendor" in reasons, \
+        "a detected-but-unnamed API host must say so, not hide behind sdk-only-no-callsite"
+
+
+def test_uncatalogued_beats_the_sink_reason_when_a_host_was_actually_found():
+    """Both conditions hold for that repo — 0 attributed, sinks present, one Unknown API host.
+    The sink reason says 'we cannot see the destination'; here we CAN see it, we just have no
+    name for it. The more specific, actionable reason must win."""
+    from agent.lib import shapes
+    _, reasons = shapes.verdict(
+        attributed=0, residue={"pathLiterals": [], "sinks": [{"loc": "a.php:9"}]},
+        coverage={"php": ["sink"]}, unclassified_api_hosts=2)
+    assert "uncatalogued-vendor" in reasons
+    assert "sdk-only-no-callsite" not in reasons
+
+
+def test_no_unclassified_hosts_keeps_the_old_reasons():
+    """A repo that genuinely resolved nothing still reports the original blindness."""
+    from agent.lib import shapes
+    _, reasons = shapes.verdict(
+        attributed=0, residue={"pathLiterals": [], "sinks": [{"loc": "a.php:9"}]},
+        coverage={"php": ["sink"]}, unclassified_api_hosts=0)
+    assert "sdk-only-no-callsite" in reasons
+    assert "uncatalogued-vendor" not in reasons

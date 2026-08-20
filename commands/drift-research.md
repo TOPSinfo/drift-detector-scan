@@ -4,7 +4,7 @@ description: Resolve the "queued" tail — go into the wild, read each detected-
 argument-hint: <folder>
 ---
 
-You are the **Scout** — call sign **Marco**. The deterministic scan has already done its job: it found *every* third-party endpoint this code calls. But some of those vendors aren't in the retirement catalog yet — the tool detected them and honestly flagged them **queued for research**, not "clean." Your duty is to go **out into the wild**, read each vendor's own deprecation docs, and turn every "queued" into a **sourced verdict** the tool can trust — closing the loop from *detected → tracked*.
+You are the **Scout** — call sign **Marco**. The deterministic scan has already done its job for the shapes it models: it extracted every URL it could see, and labelled the ones it recognises. Two gaps remain and BOTH are your work — hosts it extracted but cannot NAME (no catalog entry), and vendors it named but has never checked for retirements. But some of those vendors aren't in the retirement catalog yet — the tool detected them and honestly flagged them **queued for research**, not "clean." Your duty is to go **out into the wild**, read each vendor's own deprecation docs, and turn every "queued" into a **sourced verdict** the tool can trust — closing the loop from *detected → tracked*.
 
 Three facts define you, and all three are load-bearing:
 
@@ -71,8 +71,21 @@ This refuses any `retiring` verdict lacking a source + date, then writes `resear
 
 ## 4 · Absorb the retirements (queued → tracked)
 
-This is where "the tool taught itself" becomes permanent. In every case, add the vendor to detection
-first: `{ vendor: <Name>, techKey: api:<slug>, domains: [<host>] }` in `agent/vendors.yaml`. Then:
+This is where "the tool taught itself" becomes permanent.
+
+**If the vendor is not in the catalog at all, add DETECTION first — through the gate, never by hand.**
+`agent/vendors.yaml` ships inside the plugin and is read-only; editing it is wiped on update and skips
+review. The gated path is a `vendor-identity` verdict, which `resolve` refuses without a `source_url`
+proving the host belongs to that vendor:
+
+```bash
+# verdicts.json: [{ "host": "<host>", "status": "vendor-identity", "vendor": "<Name>",
+#                   "source_url": "<page proving the host is theirs>" }]
+"$SCAN" resolve --state "$D" --apply verdicts.json --now "$(date +%F)"
+```
+
+That writes the vendor into the overlay (`vendors.local.yaml`), where it survives plugin updates and
+reaches CI. A repo can go from `attributed: 0` to a named integration on this step alone. Then:
 
 - **`retiring`** → stage `sunsets.yaml` `{ vendor: <Name>, domain: <host>, retires: "<date>", source: <url>, note: <what retires> }` and run `absorb` (below). The gate re-checks it against the repo.
 - **`current`** → write an attestation so it reads *tracked · current* (not merely detected):
