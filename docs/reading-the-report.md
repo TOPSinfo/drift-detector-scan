@@ -3,6 +3,12 @@
 Every number on this page is one you can click, and every one has a precise meaning. This
 page explains all of them, in the order you meet them.
 
+![The Cockpit — the interactive dashboard published on every run](screenshots/report-cockpit.png)
+
+*Every screenshot on this page is a real scan of seven **public** SDKs — eBay, Amazon
+SP-API, Walmart, Stripe, FedEx, Shopify and Twilio, pinned at the SHAs in `eval/corpus.yaml`.
+Real vendors, real dates, real call-sites, and no customer data.*
+
 There are two surfaces: the **Cockpit** (the interactive dashboard) and **drift.md** (the
 flat report, best for pasting into a ticket). They are the same data — the Cockpit is a
 view of `drift.json`, and the tool re-reads both to confirm they agree before publishing.
@@ -26,6 +32,8 @@ but held to a different standard and never mixed into the certified count.
 ---
 
 ## The tiles
+
+![The tile row](screenshots/report-tiles.png)
 
 Clicking any tile filters everything below it. They are counts of **different things**, which
 is why they don't add up to each other.
@@ -68,6 +76,11 @@ Most scanners show a green tick here. This one shows the green tick **and** the 
 ---
 
 ## The findings table
+
+Selecting **Past-due** filters everything to retirements whose date has already passed:
+
+![The past-due view — the tile is selected and the table filters to it](screenshots/report-pastdue.png)
+
 
 | Column | What it tells you |
 |---|---|
