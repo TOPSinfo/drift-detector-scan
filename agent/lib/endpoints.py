@@ -347,7 +347,19 @@ def scan_endpoints(matches: list, repo_root: str, vendors: list, *, max_files: i
             host = v.domains[0] if v.domains else f"sdk:{inst.get('repo') or inst['id']}"
             # optional `version`: a wrapper pinned to a specific (often DEPRECATED) API version
             # — e.g. BigCommerce's /api/v2 constants — so a version-scoped sunset can flag it.
-            add(v.vendor, v.techKey, host, inst.get("version"), path, rel, lineno,
+            # Absent that, ask the VENDOR to name the version from the path: pathSignature's
+            # group 1 is defined as the version, and here we hold a path that already matched
+            # this vendor's pathRegex. The `kind == "url"` arm above does this, but a bare path
+            # constant ('/admin/api/2023-10/shop.json') yields no URL for it to extract, so
+            # Shopify call-sites attributed at version=None and its COMPUTED lifecycle could
+            # date none of them — retired versions rendered as a healthy tracked integration.
+            # Only vendors that DECLARE a pathSignature opt in; no generic version-sniffing.
+            version = inst.get("version")
+            if version is None and v.path_signature:
+                sig_m = re.search(v.path_signature, path)
+                if sig_m and sig_m.groups():
+                    version = sig_m.group(1)
+            add(v.vendor, v.techKey, host, version, path, rel, lineno,
                 operation=path, inferred=True)
             attributed_pc.add(f"{rel}:{lineno}")
 
