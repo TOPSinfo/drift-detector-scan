@@ -146,7 +146,10 @@
 # than guessing a subdomain that doesn't exist.
 - { vendor: DeepSeek,           techKey: api:deepseek,           domains: [api.deepseek.com] }
 - { vendor: Groq,               techKey: api:groq,               domains: [api.groq.com] }
-- { vendor: Mistral AI,         techKey: api:mistral,            domains: [api.mistral.ai] }
+# modelSignature: Mistral dates retirements to MODEL ids and publishes a full table of them.
+# The families are enumerated rather than matched loosely, and a trailing `-<suffix>` is
+# REQUIRED, so the host `api.mistral.ai` and prose like "the mistral approach" cannot match.
+- { vendor: Mistral AI,         techKey: api:mistral,            domains: [api.mistral.ai], modelSignature: '(?:open-|labs-)?(?:mistral|codestral|pixtral|ministral|voxtral|devstral|magistral|mixtral)-[\w.\-]+' }
 - { vendor: xAI,                techKey: api:xai,                domains: [api.x.ai] }
 - { vendor: OpenRouter,         techKey: api:openrouter,         domains: [openrouter.ai] }
 - { vendor: ElevenLabs,         techKey: api:elevenlabs,         domains: [api.elevenlabs.io] }

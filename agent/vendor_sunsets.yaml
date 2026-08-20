@@ -177,6 +177,142 @@
   source: "https://platform.claude.com/docs/en/docs/about-claude/model-deprecations#:~:text=claude-instant-1.2"
   note: 'Anthropic model deprecations: `claude-instant-1.2` retirement date 2024-11-06; replacement `claude-haiku-4-5-20251001`.'
 
+# Mistral MODEL retirements — operation-scoped (see modelSignature in vendors.yaml). Read off
+# Mistral's own models-overview deprecation table 2026-08-20. Each `note` quotes the table row
+# VERBATIM, and a test re-checks that the entry's date appears in that quote — the same
+# verbatim-date check the research gate applies, brought to a hand-written catalog edit.
+# Rows whose quoted text carried only one of the two dates were left out rather than guessed.
+- vendor: Mistral AI
+  operation: labs-leanstral-2603
+  retires: "2026-06-30"
+  source: "https://docs.mistral.ai/getting-started/models/models_overview/#:~:text=labs-leanstral-2603"
+  note: 'Mistral deprecation table: "Leanstral `26.03` labs-leanstral-2603 5/22/2026 6/30/2026" — retirement 2026-06-30.'
+- vendor: Mistral AI
+  operation: mistral-medium-2508
+  retires: "2026-08-31"
+  source: "https://docs.mistral.ai/getting-started/models/models_overview/#:~:text=mistral-medium-2508"
+  note: 'Mistral deprecation table: "Mistral Medium 3.1 `25.08` mistral-medium-2508 5/22/2026 8/31/2026" — retirement 2026-08-31.'
+- vendor: Mistral AI
+  operation: mistral-small-2506
+  retires: "2026-07-31"
+  source: "https://docs.mistral.ai/getting-started/models/models_overview/#:~:text=mistral-small-2506"
+  note: 'Mistral deprecation table: "Mistral Small 3.2 `25.06` mistral-small-2506 4/30/2026 7/31/2026" — retirement 2026-07-31.'
+- vendor: Mistral AI
+  operation: devstral-2512
+  retires: "2026-07-31"
+  source: "https://docs.mistral.ai/getting-started/models/models_overview/#:~:text=devstral-2512"
+  note: 'Mistral deprecation table: "Devstral 2 `25.12` devstral-2512 5/22/2026 7/31/2026" — retirement 2026-07-31.'
+- vendor: Mistral AI
+  operation: voxtral-mini-2507
+  retires: "2026-05-31"
+  source: "https://docs.mistral.ai/getting-started/models/models_overview/#:~:text=voxtral-mini-2507"
+  note: 'Mistral deprecation table: "Voxtral Mini `25.07` voxtral-mini-2507 2/27/2026 5/31/2026" — retirement 2026-05-31.'
+- vendor: Mistral AI
+  operation: mistral-ocr-2505
+  retires: "2026-05-31"
+  source: "https://docs.mistral.ai/getting-started/models/models_overview/#:~:text=mistral-ocr-2505"
+  note: 'Mistral deprecation table: "OCR 2 `25.05` mistral-ocr-2505 2/27/2026 5/31/2026" — retirement 2026-05-31.'
+- vendor: Mistral AI
+  operation: mistral-medium-2505
+  retires: "2026-08-31"
+  source: "https://docs.mistral.ai/getting-started/models/models_overview/#:~:text=mistral-medium-2505"
+  note: 'Mistral deprecation table: "Mistral Medium 3 `25.05` mistral-medium-2505 5/22/2026 8/31/2026" — retirement 2026-08-31.'
+- vendor: Mistral AI
+  operation: mistral-small-2503
+  retires: "2025-11-30"
+  source: "https://docs.mistral.ai/getting-started/models/models_overview/#:~:text=mistral-small-2503"
+  note: 'Mistral deprecation table: "Mistral Small 3.1 `25.03` mistral-small-2503 11/6/2025 11/30/2025" — retirement 2025-11-30.'
+- vendor: Mistral AI
+  operation: mistral-ocr-2503
+  retires: "2025-12-31"
+  source: "https://docs.mistral.ai/getting-started/models/models_overview/#:~:text=mistral-ocr-2503"
+  note: 'Mistral deprecation table: "OCR `25.03` mistral-ocr-2503 12/2/2025 12/31/2025" — retirement 2025-12-31.'
+- vendor: Mistral AI
+  operation: mistral-saba-2502
+  retires: "2025-09-30"
+  source: "https://docs.mistral.ai/getting-started/models/models_overview/#:~:text=mistral-saba-2502"
+  note: 'Mistral deprecation table: "Mistral Saba `25.02` mistral-saba-2502 6/10/2025 9/30/2025" — retirement 2025-09-30.'
+- vendor: Mistral AI
+  operation: mistral-small-2501
+  retires: "2025-11-30"
+  source: "https://docs.mistral.ai/getting-started/models/models_overview/#:~:text=mistral-small-2501"
+  note: 'Mistral deprecation table: "Mistral Small 3.0 `25.01` mistral-small-2501 11/6/2025 11/30/2025" — retirement 2025-11-30.'
+- vendor: Mistral AI
+  operation: codestral-2501
+  retires: "2025-11-30"
+  source: "https://docs.mistral.ai/getting-started/models/models_overview/#:~:text=codestral-2501"
+  note: 'Mistral deprecation table: "Codestral `25.01` codestral-2501 11/6/2025 11/30/2025" — retirement 2025-11-30.'
+- vendor: Mistral AI
+  operation: mistral-large-2411
+  retires: "2026-05-31"
+  source: "https://docs.mistral.ai/getting-started/models/models_overview/#:~:text=mistral-large-2411"
+  note: 'Mistral deprecation table: "Mistral Large 2.1 `24.11` mistral-large-2411 2/27/2026 5/31/2026" — retirement 2026-05-31.'
+- vendor: Mistral AI
+  operation: pixtral-large-2411
+  retires: "2026-05-31"
+  source: "https://docs.mistral.ai/getting-started/models/models_overview/#:~:text=pixtral-large-2411"
+  note: 'Mistral deprecation table: "Pixtral Large `24.11` pixtral-large-2411 2/27/2026 5/31/2026" — retirement 2026-05-31.'
+- vendor: Mistral AI
+  operation: ministral-3b-2410
+  retires: "2025-12-31"
+  source: "https://docs.mistral.ai/getting-started/models/models_overview/#:~:text=ministral-3b-2410"
+  note: 'Mistral deprecation table: "Ministral 3B `24.1` ministral-3b-2410 12/2/2025 12/31/2025" — retirement 2025-12-31.'
+- vendor: Mistral AI
+  operation: ministral-8b-2410
+  retires: "2025-12-31"
+  source: "https://docs.mistral.ai/getting-started/models/models_overview/#:~:text=ministral-8b-2410"
+  note: 'Mistral deprecation table: "Ministral 8B `24.1` ministral-8b-2410 12/2/2025 12/31/2025" — retirement 2025-12-31.'
+- vendor: Mistral AI
+  operation: mistral-small-2409
+  retires: "2025-11-30"
+  source: "https://docs.mistral.ai/getting-started/models/models_overview/#:~:text=mistral-small-2409"
+  note: 'Mistral deprecation table: "Mistral Small 2.0 `24.09` mistral-small-2409 11/6/2025 11/30/2025" — retirement 2025-11-30.'
+- vendor: Mistral AI
+  operation: pixtral-12b-2409
+  retires: "2025-12-31"
+  source: "https://docs.mistral.ai/getting-started/models/models_overview/#:~:text=pixtral-12b-2409"
+  note: 'Mistral deprecation table: "Pixtral 12B `24.09` pixtral-12b-2409 12/2/2025 12/31/2025" — retirement 2025-12-31.'
+- vendor: Mistral AI
+  operation: mistral-large-2407
+  retires: "2025-03-30"
+  source: "https://docs.mistral.ai/getting-started/models/models_overview/#:~:text=mistral-large-2407"
+  note: 'Mistral deprecation table: "Mistral Large 2.0 `24.07` mistral-large-2407 11/30/2024 3/30/2025" — retirement 2025-03-30.'
+- vendor: Mistral AI
+  operation: open-codestral-mamba
+  retires: "2025-06-06"
+  source: "https://docs.mistral.ai/getting-started/models/models_overview/#:~:text=open-codestral-mamba"
+  note: 'Mistral deprecation table: "Codestral Mamba 7B `0.1` open-codestral-mamba 6/6/2025 6/6/2025" — retirement 2025-06-06.'
+- vendor: Mistral AI
+  operation: codestral-2405
+  retires: "2025-06-16"
+  source: "https://docs.mistral.ai/getting-started/models/models_overview/#:~:text=codestral-2405"
+  note: 'Mistral deprecation table: "Codestral `24.05` codestral-2405 12/2/2024 6/16/2025" — retirement 2025-06-16.'
+- vendor: Mistral AI
+  operation: open-mistral-7b
+  retires: "2025-03-30"
+  source: "https://docs.mistral.ai/getting-started/models/models_overview/#:~:text=open-mistral-7b"
+  note: 'Mistral deprecation table: "Mistral 7B `0.3` open-mistral-7b 11/30/2024 3/30/2025" — retirement 2025-03-30.'
+- vendor: Mistral AI
+  operation: mistral-small-2402
+  retires: "2025-06-16"
+  source: "https://docs.mistral.ai/getting-started/models/models_overview/#:~:text=mistral-small-2402"
+  note: 'Mistral deprecation table: "Mistral Small 1.0 `24.02` mistral-small-2402 11/30/2024 6/16/2025" — retirement 2025-06-16.'
+- vendor: Mistral AI
+  operation: mistral-large-2402
+  retires: "2025-06-16"
+  source: "https://docs.mistral.ai/getting-started/models/models_overview/#:~:text=mistral-large-2402"
+  note: 'Mistral deprecation table: "Mistral Large 1.0 `24.02` mistral-large-2402 11/30/2024 6/16/2025" — retirement 2025-06-16.'
+- vendor: Mistral AI
+  operation: mistral-medium-2312
+  retires: "2025-06-16"
+  source: "https://docs.mistral.ai/getting-started/models/models_overview/#:~:text=mistral-medium-2312"
+  note: 'Mistral deprecation table: "Mistral Medium 1.0 `23.12` mistral-medium-2312 11/30/2024 6/16/2025" — retirement 2025-06-16.'
+- vendor: Mistral AI
+  operation: open-mixtral-8x7b
+  retires: "2025-03-30"
+  source: "https://docs.mistral.ai/getting-started/models/models_overview/#:~:text=open-mixtral-8x7b"
+  note: 'Mistral deprecation table: "Mixtral 8x7B `0.1` open-mixtral-8x7b 11/30/2024 3/30/2025" — retirement 2025-03-30.'
+
 # eBay legacy "traditional" APIs — deprecated 2024-01-04, DECOMMISSIONED 2025-02-05 (already dead).
 # Domain-scoped so the live OAuth/REST host (api.ebay.com) and modern Sell/Buy APIs are NOT flagged.
 # Source: eBay Developers Program API Deprecation Status + Q3 2024 newsletter.
