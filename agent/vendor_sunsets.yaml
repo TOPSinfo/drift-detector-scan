@@ -26,11 +26,21 @@
 # ──────────────────────────────────────────────────────────────────────────────────────
 
 # Seed — historical/verifiable only. Extend with your vendors' actual announcements.
+# Whole-API: MWS is gone, not merely discouraged. The date was fetched 2026-08-20 from
+# Amazon's own MWS developer site and cleared the research gate's verbatim-date check —
+# the sentence quoted in `note` contains it. The entry previously carried NO date and a
+# note reading "Confirm the current cut-off date", which shipped as an open TODO: a repo
+# with MWS call-sites was told "deprecated" without being told it was already years late.
+# The prior citation (developer-docs.amazon…/migrating-from-amazon-mws) now 404s.
+# CAVEAT: Amazon retired MWS in PHASES (public apps first, then private, by API section).
+# Later per-section dates are reported elsewhere but none was fetchable this session, so
+# only this one is recorded. `version: "*"` is correct regardless — every section is past.
 - vendor: Amazon MWS
   version: "*"
+  retires: "2023-12-31"
   replacement: Amazon SP-API
-  source: https://developer-docs.amazon.com/sp-api/docs/migrating-from-amazon-mws
-  note: Amazon Marketplace Web Service (MWS) is deprecated; all usage should migrate to SP-API. Confirm the current cut-off date for your marketplace.
+  source: https://developer.amazonservices.com/august2022
+  note: 'Amazon August 2022 newsletter: "Amazon also recently posted an announcement sharing that MWS will no longer be available for use after December 31, 2023, and included the 2023 due dates for private app developers to migrate to SP-API." Migrate to SP-API.'
 
 # eBay legacy "traditional" APIs — deprecated 2024-01-04, DECOMMISSIONED 2025-02-05 (already dead).
 # Domain-scoped so the live OAuth/REST host (api.ebay.com) and modern Sell/Buy APIs are NOT flagged.
