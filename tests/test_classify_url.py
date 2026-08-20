@@ -106,3 +106,59 @@ def test_a_real_domain_that_merely_looks_like_a_placeholder_survives():
     assert not is_nonhost("acme.com")
     assert not is_nonhost("testing-services.io")
     assert not is_nonhost("api.exampletree.com")
+
+
+# ── XML namespaces are identifiers, not endpoints ────────────────────────────────
+# Measured across a 19-repo corpus: 492 of 4273 attributed call-sites (11.5%) are namespace
+# URIs. For Amazon MWS that was 114 of 151 — three quarters of the vendor's "call-sites".
+# A namespace URI names a vocabulary; nothing ever fetches it.
+#
+# `_IGNORE` cannot express this: it filters by HOST, and the namespace host IS the vendor's
+# own API host, so ignoring it would delete that vendor's real call-sites too.
+#
+# BOTH forms are required. An earlier attempt handled only the xmlns= attribute and removed
+# nothing measurable, because these SDKs declare the same namespace both ways in the same
+# file — filtering one left the loc attributed by the other.
+
+def test_xml_namespace_attribute_is_not_extracted():
+    from agent.lib.classify_url import extract_urls
+    assert extract_urls(
+        '$r = \'<GetOrderResponse xmlns="http://mws.amazonservices.com/schema/2011-10-01">\';') == []
+
+
+def test_escaped_quote_namespace_is_also_excluded():
+    """The SDKs build these inside double-quoted PHP strings, so the quotes arrive
+    backslash-escaped. Matching only bare quotes missed every real occurrence."""
+    from agent.lib.classify_url import extract_urls
+    assert extract_urls(
+        '$xml .= "<GetCompetitivePricingForASINResponse xmlns=\\"http://mws.amazonservices.com/schema/Products/2011-10-01\\">";') == []
+
+
+def test_prefixed_namespace_is_excluded():
+    from agent.lib.classify_url import extract_urls
+    assert extract_urls(
+        '$q = \'<abortJobRequest xmlns:sct="http://www.ebay.com/soaframework/common/types">\';') == []
+
+
+def test_registered_namespace_call_is_excluded():
+    """The second form, and the reason the first attempt failed. This exact line appears 30
+    times in the corpus, in the same files as the xmlns= form."""
+    from agent.lib.classify_url import extract_urls
+    assert extract_urls(
+        "$xpath->registerNamespace('a', 'http://mws.amazonaws.com/doc/2009-01-01/');") == []
+
+
+def test_a_real_url_on_a_line_that_also_has_a_namespace_survives():
+    """Per-URL, not per-line. A SOAP client routinely declares the namespace and posts to the
+    endpoint on the SAME line; dropping the line would lose the actual call."""
+    from agent.lib.classify_url import extract_urls
+    assert extract_urls(
+        '$c->post("https://mws.amazonservices.com/Orders/2013-09-01", '
+        '\'<GetOrder xmlns="http://mws.amazonservices.com/schema/2011-10-01"/>\');'
+    ) == ["https://mws.amazonservices.com/Orders/2013-09-01"]
+
+
+def test_ordinary_urls_are_untouched():
+    from agent.lib.classify_url import extract_urls
+    assert extract_urls('$u = "https://api.stripe.com/v1/charges";') == \
+        ["https://api.stripe.com/v1/charges"]
