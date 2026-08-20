@@ -40,6 +40,9 @@ UNAUDITED = "UNAUDITED"
 
 NO_ATTESTATION = "no-catalog-attestation"
 CATALOG_STALE = "catalog-stale"
+# The whole vendor API is catalogued as retired, so there is nothing left to audit:
+# no future retirement can be missed once every version is already gone.
+WHOLE_API_RETIRED = "whole-api-retired"
 
 
 def load_attestations(path: str | None = None) -> dict:
@@ -99,14 +102,28 @@ def build(endpoints: list, sunsets: list, attestations: dict, now: str,
         seen[v] = seen.get(v, 0) + (e.get("file_count") or 0)
 
     entries: dict = {}
+    # Vendors whose ENTIRE API is catalogued as retired (`version: "*"`). These cannot be
+    # "not yet checked": the catalog already says every version is gone, and the `*` entry
+    # flags every call-site, so findings here are the opposite of zero. Leaving them
+    # UNAUDITED put dead marketplaces on the human work-order asking someone to open a
+    # seller portal that shut down with the company — a task that can never succeed.
+    # Undated closures count too (`status: deprecated-no-date`): requiring a date would
+    # keep exactly the messiest closures on the list forever.
+    whole_api_dead: set = set()
     for s in sunsets:
         if s.get("vendor"):
             entries[s["vendor"]] = entries.get(s["vendor"], 0) + 1
+            if s.get("version") == "*" and (s.get("retires") or s.get("status")):
+                whole_api_dead.add(s["vendor"])
 
     out = []
     for vendor, sites in seen.items():
         verdict, reasons, checked = verdict_for(vendor, attestations, now,
                                                 stale_days=stale_days)
+        if verdict != CURRENT and vendor in whole_api_dead:
+            # off the work-list, but say why — this is not an attestation and must not
+            # read like one (`checked` and `source` stay empty).
+            verdict, reasons = CURRENT, [WHOLE_API_RETIRED]
         att = attestations.get(vendor) or {}
         out.append({"vendor": vendor, "callSites": sites,
                     "catalogEntries": entries.get(vendor, 0),
