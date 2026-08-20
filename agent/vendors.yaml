@@ -99,7 +99,10 @@
 # "gpt-style"; endpoints.py additionally requires api.openai.com to be classified in the
 # same repo, so naming a model in a doc cannot invent an integration.
 - { vendor: OpenAI,            techKey: api:openai,              domains: [api.openai.com], modelSignature: 'gpt-[0-9][\w.\-]*' }
-- { vendor: Anthropic,         techKey: api:anthropic,           domains: [api.anthropic.com] }
+# modelSignature: Anthropic retires MODELS on dated schedules and publishes nothing else
+# dated — no host or API-version retirement exists to scope by. Anchored on the real
+# family names rather than `claude-\w+`, so prose like "claude-based" cannot match.
+- { vendor: Anthropic,         techKey: api:anthropic,           domains: [api.anthropic.com], modelSignature: 'claude-(?:[0-9]|instant|opus|sonnet|haiku|fable|mythos)[\w.\-]*' }
 - { vendor: GitHub,            techKey: api:github,              domains: [api.github.com] }
 - { vendor: LinkedIn,          techKey: api:linkedin,            domains: [api.linkedin.com] }
 - { vendor: Twitter X,         techKey: api:twitter,             domains: [api.twitter.com, api.x.com] }
