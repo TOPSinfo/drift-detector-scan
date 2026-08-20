@@ -630,6 +630,57 @@ def test_path_constant_can_pin_a_version(tmp_path):
     assert eps and eps[0]["version"] == "v2"
 
 
+def test_path_constant_derives_version_from_the_vendors_path_signature(tmp_path):
+    """REGRESSION (example-org/inventory-app): a repo assigning bare Shopify Admin API paths as
+    constants ($this->shop_url = '/admin/api/2023-10/shop.json') attributed 40 call-sites at
+    version=None, so Shopify's COMPUTED lifecycle could date none of them — 31 sites on
+    RETIRED versions rendered as a healthy tracked integration. Attribution without a version
+    is "cannot see" dressed as "clean".
+
+    The vendor already declares the extractor: pathSignature group 1 IS the version. The
+    `kind == "url"` arm consults it, but a bare path constant yields no URL to extract, so
+    that arm never runs. Ask the vendor directly instead. An explicit `version:` still wins."""
+    shopify = Vendor("Shopify", "api:shopify", ("myshopify.com",), DEFAULT_VERSION_REGEX,
+                     path_signature=r"/admin/api/([0-9]{4}-[0-9]{2})/")
+    inst = {"id": "ks-shopify", "family": "path-constant", "repo": "example-org/inventory-app",
+            "vendor": "Shopify", "pathRegex": r"^/admin/api/[0-9]{4}-[0-9]{2}/",
+            "evidence": "x:1"}
+    ms = [_pc("Order_list.php", 30, "$this->shop_url = '/admin/api/2023-10/orders.json';",
+              vendor="Shopify", check="ks-shopify"),
+          _pc("Post_products.php", 22, "$this->url = '/admin/api/2026-01/products.json';",
+              vendor="Shopify", check="ks-shopify"),
+          _sink("Shopify.php", 487)]
+    out = scan_endpoints(ms, str(tmp_path), [shopify],
+                         idioms=[inst], repo_id="git@x:example-org/inventory-app.git")
+    got = {e["operation"]: e["version"] for e in out["endpoints"] if e["classified"]}
+    assert got == {"/admin/api/2023-10/orders.json": "2023-10",
+                   "/admin/api/2026-01/products.json": "2026-01"}
+
+
+def test_path_constant_explicit_version_beats_the_path_signature(tmp_path):
+    """The pathSignature is a FALLBACK. A wrapper pinned by its instance to one version keeps
+    that version even where the path also carries one — the curated statement wins."""
+    shopify = Vendor("Shopify", "api:shopify", ("myshopify.com",), DEFAULT_VERSION_REGEX,
+                     path_signature=r"/admin/api/([0-9]{4}-[0-9]{2})/")
+    inst = {"id": "pinned", "family": "path-constant", "repo": "r/r", "vendor": "Shopify",
+            "pathRegex": r"^/admin/api/", "version": "2020-01", "evidence": "x:1"}
+    ms = [_pc("a.php", 1, "$u = '/admin/api/2023-10/orders.json';",
+              vendor="Shopify", check="pinned"),
+          _sink("a.php", 2)]
+    out = scan_endpoints(ms, str(tmp_path), [shopify], idioms=[inst], repo_id="git@x:r/r.git")
+    assert [e["version"] for e in out["endpoints"] if e["classified"]] == ["2020-01"]
+
+
+def test_path_constant_without_a_path_signature_stays_versionless(tmp_path):
+    """Vendors that declare no pathSignature are unaffected — no generic version-sniffing is
+    introduced here, so no existing shipped instance changes shape. Catch has none."""
+    ms = [_pc("src/CatchApi/GetOrders.php", 9, 'protected $API_URL = "/api/v2/orders";'),
+          _sink("src/CatchApi/CatchApi.php", 298)]
+    out = scan_endpoints(ms, str(tmp_path), [_CATCH],
+                         idioms=[_CATCH_INST], repo_id=_CATCH_REMOTE)
+    assert [e["version"] for e in out["endpoints"] if e["classified"]] == [None]
+
+
 # ── corroboration: a shipped path-constant guarded by evidence, not by repo identity ──
 _SPAPI = Vendor("Amazon SP-API", "api:spapi", ("sellingpartnerapi-na.amazon.com",),
                 DEFAULT_VERSION_REGEX)
