@@ -46,8 +46,6 @@
 - { vendor: Magento,           techKey: api:magento,             domains: [] }   # self-hosted; identified by the /rest/V1 path-constant idiom, not a host
 - { vendor: MySale,            techKey: api:mysale,              domains: [mysalemarketplace.com] }
 - { vendor: Marketplacer,      techKey: api:marketplacer,        domains: [marketplacer.com] }
-- { vendor: Mirakl,            techKey: api:mirakl,              domains: [mirakl.net] }
-- { vendor: Virtualstock,      techKey: api:virtualstock,        domains: [virtualstock.com] }  # Harvey Norman marketplace (Virtualstock 'The Edge')
 
 # ── Payments ───────────────────────────────────────────────────────────────
 - { vendor: Stripe,            techKey: api:stripe,              domains: [stripe.com] }

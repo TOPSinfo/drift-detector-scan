@@ -53,6 +53,11 @@ _MEANINGFUL_SHARE = 0.10
 
 NO_EGRESS_SIGNAL = "no-egress-signal"
 UNMODELED_LANGUAGE = "unmodeled-language"
+# The scan FOUND an API host and has no name for it — the vendor is absent from the
+# catalog. Distinct from every other blindness here: those mean "we could not see the
+# call", this means "we saw it and cannot say whose it is". Different fix, too — a
+# catalog entry, not an idiom — so conflating them sends the reader to the wrong work.
+UNCATALOGUED_VENDOR = "uncatalogued-vendor"
 
 
 def census(repo_abs: str) -> tuple:
@@ -103,7 +108,8 @@ def residue_fingerprint(residue: dict) -> str:
 
 
 def verdict(attributed: int, residue: dict, coverage: dict,
-            *, attested: bool = False, unmodeled: int = 0, modeled: int = 0) -> tuple:
+            *, attested: bool = False, unmodeled: int = 0, modeled: int = 0,
+            unclassified_api_hosts: int = 0) -> tuple:
     """(KNOWN|UNKNOWN, reasons). KNOWN requires BOTH egress coverage for every
     meaningful language AND nothing left unattributed (or a valid attestation)."""
     reasons = []
@@ -134,6 +140,12 @@ def verdict(attributed: int, residue: dict, coverage: dict,
     if n_paths and not attested:
         # a versioned path we could not attribute is a miss, full stop
         reasons.append("config-driven-url")
+    elif unclassified_api_hosts and attributed == 0 and not attested:
+        # We SAW the endpoint; the vendor just is not in the catalog. Ranked above the sink
+        # reason on purpose: both conditions hold for a repo like this, but "cannot name the
+        # vendor" is the specific, actionable one — it points at a catalog entry, whereas
+        # sdk-only-no-callsite points at writing an idiom that would change nothing.
+        reasons.append(UNCATALOGUED_VENDOR)
     elif n_sinks and attributed == 0 and not attested:
         # Sinks are only evidence of blindness when NOTHING resolved. We cannot link a
         # sink to the endpoint it calls without dataflow, so a fully-attributed repo
@@ -150,14 +162,30 @@ def build(repo_abs: str, repo_path: str, endpoints: list, residue: dict,
     cov = signal_coverage(langs, rule_kinds_by_lang)
     attributed = sum(1 for e in endpoints
                      if e.get("vendor") and e["vendor"] != "Unknown")
+    # Hosts we extracted but could not NAME. Scoped by hostClass to the two classes that
+    # can plausibly be a third-party API — `api-lead` and the `unclassified` catch-all.
+    # Everything host_class already triaged away (own-infra, asset-cdn, social-widget,
+    # boilerplate, vendored-lib) is excluded, because those are not integrations and
+    # counting them would cry wolf on every repo.
+    #
+    # Measured on a 34-repo fleet: 71 Unknown endpoints total, 16 under this filter, of
+    # which 14 are genuine vendor leads (Temu, Addressify, DotWMS, a Salesforce Commerce
+    # Cloud host, Kogan admin, MySale sandbox…) and 2 are doc links. The 55 excluded were
+    # own-infra, boilerplate, CDN and vendored-library noise.
+    unclassified_api = sum(1 for e in endpoints
+                           if not e.get("classified") and e.get("domain")
+                           and e.get("hostClass") in ("api-lead", "unclassified"))
     v, reasons = verdict(attributed, residue, cov, attested=attested,
-                         unmodeled=unmodeled, modeled=sum(counts.values()))
+                         unmodeled=unmodeled, modeled=sum(counts.values()),
+                         unclassified_api_hosts=unclassified_api)
     return {
         "repo": repo_path,
         "languages": counts,
         "unmodeledFiles": unmodeled,
         "signalCoverage": cov,
         "attributed": attributed,
+        "uncataloguedHosts": unclassified_api,   # detected, no vendor entry
+
         "unattributedPaths": len(residue.get("pathLiterals", [])),
         "unresolvedSinks": len(residue.get("sinks", [])),
         "residueFingerprint": residue_fingerprint(residue),
