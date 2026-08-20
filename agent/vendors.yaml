@@ -92,7 +92,13 @@
 - { vendor: Firebase FCM,      techKey: api:firebase-fcm,        domains: [fcm.googleapis.com] }
 - { vendor: Meta Graph API,    techKey: api:meta-graph,          domains: [graph.facebook.com] }
 - { vendor: Microsoft Graph,   techKey: api:microsoft-graph,     domains: [graph.microsoft.com] }
-- { vendor: OpenAI,            techKey: api:openai,              domains: [api.openai.com] }
+# modelSignature: OpenAI dates its retirements to MODEL ids, not to hosts or API versions
+# (its /v1/assistants entry in vendor_sunsets.yaml is the exception, not the rule). The id
+# is what appears in code — `env('AI_MODEL', 'gpt-3.5-turbo')` — so this is the only handle
+# on a model retirement. Anchored to `gpt-` + a DIGIT so it cannot match prose like
+# "gpt-style"; endpoints.py additionally requires api.openai.com to be classified in the
+# same repo, so naming a model in a doc cannot invent an integration.
+- { vendor: OpenAI,            techKey: api:openai,              domains: [api.openai.com], modelSignature: 'gpt-[0-9][\w.\-]*' }
 - { vendor: Anthropic,         techKey: api:anthropic,           domains: [api.anthropic.com] }
 - { vendor: GitHub,            techKey: api:github,              domains: [api.github.com] }
 - { vendor: LinkedIn,          techKey: api:linkedin,            domains: [api.linkedin.com] }

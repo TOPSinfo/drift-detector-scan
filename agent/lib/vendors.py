@@ -28,6 +28,12 @@ class Vendor:
     # variable ("https://{$shop}/admin/api/2024-01/…"), where host classification is blind but
     # the path is unmistakably this vendor's. Shopify's Admin API is the motivating case.
     path_signature: str | None = None
+    # An optional regex matching this vendor's MODEL identifiers (group 0 is the id). The AI
+    # providers deprecate models on dated schedules — OpenAI, Groq and Mistral all publish
+    # one — and a model id is the only thing those dates attach to. Declaring it lets the
+    # engine attribute the id as the endpoint's OPERATION, which the sunset catalog already
+    # scopes by, so "gpt-3.5-turbo retires 2026-10-23" can reach a file:line.
+    model_signature: str | None = None
 
 
 def vendor_slug(vendor: str) -> str:
@@ -47,5 +53,6 @@ def load_vendors(path: str | None = None) -> list:
             domains=tuple(d.get("domains") or []),
             version_regex=d.get("versionRegex") or DEFAULT_VERSION_REGEX,
             path_signature=d.get("pathSignature") or None,
+            model_signature=d.get("modelSignature") or None,
         ))
     return out

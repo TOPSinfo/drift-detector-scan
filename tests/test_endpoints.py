@@ -908,3 +908,64 @@ def test_a_vendor_without_a_path_signature_gains_nothing(tmp_path):
           {"kind": "sink", "path": "Client.php", "line": 1}]
     out = scan_endpoints(ms, str(tmp_path), [_SP, _STRIPE, _SHOPIFY])
     assert [r["loc"] for r in out["residue"]["pathLiterals"]] == ["Api.php:1"]
+
+
+# ── model signatures: the AI category deprecates MODELS, not hosts or paths ──────
+# Every AI provider checked (OpenAI, Groq, Mistral) publishes a dated deprecation schedule,
+# and every date attaches to a MODEL identifier — the one thing a catalog entry could not be
+# scoped by. A CRM defaulting to `gpt-3.5-turbo` in four services had zero findings while
+# that model's shutdown was two months out.
+#
+# A model id names its vendor as unambiguously as a pathSignature does, so the vendor
+# declares it and the engine attributes it as the OPERATION — which the sunset catalog
+# already scopes by (14 entries do today).
+_OPENAI = Vendor("OpenAI", "api:openai", ("api.openai.com",), DEFAULT_VERSION_REGEX,
+                 model_signature=r"gpt-[0-9][\w.\-]*")
+
+
+def _model(path, line, text, vendor="OpenAI", tk="api:openai"):
+    return {"kind": "model", "vendor": vendor, "techKey": tk,
+            "path": path, "line": line, "text": text}
+
+
+def test_model_literal_is_attributed_as_the_operation(tmp_path):
+    _write(tmp_path, "cfg.php", "$base = 'https://api.openai.com/v1';\n")
+    _write(tmp_path, "services.php", "'model' => env('AI_MODEL', 'gpt-3.5-turbo'),\n")
+    ms = [{"kind": "url", "path": "cfg.php", "line": 1},
+          _model("services.php", 1, "'model' => env('AI_MODEL', 'gpt-3.5-turbo'),")]
+    out = scan_endpoints(ms, str(tmp_path), [_OPENAI, _SP])
+    got = [e for e in out["endpoints"] if e.get("operation") == "gpt-3.5-turbo"]
+    assert got, "a declared modelSignature must attribute the model as an operation"
+    assert got[0]["vendor"] == "OpenAI"
+    assert got[0]["files"] == ["services.php:1"]
+
+
+def test_model_literal_needs_the_vendor_already_classified_in_the_repo(tmp_path):
+    """The guard that stops this inventing integrations. A repo that merely NAMES a model —
+    a doc, a comparison table, a migration note — does not call OpenAI. The model id
+    corroborates an integration the scan already saw by host; it never creates one."""
+    _write(tmp_path, "notes.php", "$s = 'we could switch to gpt-3.5-turbo later';\n")
+    ms = [_model("notes.php", 1, "$s = 'we could switch to gpt-3.5-turbo later';")]
+    out = scan_endpoints(ms, str(tmp_path), [_OPENAI, _SP])
+    assert [e for e in out["endpoints"] if e.get("operation") == "gpt-3.5-turbo"] == []
+
+
+def test_the_model_id_is_extracted_not_the_whole_literal(tmp_path):
+    """The operation must equal the model id exactly, because the sunset join is an exact
+    string match. Taking the whole string literal would never match a catalog entry."""
+    _write(tmp_path, "cfg.php", "$base = 'https://api.openai.com/v1';\n")
+    _write(tmp_path, "svc.php", "$this->model = config('services.ai.model', 'gpt-4o-mini');\n")
+    ms = [{"kind": "url", "path": "cfg.php", "line": 1},
+          _model("svc.php", 1, "$this->model = config('services.ai.model', 'gpt-4o-mini');")]
+    out = scan_endpoints(ms, str(tmp_path), [_OPENAI, _SP])
+    assert [e["operation"] for e in out["endpoints"] if e.get("vendor") == "OpenAI"
+            and e.get("operation")] == ["gpt-4o-mini"]
+
+
+def test_a_vendor_without_a_model_signature_is_unaffected(tmp_path):
+    """No generic model-sniffing: a vendor that declares none gains nothing."""
+    _write(tmp_path, "cfg.php", "$base = 'https://api.openai.com/v1';\n")
+    ms = [{"kind": "url", "path": "cfg.php", "line": 1}]
+    plain = Vendor("OpenAI", "api:openai", ("api.openai.com",), DEFAULT_VERSION_REGEX)
+    out = scan_endpoints(ms, str(tmp_path), [plain])
+    assert all(not e.get("operation") for e in out["endpoints"])
