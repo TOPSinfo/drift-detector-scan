@@ -276,6 +276,46 @@ def scan_endpoints(matches: list, repo_root: str, vendors: list, *, max_files: i
                     path, rel, lineno, inferred=True)
                 attributed_locs.add(f"{rel}:{lineno}")
 
+    # --- vendor pathSignature on bare path literals ------------------------------
+    # A vendor that declares a `pathSignature` has stated that this path shape identifies it
+    # REGARDLESS OF HOST. The `kind == "url"` arm already honours that, but only on a line that
+    # yielded a URL — so a repo that assembles its host at runtime and stores bare path
+    # constants ("/admin/api/2023-10/shop.json") got nothing, and its calls on RETIRED API
+    # versions read as a healthy integration.
+    #
+    # Deliberately not the concat idiom above: this needs neither a single classified vendor
+    # nor a path-assembly file, so it fires in the multi-vendor repos where those guards never
+    # can. And unlike a path-constant instance it names no repository, so it carries no client
+    # data and helps every user of the tool rather than one fleet.
+    #
+    # Two things keep it honest: only vendors that OPT IN by declaring a signature are
+    # considered (no generic version-sniffing), and the repo must show an egress sink — the
+    # same guard the path-constant family carries, because a versioned path in a repo that
+    # makes no outbound calls is a fixture or a doc, not a call site.
+    has_sink = any(m.get("kind") == "sink" for m in matches)
+    if has_sink:
+        for m in matches:
+            if m.get("kind") != "path-literal":
+                continue
+            rel = _relpath(m.get("path", ""), repo_root)
+            lineno = int(m.get("line", 0) or 0)
+            loc = f"{rel}:{lineno}"
+            if loc in attributed_locs:
+                continue
+            path = classify_url.path_literal_of(
+                m.get("text") or _read_line(repo_root, rel, lineno, line_cache))
+            if not path:
+                continue
+            # matched against the extracted PATH, not the whole line, so an unrelated URL
+            # elsewhere on the line cannot lend its host to this decision
+            sig = classify_url.path_signature_match(path, vendors)
+            if not sig:
+                continue
+            sv, sver, _sample = sig
+            add(sv.vendor, sv.techKey, sv.domains[0] if sv.domains else "", sver,
+                path, rel, lineno, operation=path, inferred=True)
+            attributed_locs.add(loc)
+
     # --- path-constant idiom: operations of a config-injected wrapper ---
     # A config-injected host classifies nothing, so — unlike the concat/operation-marker
     # blocks — the vendor is NOT inferred from the repo's classified set. It is the reviewed
@@ -284,7 +324,6 @@ def scan_endpoints(matches: list, repo_root: str, vendors: list, *, max_files: i
     # /api/orders, and would mis-tag a different marketplace), and the repo must show an egress
     # sink (it actually makes HTTP calls). Everything else lands in residue below.
     pc_by_id = {i["id"]: i for i in (idioms or []) if i.get("family") == "path-constant"}
-    has_sink = any(m.get("kind") == "sink" for m in matches)
     # Corroboration pre-pass. The threshold is a property of the REPO, not of the match being
     # considered, so it has to be settled before any attribution happens — otherwise the first
     # match would be judged on evidence not yet counted. Counts DISTINCT first path segments:
