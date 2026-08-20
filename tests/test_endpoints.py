@@ -854,3 +854,57 @@ def test_distinctive_attributes_when_only_one_of_several_listed_families_is_pres
     out = scan_endpoints(ms, str(tmp_path), [_SPAPI],
                          idioms=[inst], repo_id="git@github.com:acme/real-seller-2.git")
     assert len([e for e in out["endpoints"] if e["classified"]]) == 3
+
+
+# ── pathSignature on bare path literals: the capability with no idiom behind it ──
+# The single-vendor branch above cannot fire in a real multi-vendor repo, and a repo-scoped
+# idiom only helps the one repo it names. A vendor that DECLARES a pathSignature has already
+# said "this path shape is me, whatever the host" — honouring that on a bare path literal is
+# what makes the shape readable for every user of the tool, with no client data in the rule.
+_SHOPIFY = Vendor("Shopify", "api:shopify", ("myshopify.com",), DEFAULT_VERSION_REGEX,
+                  path_signature=r"/admin/api/([0-9]{4}-[0-9]{2})/")
+
+
+def test_path_signature_attributes_a_bare_path_literal_in_a_multi_vendor_repo(tmp_path):
+    """The ksupply shape, generalised: the host is built at runtime so nothing on the line
+    classifies, and the repo talks to several vendors so the single-vendor branch is out.
+    The path itself is unmistakably Shopify, and the version comes with it."""
+    _write(tmp_path, "cfg.php",
+           "$a = 'https://sellingpartnerapi-na.amazon.com'; $b = 'https://api.stripe.com';\n")
+    _write(tmp_path, "Shop.php", "$this->shop_url = '/admin/api/2023-10/shop.json';\n")
+    _write(tmp_path, "Client.php", "$res = $this->client->request($m, $u);\n")
+    ms = [{"kind": "url", "path": "cfg.php", "line": 1},
+          {"kind": "path-literal", "path": "Shop.php", "line": 1},
+          {"kind": "sink", "path": "Client.php", "line": 1}]
+    out = scan_endpoints(ms, str(tmp_path), [_SP, _STRIPE, _SHOPIFY])
+    shop = [e for e in out["endpoints"] if e.get("techKey") == "api:shopify"]
+    assert shop, "a declared pathSignature must attribute a bare path literal"
+    assert shop[0]["version"] == "2023-10"
+    assert shop[0]["files"] == ["Shop.php:1"]
+    assert out["residue"]["pathLiterals"] == []      # attributed, so no longer blind
+
+
+def test_path_signature_attribution_requires_an_egress_sink(tmp_path):
+    """Same literal, but the repo makes no outbound calls — it could be a fixture, a doc
+    string, a test. It stays residue. Same guard the path-constant family carries, and the
+    reason a signature match is evidence rather than proof."""
+    _write(tmp_path, "Shop.php", "$this->shop_url = '/admin/api/2023-10/shop.json';\n")
+    ms = [{"kind": "path-literal", "path": "Shop.php", "line": 1}]
+    out = scan_endpoints(ms, str(tmp_path), [_SP, _STRIPE, _SHOPIFY])
+    assert [e for e in out["endpoints"] if e.get("techKey") == "api:shopify"] == []
+    assert [r["loc"] for r in out["residue"]["pathLiterals"]] == ["Shop.php:1"]
+
+
+def test_a_vendor_without_a_path_signature_gains_nothing(tmp_path):
+    """No generic path-sniffing is introduced. A versioned literal belonging to a vendor that
+    declares no signature stays exactly as blind as it was — this must not become a licence
+    to guess a vendor from any path."""
+    _write(tmp_path, "cfg.php",
+           "$a = 'https://sellingpartnerapi-na.amazon.com'; $b = 'https://api.stripe.com';\n")
+    _write(tmp_path, "Api.php", "$p = '/v1/charges/2024-01-01/list';\n")
+    _write(tmp_path, "Client.php", "$res = $this->client->request($m, $u);\n")
+    ms = [{"kind": "url", "path": "cfg.php", "line": 1},
+          {"kind": "path-literal", "path": "Api.php", "line": 1},
+          {"kind": "sink", "path": "Client.php", "line": 1}]
+    out = scan_endpoints(ms, str(tmp_path), [_SP, _STRIPE, _SHOPIFY])
+    assert [r["loc"] for r in out["residue"]["pathLiterals"]] == ["Api.php:1"]
