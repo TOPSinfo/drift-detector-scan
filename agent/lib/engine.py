@@ -47,8 +47,12 @@ def _rule_metadata(ruleset_path: str) -> dict:
 
 # Directories whose contents are not production integrations. Test fixtures and
 # mocks hard-code fake hosts ("production.com", "sandbox.com") and vendored code
-# belongs to someone else — counting either as an integration is noise, and the
-# eval's noise metric exists to catch exactly that. semgrep skipped tests by
+# belongs to someone else — counting either as an integration is noise. NOTE:
+# the eval's `noise` metric does NOT catch this class — score.py counts
+# UNCLASSIFIED hosts, and a bundled library's Dailymotion detection is
+# classified, so it passes the eval silently. The guards are the unit tests in
+# `tests/test_engine_runner.py` and the corpus comparison in docs/superpowers/plans/2026-08-19-vendored-asset-noise.md.
+# semgrep skipped tests by
 # default; ast-grep does not, so the skip is explicit here.
 #
 # Filtered on the path RELATIVE to the scanned repo, not via engine globs: a glob
