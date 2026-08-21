@@ -114,5 +114,7 @@ entirely.
 - **[Claude Code plugin](PLUGIN.md)** — installing it, and what each command does
 - **[FAQ](FAQ.md)** — where the rules live, how the trust tiers work, what happens when it is blind
 - **[Teaching it a new shape](drift-absorb.md)** — absorbing a repo the scanner cannot read
+- **[Glossary](glossary.md)** — every term this tool uses, what it means, and the mistake
+  it exists to prevent. Start here if a verdict or a badge is not self-explanatory.
 - **[Evaluating the scanner](EVAL.md)** — the corpus and the recall gate
 - **[Roadmap](ROADMAP.md)** — what is next

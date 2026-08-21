@@ -71,4 +71,4 @@ Public soft-ship was held at ~60% partly because positioning stayed **PARKED**: 
 
 ## Implementation note
 
-Docs-only change in shipping tree `/home/tops/Projects/tops/drift/drift-detector-scan` (plus orchestrator pointer). Prefer one focused commit after review; user pushes with their PAT.
+Docs-only change in shipping tree `<repo>` (plus orchestrator pointer). Prefer one focused commit after review; user pushes with their PAT.

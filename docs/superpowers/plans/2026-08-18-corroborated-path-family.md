@@ -790,7 +790,7 @@ cat > /tmp/drift-corpus-run.sh <<'EOF'
 #!/usr/bin/env bash
 set -eu
 W=/tmp/claude-1000/-home-tops-Projects-tops-deprication-agent/fa30e593-ae4a-40f9-876e-558d40625a62/scratchpad/wild-corpus
-cd /home/tops/Projects/tops/drift/drift-detector-scan
+cd <repo>
 mapfile -t ROOTS < <(W="$W" python3 -c "
 import json, os
 W = os.environ['W']

@@ -240,9 +240,9 @@ Then confirm the sums hold on REAL data, not just the fixture:
 
 ```bash
 cd /tmp && .venv/bin/python -c "
-import json,sys; sys.path.insert(0,'/home/tops/Projects/tops/drift/drift-detector-scan')
+import json,sys; sys.path.insert(0,'<repo>')
 from agent.lib import tree
-p=json.load(open('/home/tops/Projects/sandbox/zenithapp-crm/.drift-detector/drift.json'))
+p=json.load(open('<local-path>'))
 r=tree.build(p)[0]
 print(r['n'], '==', sum(c['n'] for c in r['children']))
 "
@@ -730,9 +730,9 @@ Then prove it end-to-end from a NEUTRAL cwd:
 
 ```bash
 cd /tmp && DRIFT_CATALOG_DIR=$HOME/.drift/catalog \
-  /home/tops/Projects/tops/drift/drift-detector-scan/bin/drift-scan run \
-  --root /home/tops/Projects/sandbox/zenithapp-crm --state /tmp/tree-e2e --now 2026-08-13
-cd /tmp && /home/tops/Projects/tops/drift/drift-detector-scan/bin/drift-scan verify --state /tmp/tree-e2e
+  <repo>/bin/drift-scan run \
+  --root <local-path> --state /tmp/tree-e2e --now 2026-08-13
+cd /tmp && <repo>/bin/drift-scan verify --state /tmp/tree-e2e
 ```
 Expected: exit 0. Then hand-edit one `data-n` in `/tmp/tree-e2e/dashboard.html`, re-run `verify`,
 confirm it fails naming `tree-sums` or `tree-payload`, and restore. Record both outputs.
@@ -1288,8 +1288,8 @@ git commit -m "feat(tree): the queued node states when research last ran, or tha
 
 ```bash
 cd /tmp && DRIFT_CATALOG_DIR=$HOME/.drift/catalog \
-  /home/tops/Projects/tops/drift/drift-detector-scan/bin/drift-scan run \
-  --root /home/tops/Projects/sandbox/zenithapp-crm --state /tmp/reframe-e2e --now 2026-08-13
+  <repo>/bin/drift-scan run \
+  --root <local-path> --state /tmp/reframe-e2e --now 2026-08-13
 ```
 
 - [ ] **Step 2: Record the measurements**

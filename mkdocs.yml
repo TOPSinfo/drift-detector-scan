@@ -71,6 +71,7 @@ nav:
   - How it works: how-it-works.md
   - Reading the report: reading-the-report.md
   - FAQ: FAQ.md
+  - Glossary: glossary.md
   - Use it:
       - Claude Code plugin: PLUGIN.md
   - Build it:
@@ -83,6 +84,17 @@ nav:
 # A page that exists but is not in `nav` is built and linkable, and MkDocs would otherwise warn
 # on every one of them. Internal docs are intentionally off-nav, so silence that specific warning
 # rather than dropping the files (which would break inbound links from the repo and CHANGELOG).
+# Internal engineering material: kept in the repo (code comments in agent/resolve.py, run.py and
+# cli.py cite these specs as the design rationale for the no-queue gate — that trail is the
+# project's memory and deleting it would break real references), but NOT published to the site.
+# A customer searching the docs should not surface planning trails or internal positioning notes.
+exclude_docs: |
+  superpowers/
+  PUBLIC-POSITIONING-CLAUDE.md
+  POC-ADHOC-SHAPES.md
+  FRONTEND-PLANE.md
+  NAVIGATOR-WORKER.md
+
 validation:
   nav:
     omitted_files: ignore

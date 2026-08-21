@@ -33,7 +33,7 @@ docker build -t drift-detector-scan .
 ```
 
 The `.github/workflows/container.yml` action builds and pushes to
-`ghcr.io/TOPSinfo/drift-detector-scan` on every `v*` tag, tagging by version and by commit
+`ghcr.io/topsinfo/drift-detector-scan` on every `v*` tag, tagging by version and by commit
 sha. Make the GHCR package **public** once (repo → Packages → settings) so GitLab CI pulls it
 with no cross-vendor secret.
 
@@ -62,7 +62,7 @@ the fleet config, the catalog overlay, and the committed-back state. A minimal s
 ```yaml
 # .gitlab-ci.yml in drift-ops — pin by DIGEST, not a moving tag
 scan:
-  image: ghcr.io/TOPSinfo/drift-detector-scan@sha256:<digest>
+  image: ghcr.io/topsinfo/drift-detector-scan@sha256:<digest>
   variables:
     GITLAB_TOKEN: $DRIFT_READ_TOKEN        # clone + group expansion; masked CI variable
     DRIFT_CATALOG_DIR: catalog             # the writable overlay in the drift-ops checkout

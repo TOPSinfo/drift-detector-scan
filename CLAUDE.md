@@ -44,7 +44,7 @@ These are what make the tool trustworthy. Breaking one is a defect even if tests
 
 ## Working in the repo
 
-- **Tests:** `.venv/bin/python -m pytest -q` (505+, ~12s, no network — I/O is injected).
+- **Tests:** `.venv/bin/python -m pytest -q` (1440+, ~27s, no network — I/O is injected).
   `jsonschema` is test-only; runtime is **stdlib + PyYAML** only.
 - **Run it:** `./bin/drift-scan run --root <path|url> --state <dir> --now $(date +%F)` then
   `./bin/drift-scan verify --state <dir>`. `plan` previews without scanning;

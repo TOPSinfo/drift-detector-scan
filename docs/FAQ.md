@@ -84,6 +84,8 @@ is built around:
 
 - "0 findings" for a vendor that has been **audited** means something
 - "0 findings" for a vendor marked `UNAUDITED` or `queued` means **nobody has checked yet**
+- "0 findings" for a vendor marked `BLOCKED` means somebody tried and **was refused** — the
+  vendor publishes retirements only behind a partner login
 
 A clean-looking result with unaudited vendors is not a clean bill of health, and the report says
 so in those words rather than showing you a green tick.
@@ -177,10 +179,10 @@ Split in two on purpose.
 | file | holds | today |
 |---|---|---|
 | `vendors.yaml` | host → vendor detection | 79 vendors |
-| `vendor_sunsets.yaml` | dated, sourced retirements | 49 entries · 15 vendors |
-| `catalog_attestations.yaml` | when each vendor was last checked | 52 vendors |
-| `idioms.yaml` | repo *shapes* it can be taught | 11 instances |
-| `sdk_clients.yaml` | dependency → vendor | 29 rows |
+| `vendor_sunsets.yaml` | dated, sourced retirements | 97 entries · 19 vendors |
+| `catalog_attestations.yaml` | when each vendor was last checked | 60 vendors |
+| `idioms.yaml` | [idioms](glossary.md#idiom) — code shapes it has been taught, for calls whose host is built at runtime | 11 instances |
+| `sdk_clients.yaml` | dependency → vendor | 30 rows |
 
 **Code** — `agent/lib/vendor_rules.py` compiles those into the parser's rule pack. Nothing is
 hand-written per repository.
