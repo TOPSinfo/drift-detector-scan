@@ -72,9 +72,6 @@ def date_in_text(date_iso: str, text: str) -> bool:
                for f in forms)
 
 
-class AbsorbRejected(Exception):
-    """A staged proposal failed the gate. The message names which check and why."""
-
 
 def _load(path: str) -> list:
     if not os.path.exists(path):
@@ -194,6 +191,35 @@ def measure_against_repo(repo_abs: str, staged_idioms: list, claims: list, *, sc
     if unclaimed:
         problems.append("attributes call-sites it did not claim: " + ", ".join(unclaimed[:6])
                         + " — every attributed site must be named and reviewed")
+
+    # ...and the other direction. `unclaimed` only proves the claims COVER what was attributed,
+    # which is worth something solely if the claims were written first. An agent can instead scan,
+    # read whatever an over-broad pattern swept up, then write claims.yaml to match — every
+    # attributed site is "claimed", the gate passes, and nobody approved the rule.
+    #
+    # So bound claims to the blind spots the certified scan flagged on its OWN, from the `before`
+    # scan, computed here rather than read from any file the proposing agent can write. This is the
+    # check `check_claims_in_scope` was written for and, until now, was never wired to: it had zero
+    # callers anywhere in the runtime path, so the P0 guarantee its docstring asserts — and that
+    # the promptfile repeats as a rule — was not enforced by anything.
+    #
+    # Scope is the residue kinds the BRIEF enumerates (agent/lib/brief.py) — versioned path
+    # literals and egress sinks — since those are the blind spots an absorbing agent is shown.
+    # `operations` joins them for the operation-marker family.
+    #
+    # `path-constant` is EXEMPT, and the exemption is load-bearing rather than a loophole: no
+    # path-constant rule is emitted unless an idiom instance exists (vendor_rules.write_ruleset
+    # with no instances produces none), so the `before` scan surfaces NOTHING at those lines.
+    # That invisibility is the family's whole premise — a config-injected host leaves no literal
+    # for the certified scan to see. Scoping it to pre-change residue would therefore reject
+    # every legitimate instance of it, which is exactly what happened when this check was first
+    # wired: a passing test for the bound-vendor case went red. The family is bounded instead by
+    # its own gates (idioms.py: vendor-bound, repo-scoped OR corroborated, a distinctive
+    # pathRegex) plus `unclaimed` and the residue-must-not-grow rule.
+    if any(i.get("family") != "path-constant" for i in (staged_idioms or [])) or not staged_idioms:
+        scope = {str(r.get("loc")) for kind in ("pathLiterals", "sinks", "operations")
+                 for r in (before["residue"].get(kind) or []) if isinstance(r, dict) and r.get("loc")}
+        problems += check_claims_in_scope(claims, scope)
 
     # residue must not grow: an idiom that "fixes" a gap by surfacing signals it cannot
     # attribute has traded one blind spot for another. Count BOTH versioned path literals and

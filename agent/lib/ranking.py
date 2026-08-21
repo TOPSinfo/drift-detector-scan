@@ -1,7 +1,7 @@
 """The one shared definition of 'worse' (severity) and 'newer' (version).
 
-Both the read facade and the report renderer import these. Keeping one copy is the point:
-the ranking logic used to live privately in facade.py, so audit_render.py could not reach it
+Both the action builder and the report renderer import these. Keeping one copy is the point:
+the ranking logic used to live privately in the read facade, so the renderer could not reach it
 and ranked nothing at all.
 """
 from __future__ import annotations

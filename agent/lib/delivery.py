@@ -7,9 +7,11 @@ issue per audience, filed IN that repo's own project (not a central one), assign
     configured DevOps account.
   • Developer actions (vendor API sunsets + framework EOL) -> one issue per repo, assigned
     to the resolved repo owner (`resolve_owner`).
-The draft-merge-request path is retired — `plan["mrs"]` is always `[]` for findings (the
-`mr_*` helpers and `execute_plan`'s MR loop remain only for any pre-existing MRs already in
-flight; nothing new is ever planned there).
+The draft-merge-request path is retired — `plan["mrs"]` is ALWAYS `[]` (build_plan's only
+return is `_finish(issue_plan, [], ...)`, and fetch_existing returns `{"mrs": {}}`), so
+`execute_plan`'s MR loop is unreachable. It was previously described here as being kept "for
+any pre-existing MRs already in flight"; that was not true — no code path populates it, and
+legacy MRs are swept by hand.
 
 Idempotency is the whole game — a re-scan must UPDATE, never duplicate. Issues carry a hidden
 marker `<!-- drift-detector:<fp> -->` (namespaced per repo+audience via `repo_fingerprint`)
