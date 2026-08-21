@@ -1,7 +1,7 @@
 {
   "name": "drift-detector",
   "displayName": "Drift Detector",
-  "version": "0.20.0-beta",
+  "version": "1.0.0",
   "description": "Know before it breaks. Claude proposes integrations the rules can't see yet; Drift Detector's deterministic scanner adjudicates \u2014 file:line, sourced dates, or honest needs-human. Never invents a date; AI leads stay separate from certified findings.",
   "author": {
     "name": "Tops Infosolutions Pvt Ltd",
