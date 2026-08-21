@@ -107,8 +107,50 @@ def test_the_LOADER_carries_blocked_through_from_the_yaml(tmp_path):
     genuinely unreachable came back CURRENT: the strongest possible claim, from evidence that
     said the opposite. Caught by running it on the real catalog, not by the unit tests."""
     p = tmp_path / "att.yaml"
-    p.write_text("- vendor: Temu\n  checked: '2026-08-21'\n  source: https://seller.temu.com/\n"
-                 "  blocked: 'seller portal login required'\n", encoding="utf-8")
+    p.write_text("- vendor: Temu\n  blocked:\n    since: '2026-08-21'\n"
+                 "    source: https://seller.temu.com/\n"
+                 "    why: 'seller portal login required'\n", encoding="utf-8")
     att = cc.load_attestations(str(p))
     assert att["Temu"]["blocked"] == "seller portal login required"
     assert cc.verdict_for("Temu", att, "2026-08-21")[0] == cc.BLOCKED
+
+
+def test_a_blocked_entry_reads_as_UNAUDITED_to_a_scanner_that_predates_the_verdict(tmp_path):
+    """REGRESSION, found live on the fleet. The overlay catalog deploys independently of the
+    code that reads it, so a BLOCKED entry WILL be parsed by scanners older than this verdict.
+    Encoded flat (`blocked:` beside top-level checked/source), the old loader ignored the key
+    it did not know and saw a complete attestation: Temu rendered CURRENT — "checked, fine" —
+    from evidence stating its docs cannot be read at all.
+
+    So `blocked` nests its own provenance and the entry carries NO top-level checked/source.
+    An older reader requiring those skips the entry entirely and falls back to UNAUDITED,
+    which under-claims instead of over-claiming. The flat form is refused outright (below) so
+    the unsafe encoding cannot be written back in."""
+    p = tmp_path / "att.yaml"
+    p.write_text(
+        "- vendor: Temu\n"
+        "  blocked:\n"
+        "    since: '2026-08-21'\n"
+        "    source: https://seller.temu.com/\n"
+        "    why: 'seller portal login required'\n", encoding="utf-8")
+    att = cc.load_attestations(str(p))
+    assert cc.verdict_for("Temu", att, "2026-08-21")[0] == cc.BLOCKED
+    assert att["Temu"]["checked"] == "2026-08-21"     # provenance survives the nesting
+    assert att["Temu"]["source"] == "https://seller.temu.com/"
+
+    # what an OLDER scanner does: it requires top-level checked+source, and there are none
+    raw = __import__("yaml").safe_load(p.read_text(encoding="utf-8"))
+    assert not (raw[0].get("checked") or raw[0].get("source")), \
+        "top-level provenance would make an old reader call this CURRENT"
+
+
+def test_the_unsafe_flat_blocked_form_is_refused_rather_than_trusted(tmp_path):
+    """The dangerous shape is `blocked:` sitting BESIDE top-level checked/source: this scanner
+    would read BLOCKED while every older one reads CURRENT off the same bytes. Refusing it
+    (vendor falls through to UNAUDITED) means the mistake cannot be committed quietly."""
+    p = tmp_path / "att.yaml"
+    p.write_text("- vendor: Temu\n  checked: '2026-08-21'\n  source: https://seller.temu.com/\n"
+                 "  blocked: 'seller portal login required'\n", encoding="utf-8")
+    att = cc.load_attestations(str(p))
+    assert "Temu" not in att
+    assert cc.verdict_for("Temu", att, "2026-08-21")[0] == cc.UNAUDITED
