@@ -17,30 +17,13 @@ from agent.lib.vendors import DEFAULT_VERSION_REGEX
 _URL_RE = re.compile(r"""https?://[^\s"'`<>)\]}]+""", re.IGNORECASE)
 
 # hosts (by registrable suffix) that are never third-party API integrations
-_IGNORE = {
-    # schemas / specs / xml namespaces
-    "w3.org", "xmlsoap.org", "schema.org", "json-schema.org", "purl.org", "apache.org",
-    "example.com", "example.org", "example.net", "localhost", "test.com", "gmpg.org",
-    # asset / font / image CDNs + placeholders
-    "fonts.googleapis.com", "fonts.gstatic.com", "gstatic.com", "jsdelivr.net", "unpkg.com",
-    "cloudflare.com", "cdnjs.cloudflare.com", "bootstrapcdn.com", "fonts.bunny.net",
-    "gravatar.com", "placeholder.com", "placehold.co", "picsum.photos", "via.placeholder.com",
-    # analytics / tag managers
-    "googletagmanager.com", "google-analytics.com", "ns.adobe.com",
-    # developer docs / package registries / code hosting (repo & doc links, not API calls)
-    "github.com", "gitlab.com", "bitbucket.org", "laravel.com", "laracasts.com", "symfony.com",
-    "php.net", "npmjs.com", "packagist.org", "wordpress.org", "readthedocs.io", "mozilla.org",
-    "getcomposer.org", "nodejs.org", "python.org", "jquery.com", "getbootstrap.com",
-    # search / social / video (marketing links, not integrations)
-    "google.com", "bing.com", "youtube.com", "youtu.be", "vimeo.com", "facebook.com",
-    "twitter.com", "linkedin.com", "instagram.com",
-    # front-end libraries / editors / icon sets / placeholders (not service integrations)
-    "jqueryui.com", "popper.js.org", "ckeditor.com", "cksource.com", "feathericons.com",
-    "placehold.jp", "kwcdn.com",
-    # XML/spec namespaces + vendor STATIC-asset hosts (images/CSS, not the vendor's API)
-    "iso.org", "macromedia.com", "ebaystatic.com",
-
-}
+# NOTE: `_IGNORE` and `is_ignored()` lived here and were deleted in v1.0.0. They were a
+# SECOND host taxonomy that nothing called — superseded by `is_nonhost` below plus the
+# host_reputation.yaml buckets. They were "fixed" once by someone who did not notice the
+# function had no callers, so the fix changed nothing. A dead taxonomy beside a live one
+# is worse than no taxonomy: it invites edits that silently do nothing, or that drift
+# from the file that actually decides. If you need a host excluded, edit
+# host_reputation.yaml.
 
 # A syntactically valid host: >=2 non-empty labels of [a-z0-9_-]. Catches URL-extraction
 # artifacts that reach here as bogus "hosts" — "...", "sandbox.", "ckeditor.com\x3c".
@@ -96,13 +79,6 @@ def host_of(url: str) -> str:
         return ""
 
 
-def is_ignored(host: str) -> bool:
-    if not host or "." not in host or host.replace(".", "").isdigit():   # empty / bare / raw IP
-        return True
-    labels = host.split(".")
-    if len(labels) < 2 or any(not _LABEL.match(lab) for lab in labels):  # extraction artifact
-        return True
-    return any(host == s or host.endswith("." + s) for s in _IGNORE)
 
 
 # Test/placeholder domains that are never a real third-party integration.

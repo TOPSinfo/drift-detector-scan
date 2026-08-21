@@ -1,4 +1,4 @@
-"""Scan a folder of clones -> the superset inventory IR (inventory.json) + INVENTORY.md."""
+"""Scan a folder of clones -> the superset inventory IR (inventory.json)."""
 from __future__ import annotations
 
 import hashlib
