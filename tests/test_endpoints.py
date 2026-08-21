@@ -1020,3 +1020,26 @@ def test_a_pathsignature_vendor_with_no_domains_does_not_crash_the_scan(tmp_path
     got = [e for e in out["endpoints"] if e.get("techKey") == "api:sfcc"]
     assert got, "the path signature should still attribute it"
     assert got[0]["version"] == "v24_5"
+
+
+def test_a_declared_asset_host_is_not_claimed_by_a_parent_domain_vendor_rule(tmp_path):
+    """REGRESSION: host_reputation.yaml declares fonts.googleapis.com an `asset-cdn` — a font
+    stylesheet, not a service the app calls. But the `Google APIs` vendor rule owns the PARENT
+    domain googleapis.com, and a vendor match sets classified=True, which forces hostClass to
+    "api" without ever consulting the declaration. Every page that loads a Google Font was
+    therefore counted as a live Google APIs integration, inflating the integration total and
+    putting a vendor on the audit backlog for a <link rel=stylesheet>.
+
+    The exact host is the more specific statement and must win over a parent-domain rule.
+    sheets.googleapis.com — a real API, not declared anything — must still attribute."""
+    google = Vendor("Google APIs", "api:google", ("googleapis.com",), DEFAULT_VERSION_REGEX)
+    _write(tmp_path, "page.html",
+           '<link href="https://fonts.googleapis.com/css2?family=Inter" rel="stylesheet">\n'
+           "<?php $u = 'https://sheets.googleapis.com/v4/spreadsheets/abc'; ?>\n")
+    ms = [{"kind": "url", "path": "page.html", "line": 1},
+          {"kind": "url", "path": "page.html", "line": 2}]
+    out = scan_endpoints(ms, str(tmp_path), [google])
+    by_host = {e["domain"]: e for e in out["endpoints"]}
+    assert by_host["fonts.googleapis.com"]["classified"] is False
+    assert by_host["fonts.googleapis.com"]["hostClass"] == "asset-cdn"
+    assert by_host["sheets.googleapis.com"]["vendor"] == "Google APIs"

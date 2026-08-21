@@ -301,7 +301,8 @@ def check_md_matches_payload(md_text: str, payload: dict) -> None:
                   "— of which already retired (past-due)": counts.get("pastDue", 0),
                   "Runtime/framework EOL": counts.get("eol", 0),
                   "Fixes needed (action-required)": counts.get("fixes", 0),
-                  "Unaudited vendors": counts.get("unaudited", 0)}
+                  "Vendors with an unchecked retirement list": counts.get("unaudited", 0),
+                  "— of which blocked (need access, not effort)": counts.get("blocked", 0)}
         for label, expected in checks.items():
             if label in by_label and by_label[label] != str(expected):
                 raise Violation("md-summary-parity",

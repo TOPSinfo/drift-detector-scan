@@ -8,6 +8,20 @@
   source: https://advertising.amazon.com/API/docs/en-us/release-notes/deprecations
   by: ai-research
   note: retirement found (2023-08-31)
+- vendor: Amazon AWS
+  checked: '2026-08-21'
+  source: https://docs.aws.amazon.com/sdkref/latest/guide/maint-policy.html
+  by: ai-research
+  note: 'SCOPE, deliberately narrow: what we detect for AWS are SERVICE endpoints —
+    s3/sqs/sts hosts, plus customer-named S3 buckets — and AWS does not version those in the
+    URL, so there is no endpoint version that can be retired. The maintenance policy fetched
+    here is explicitly for "AWS Software Development Kits (SDKs) and Tools", not service
+    APIs: GA support for at least 24 months, at least 6 months notice before maintenance
+    mode, then a 12-month maintenance default. Those lifecycles DO bite (SDK for .NET v3
+    end-of-support 2026-06-01, Tools for PowerShell v4 2026-06-01, CLI v1 2027-07-15) but
+    they attach to a PACKAGE, so they are caught on the dependency path (manifest + OSV/EOL),
+    not here. Attested CURRENT so "no endpoint findings" reads as a checked result rather
+    than a blind spot — which is the whole point of the verdict.'
 - vendor: Amazon MWS
   checked: '2026-08-20'
   source: https://developer.amazonservices.com/august2022
@@ -92,6 +106,18 @@
   by: ai-research
   note: Date-based REST API versions (e.g. 2026-03-10); no dated retirement, min 24-month
     support window for prior versions.
+- vendor: Google APIs
+  checked: '2026-08-21'
+  source: https://developers.google.com/workspace/sheets/release-notes
+  by: ai-research
+  note: 'Covers the *.googleapis.com hosts detected (sheets, www). Sheets v4 is current with
+    NO retirement announced; the page''s newest entries (July 2026) still add v4 features.
+    One real dated turndown IS on that page — "Google Sheets API v3 is turned down"
+    (2021-08-02) — and it is deliberately NOT catalogued as a scoped sunset: v3 was served
+    from spreadsheets.google.com/feeds, a host this catalog does not detect, and a bare
+    version:v3 scope on googleapis.com would false-flag YouTube Data API v3, which is
+    current. A wrong flag on a live API costs more than a missing flag on an endpoint no
+    scanned repo calls. Revisit if a v3 feeds host ever appears in a scan.'
 - vendor: Google Maps
   checked: '2026-08-11'
   source: https://developers.google.com/maps/deprecations
@@ -136,6 +162,15 @@
   by: ai-research
   note: Monthly YYYYMM versions, min 1-year support then sunset; version 202507 already
     sunset, but no future dated retirement stated on the policy page.
+- vendor: Login with Amazon
+  checked: '2026-08-21'
+  source: https://developer.amazon.com/docs/login-with-amazon/authorization-code-grant.html
+  by: ai-research
+  note: 'Authorization Code Grant reference for the api.amazon.com/auth/o2/token exchange
+    every SP-API client makes. NO deprecation notice anywhere on the page; it is current
+    implementation guidance (PKCE, regional endpoints), last updated Dec 11 2023. Attested
+    separately from Amazon SP-API on purpose: LWA is the auth service, SP-API the data
+    service, and a retirement of one says nothing about the other.'
 - vendor: Magento
   checked: '2026-08-11'
   source: https://developer.adobe.com/commerce/php/development/backward-incompatible-changes/
@@ -183,6 +218,17 @@
   note: 'Entra ID breaking-changes page read in full 2026-08-20: many dated BEHAVIOUR
     changes (case-sensitive FIC matching, auth-code reuse, POST parsing) but no dated
     retirement of the v1.'
+- vendor: Mirakl
+  checked: '2026-08-21'
+  source: https://help.mirakl.com/
+  by: ai-research
+  blocked: 'documentation portal is account-gated — it serves no readable content to an
+    unauthenticated client, and developer.mirakl.net does not resolve'
+  note: 'BLOCKED, not unaudited. help.mirakl.net 302-redirects to help.mirakl.com, which
+    returns an empty document without a session; developer.mirakl.net does not resolve at
+    all (DNS NXDOMAIN). Mirakl is white-label — each operator runs its own instance — so
+    version retirements are announced per-operator to connected sellers, not on one public
+    page. Unblocking needs operator credentials from the client, not more research time.'
 - vendor: OpenAI
   checked: '2026-08-11'
   source: https://developers.openai.com/api/docs/deprecations
@@ -275,6 +321,17 @@
   by: ai-research
   note: Date-string (x-api-version) versioning; valid versions 2012-01-01/2020-08-07/2022-01-24;
     no retirement/sunset of any version announced.
+- vendor: THE ICONIC
+  checked: '2026-08-21'
+  source: https://www.theiconic.com.au/sell-with-us/
+  by: ai-research
+  blocked: 'seller pages refuse automated fetches (HTTP 403); no public seller-API
+    documentation or deprecation changelog was reachable'
+  note: 'BLOCKED, and the reason is stated narrowly ON PURPOSE: both /marketplace/ and
+    /sell-with-us/ returned 403 to this fetcher, which is evidence the page would not be
+    read — it is NOT evidence that a partner login exists behind it. A human browser may
+    well load these. Whoever unblocks this should open them by hand before assuming
+    credentials are needed.'
 - vendor: TikTok Business API
   checked: '2026-08-10'
   source: https://github.com/tiktok/tiktok-business-api-sdk/blob/main/Changelog.md
