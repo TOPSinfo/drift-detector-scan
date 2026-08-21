@@ -258,3 +258,47 @@ def test_path_constant_that_grows_pathconstant_residue_is_rejected():
                "residue": {"pathLiterals": [], "pathConstants": [{"loc": "b.php:2"}]}})
     assert any("residue grew" in p for p in
                absorb.verify_against_repo("/repo", staged, ["a.php:9"], scan=scan))
+
+
+def test_a_claim_outside_the_scanners_own_blind_spots_is_refused():
+    """REGRESSION — the guard existed but was never wired in. `check_claims_in_scope` says of
+    itself "Weakening this check is a P0 regression", and it had ZERO callers: not the gate,
+    not measure_against_repo, not the CLI. The rule lived only as prose in the promptfile,
+    which the docstring itself says nobody enforces in an autonomous loop.
+
+    The attack it stops: `unclaimed` proves every ATTRIBUTED site was named, which is only
+    meaningful if the claims were written first. An agent can instead scan, read whatever an
+    over-broad pattern swept up, and then write claims.yaml to match — every attributed site is
+    "claimed", the gate passes, and nobody approved the rule. Bounding claims to the blind spots
+    the certified scan flagged BEFORE any agent saw the code caps what a gamed file can cover.
+
+    Here b.php:2 was attributed and duly claimed, but the pre-change scan never called it a
+    blind spot — so it is expansion beyond the stated job.
+
+    Uses `url-assembly` deliberately: `path-constant` is exempt from this check because no
+    path-constant rule exists until an instance is staged, so its sites CANNOT appear in a
+    pre-change scan (see the reason in measure_against_repo)."""
+    staged = [{"id": "broad-base", "family": "url-assembly", "repo": "example-org/catchapi",
+               "base": "$this->host", "evidence": "a.php:9"}]
+    scan = _scanner(
+        before={"endpoints": [_EP("Catch", [])],
+                "residue": {"pathLiterals": [{"loc": "a.php:9"}], "pathConstants": []}},
+        after={"endpoints": [_EP("Catch", ["a.php:9", "b.php:2"])],
+               "residue": {"pathLiterals": [], "pathConstants": []}})
+    problems = absorb.verify_against_repo("/repo", staged, ["a.php:9", "b.php:2"], scan=scan)
+    assert any("out of scope" in p and "b.php:2" in p for p in problems), problems
+
+
+def test_a_claim_on_a_sink_the_brief_flagged_is_in_scope():
+    """The scope is every blind spot the brief enumerates — versioned path literals AND egress
+    sinks AND path constants. Bounding it to path literals alone would refuse the legitimate
+    case the operation-marker family exists for: a sink whose URL is assembled out of reach."""
+    staged = [{"id": "x-marker", "family": "operation-marker", "repo": "example-org/api",
+               "vendor": "Catch", "marker": "GetOrders", "evidence": "a.php:9"}]
+    scan = _scanner(
+        before={"endpoints": [_EP("Catch", [])],
+                "residue": {"pathLiterals": [], "pathConstants": [], "sinks": [{"loc": "a.php:9"}]}},
+        after={"endpoints": [_EP("Catch", ["a.php:9"])],
+               "residue": {"pathLiterals": [], "pathConstants": [], "sinks": []}})
+    problems = absorb.verify_against_repo("/repo", staged, ["a.php:9"], scan=scan)
+    assert not any("out of scope" in p for p in problems), problems

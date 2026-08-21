@@ -1562,7 +1562,7 @@ def main(argv: list[str]) -> int:
                          "(docs/superpowers/specs/2026-08-13-no-queue-design.md)")
     pr.set_defaults(func=_cmd_run)
 
-    pdl = sub.add_parser("deliver")       # findings -> GitLab issues (DevOps) + draft MRs (Dev)
+    pdl = sub.add_parser("deliver")       # findings -> in-repo GitLab issues (DevOps + Developer)
     pdl.add_argument("--state", required=True)
     pdl.add_argument("--config", help="drift.yml — supplies host + delivery settings")
     pdl.add_argument("--gitlab-host")     # or from --config (derived from the fleet host)
@@ -1572,9 +1572,12 @@ def main(argv: list[str]) -> int:
                      help="print the create/update/close plan without writing anything")
     pdl.add_argument("--run-url", help="link back to the scan run (provenance in each issue/MR)")
     pdl.add_argument("--report-url", help="link to the full report (provenance in each issue/MR)")
+    # Accepted and IGNORED: the Developer stream is always filed as in-repo issues now (the
+    # draft-MR path is retired). Kept so existing scripts and CI files do not break on an
+    # unknown flag; the help says so rather than describing behaviour that no longer exists.
     pdl.add_argument("--dev-as-issues", action="store_true",
-                     help="file the Developer stream as issues (in --devops-project) instead "
-                          "of draft MRs — the Reporter-friendly fallback")
+                     help="deprecated, no effect — the Developer stream is always filed as "
+                          "issues; accepted so older invocations keep working")
     pdl.set_defaults(func=_cmd_deliver)
 
     pn = sub.add_parser("notify")         # push a one-line summary to a Google Chat webhook

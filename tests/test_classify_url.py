@@ -42,27 +42,7 @@ def test_path_literal_does_not_require_a_leading_slash():
     assert path_literal_of("$u = 'v2';") == ""                            # not a path
 
 
-def test_denoise_front_end_libs_and_static_asset_hosts():
-    from agent.lib.classify_url import is_ignored
-    # front-end libs / editors / icons / placeholders + vendor STATIC assets (not the API)
-    for h in ("ckeditor.com", "docs.ckeditor.com", "popper.js.org", "feathericons.com",
-              "jqueryui.com", "placehold.jp", "iso.org", "www.iso.org", "www.macromedia.com",
-              "ir.ebaystatic.com"):
-        assert is_ignored(h), h
 
-
-def test_malformed_extraction_artifacts_are_ignored():
-    from agent.lib.classify_url import is_ignored
-    for h in ("...", "sandbox.", "ckeditor.com\\x3c", ".foo.com", "a..b.com"):
-        assert is_ignored(h), h
-
-
-def test_real_api_and_bucket_hosts_survive_the_denoise():
-    from agent.lib.classify_url import is_ignored
-    for h in ("api.ebay.com", "sellingpartnerapi-fe.amazon.com", "graph.microsoft.com",
-              "velocityfrequentflyerau-prod.mirakl.net",
-              "cw-prod-bucket-for-application-1234.s3.ap-southeast-2.amazonaws.com"):
-        assert not is_ignored(h), h
 
 
 def test_amazon_mws_matches_every_regional_tld():
@@ -164,28 +144,29 @@ def test_ordinary_urls_are_untouched():
         ["https://api.stripe.com/v1/charges"]
 
 
-def test_is_ignored_has_no_production_callers():
-    """`is_ignored` and its `_IGNORE` set are NOT wired into the scan — nothing in agent/
-    calls them. Host triage is done by host_class (see its `boilerplate` bucket).
+def test_the_dead_ignore_taxonomy_stays_deleted():
+    """`is_ignored` and its `_IGNORE` set were a SECOND host taxonomy that nothing called. They
+    are gone as of v1.0.0; this test keeps them gone.
 
-    This test exists because that was not obvious and cost a wrong fix: four documentation
-    hosts were added to `_IGNORE` to clear them from the fleet's resolution queue, the unit
-    test passed because it called is_ignored DIRECTLY, and the hosts kept appearing on the
-    next fleet run. Dead code that looks protective is worse than no code — so if a future
-    change wires this in, this test fails and the author has to decide deliberately whether
-    _IGNORE and host_reputation.yaml should both be filtering hosts."""
-    import subprocess, pathlib
-    root = pathlib.Path(__file__).resolve().parent.parent
-    hits = subprocess.run(["grep", "-rn", "is_ignored", "--include=*.py", str(root / "agent")],
-                          capture_output=True, text=True).stdout.strip().splitlines()
-    assert len(hits) == 1 and "def is_ignored" in hits[0], (
-        "is_ignored now has callers — decide whether host filtering belongs here or in "
-        f"host_class, and do not leave both: {hits}")
+    Why it is worth a test rather than a comment: the dead code cost a wrong fix once. Four
+    documentation hosts were added to `_IGNORE` to clear them from the fleet's resolution
+    queue; the unit test passed because it called `is_ignored` DIRECTLY, and the hosts kept
+    appearing on the next fleet run because no production code path reached the function.
+
+    Host triage belongs in ONE place — `host_reputation.yaml` via `host_class` — plus
+    `is_nonhost` for extraction artefacts. If someone reintroduces a second filter here, this
+    fails and they have to decide deliberately which one actually decides."""
+    import pathlib as _p
+    src = (_p.Path(__file__).resolve().parent.parent / "agent" / "lib" / "classify_url.py").read_text()
+    assert "def is_ignored" not in src, "the dead second host taxonomy is back — see host_reputation.yaml"
+    assert "_IGNORE = {" not in src
 
 
 def test_the_vendors_real_api_hosts_are_still_classified():
     """The boundary: ignoring an AWS *docs* domain must not touch the AWS API domain, and
     ignoring GitHub's raw host must not silently drop a genuine api.github.com integration."""
-    from agent.lib.classify_url import is_ignored
-    assert not is_ignored("s3.amazonaws.com")
-    assert not is_ignored("sqs.us-east-1.amazonaws.com")
+    from agent.lib.classify_url import is_nonhost
+    from agent.lib import host_class
+    for h in ("s3.amazonaws.com", "sqs.us-east-1.amazonaws.com", "api.github.com"):
+        assert not is_nonhost(h), h                       # not an extraction artefact
+        assert host_class.classify(h) != "boilerplate", h  # and not filed as a doc/link host
