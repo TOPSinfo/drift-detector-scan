@@ -40,7 +40,7 @@ jobs:
         id: meta
         uses: docker/metadata-action@c299e40c65443455700f0fdfc63efafe5b349051      # v5
         with:
-          images: ghcr.io/TOPSinfo/drift-detector-scan
+          images: ghcr.io/topsinfo/drift-detector-scan
           tags: |
             type=semver,pattern={{version}}
             type=sha
@@ -61,6 +61,6 @@ jobs:
         if: ${{ !github.event.repository.private }}
         uses: actions/attest-build-provenance@e8998f949152b193b063cb0ec769d69d929409be  # v2
         with:
-          subject-name: ghcr.io/TOPSinfo/drift-detector-scan
+          subject-name: ghcr.io/topsinfo/drift-detector-scan
           subject-digest: ${{ steps.build.outputs.digest }}
           push-to-registry: true

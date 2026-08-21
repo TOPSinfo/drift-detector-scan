@@ -1405,7 +1405,7 @@ git commit -m "docs(plugin): one AI surface — leads.json and the AI Frontier t
 
 ```bash
 cd /tmp && /path/to/drift-detector-scan/bin/drift-scan run \
-  --root /home/tops/Projects/sandbox/zenithapp-crm \
+  --root <local-path> \
   --state /tmp/drift-e2e --now "$(date +%F)"
 ```
 

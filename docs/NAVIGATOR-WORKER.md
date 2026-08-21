@@ -16,8 +16,12 @@ green, the report said done, and nothing shipped.
 
 ## Trees
 
-- **Shipping / product tree:** `/home/tops/Projects/tops/drift/drift-detector-scan`
-- **Orchestrator workspace:** `/home/tops/Projects/tops/deprication-agent`
+- **Shipping / product tree:** the checkout of this repo (`drift-detector-scan`)
+- **Orchestrator workspace:** a separate notes/orchestration checkout, held outside this repo
+
+<!-- These were written as absolute local paths, which published a developer's username and
+     private workspace layout in a public repository. Keep them relative: the distinction that
+     matters is "two trees, never a third", not where either one happens to live on a disk. -->
 
 Product fixes land in the shipping tree. The orchestrator workspace holds navigator docs and
 rules. Never introduce a third clone.

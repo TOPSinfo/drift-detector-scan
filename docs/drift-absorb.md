@@ -88,7 +88,7 @@ It prints `attributed before→after`, `residue before→after`, `claims met/mis
 
 - **Done** — residue empty, or every remaining item is individually explained (e.g. an opaque SDK sink you accept with a note). Proceed to the ceremony.
 - **Plateau** — a full pass yields `+0` and no new hypothesis. Stop. A documented gap is a *good* outcome: "N sites absorbed, M remain, here's why each remains."
-- **Family ceiling** — the assembly fits **none** of the three families. Stop absorbing that cluster and write the escalation: the expression shape, real `file:line` evidence, and why each family fails to express it. This is **a code PR against the plugin, not YAML** — say so plainly and comment it on the flag issue.
+- **Family ceiling** — the assembly fits **none** of the five families (`url-assembly`, `url-append`, `operation-marker`, `path-constant`, `client-base`). Stop absorbing that cluster and write the escalation: the expression shape, real `file:line` evidence, and why each family fails to express it. This is **a code PR against the plugin, not YAML** — say so plainly and comment it on the flag issue.
 - **Egress gap** (`no-egress-signal` / a MANUAL brief) — **survey only.** Document how this repo's language makes outbound calls (the raw material for a future rule release) and escalate: "needs a plugin code release; cannot be absorbed via overlay." Do NOT stage a false attribution to close the flag — that is the "cannot see = clean" lie.
 - **Budget** — after ~10 `--check` cycles, or when the human calls time, ship best-so-far via the ceremony, labeled partial.
 

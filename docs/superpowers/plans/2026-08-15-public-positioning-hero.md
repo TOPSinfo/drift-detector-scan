@@ -6,7 +6,7 @@
 
 **Architecture:** Docs-only. Shared marketplace/plugin `description` string + README hero + PLUGIN.md lead + unpark banners. No product code, no version bump, no HTML/FRONTEND-PLANE.
 
-**Tech Stack:** Markdown + JSON manifests in `/home/tops/Projects/tops/drift/drift-detector-scan`; orchestrator pointer in `/home/tops/Projects/tops/deprication-agent`.
+**Tech Stack:** Markdown + JSON manifests in `<repo>`; orchestrator pointer in `<orchestrator-workspace>`.
 
 ## Global Constraints
 
@@ -17,7 +17,7 @@
 - CI/headless is a footnote under Use it, not a peer hero section.
 - Empty AI Frontier = no pass / no shaping, not “clean.”
 - Do not touch Shopify gap product files in this commit (`composer.py`, `sdk_clients.yaml`, eval corpus tests).
-- Absolute shipping tree: `/home/tops/Projects/tops/drift/drift-detector-scan`
+- Absolute shipping tree: `<repo>`
 
 ## File map
 
@@ -35,8 +35,8 @@
 ### Task 1: Shared plugin/marketplace description
 
 **Files:**
-- Modify: `/home/tops/Projects/tops/drift/drift-detector-scan/.claude-plugin/plugin.json` (`description` only)
-- Modify: `/home/tops/Projects/tops/drift/drift-detector-scan/.claude-plugin/marketplace.json` (`plugins[0].description` only)
+- Modify: `<repo>/.claude-plugin/plugin.json` (`description` only)
+- Modify: `<repo>/.claude-plugin/marketplace.json` (`plugins[0].description` only)
 
 **Interfaces:**
 - Produces: identical `DESCRIPTION` string used by Task 4 checklist
@@ -52,7 +52,7 @@ In both JSON files, replace only the `description` value (keep unicode escapes i
 - [ ] **Step 2: Verify versions still match and descriptions match**
 
 ```bash
-cd /home/tops/Projects/tops/drift/drift-detector-scan
+cd <repo>
 python3 -c '
 import json
 p=json.load(open(".claude-plugin/plugin.json"))
@@ -68,7 +68,7 @@ Expected: `OK 0.20.0-beta <n>`
 - [ ] **Step 3: Commit (plugin + marketplace only)**
 
 ```bash
-cd /home/tops/Projects/tops/drift/drift-detector-scan
+cd <repo>
 git add .claude-plugin/plugin.json .claude-plugin/marketplace.json
 git commit -m "$(cat <<'EOF'
 docs: align plugin marketplace blurb with boast frame
@@ -84,7 +84,7 @@ EOF
 ### Task 2: README hero + CI footnote + soft-claim pass
 
 **Files:**
-- Modify: `/home/tops/Projects/tops/drift/drift-detector-scan/README.md` (lines ~1–85 hero/Use it; soft-touch Cockpit/AI Frontier ~165–181 if needed)
+- Modify: `<repo>/README.md` (lines ~1–85 hero/Use it; soft-touch Cockpit/AI Frontier ~165–181 if needed)
 
 **Interfaces:**
 - Consumes: boast frame from Global Constraints
@@ -160,7 +160,7 @@ In “### The Cockpit”, ensure the AI Frontier bullet says shaped / gate-valid
 - [ ] **Step 4: Grep soft-claim offenders in README**
 
 ```bash
-cd /home/tops/Projects/tops/drift/drift-detector-scan
+cd <repo>
 rg -n -i 'AI-powered scanner|AI powered scanner|the scan is (an )?AI|LLM.?scan' README.md || true
 rg -n 'AI proposes|Know before it breaks|needs-human|Headless / CI footnote' README.md
 ```
@@ -170,7 +170,7 @@ Expected: no AI-powered-scanner hits; boast/tagline/footnote present.
 - [ ] **Step 5: Commit README only**
 
 ```bash
-cd /home/tops/Projects/tops/drift/drift-detector-scan
+cd <repo>
 git add README.md
 git commit -m "$(cat <<'EOF'
 docs: rewrite README hero for Claude-plugin-first positioning
@@ -185,9 +185,9 @@ EOF
 ### Task 3: PLUGIN.md lead + unpark positioning docs
 
 **Files:**
-- Modify: `/home/tops/Projects/tops/drift/drift-detector-scan/docs/PLUGIN.md` (opening ~lines 1–17)
-- Modify: `/home/tops/Projects/tops/drift/drift-detector-scan/docs/PUBLIC-POSITIONING-CLAUDE.md`
-- Modify: `/home/tops/Projects/tops/deprication-agent/docs/PARKED-public-positioning.md`
+- Modify: `<repo>/docs/PLUGIN.md` (opening ~lines 1–17)
+- Modify: `<repo>/docs/PUBLIC-POSITIONING-CLAUDE.md`
+- Modify: `<orchestrator-workspace>/docs/PARKED-public-positioning.md`
 
 **Interfaces:**
 - Consumes: same boast frame as Tasks 1–2
@@ -229,14 +229,14 @@ Delete lines that say “Do not start README/marketplace rewrite until unparked.
 
 - [ ] **Step 3: Replace orchestrator pointer**
 
-Write `/home/tops/Projects/tops/deprication-agent/docs/PARKED-public-positioning.md` as:
+Write `<orchestrator-workspace>/docs/PARKED-public-positioning.md` as:
 
 ```markdown
 # Public positioning — unparked (2026-08-15)
 
 Claude-plugin-first positioning is **ACTIVE** in the shipping tree:
 
-`/home/tops/Projects/tops/drift/drift-detector-scan/docs/PUBLIC-POSITIONING-CLAUDE.md`
+`<repo>/docs/PUBLIC-POSITIONING-CLAUDE.md`
 
 Spec: `docs/superpowers/specs/2026-08-15-public-positioning-hero-design.md`  
 Plan: `docs/superpowers/plans/2026-08-15-public-positioning-hero.md`
@@ -249,7 +249,7 @@ FRONTEND-PLANE remains parked separately.
 - [ ] **Step 4: Commit shipping-tree docs; leave orchestrator file for the human’s other repo commit if needed**
 
 ```bash
-cd /home/tops/Projects/tops/drift/drift-detector-scan
+cd <repo>
 git add docs/PLUGIN.md docs/PUBLIC-POSITIONING-CLAUDE.md
 git commit -m "$(cat <<'EOF'
 docs: unpark Claude positioning; align PLUGIN.md lead
@@ -270,7 +270,7 @@ Orchestrator file lives outside this git repo — stage/commit there only if tha
 - [ ] **Step 1: Run the checklist**
 
 ```bash
-cd /home/tops/Projects/tops/drift/drift-detector-scan
+cd <repo>
 # forbidden
 rg -n -i 'AI-powered scanner|AI powered scanner' README.md docs/PLUGIN.md .claude-plugin/*.json && exit 1 || echo 'no forbidden AI-scanner claim'
 # required frame
