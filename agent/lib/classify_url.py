@@ -38,6 +38,13 @@ _IGNORE = {
     "placehold.jp", "kwcdn.com",
     # XML/spec namespaces + vendor STATIC-asset hosts (images/CSS, not the vendor's API)
     "iso.org", "macromedia.com", "ebaystatic.com",
+    # Documentation and raw-source hosts, each a DIFFERENT registrable domain from the
+    # sibling already listed above — githubusercontent.com is not github.com, and
+    # amazonwebservices.com is not amazonaws.com. Found in the fleet's resolution queue,
+    # where they sat as "unresolved hosts" nobody could ever resolve: there is nothing to
+    # resolve about a link to curl's manual. Note amazonaws.com is deliberately NOT here —
+    # that is the real AWS API domain.
+    "githubusercontent.com", "haxx.se", "guzzlephp.org", "amazonwebservices.com",
 }
 
 # A syntactically valid host: >=2 non-empty labels of [a-z0-9_-]. Catches URL-extraction
