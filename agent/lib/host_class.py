@@ -95,6 +95,18 @@ def _reputation(host: str) -> str | None:
     return None
 
 
+def declared_non_integration(host: str) -> str | None:
+    """The non-integration class EXPLICITLY declared for this exact host, or None.
+
+    Exact only — no suffix walk. It answers a narrower question than `_reputation`: "did a
+    human write THIS host down as something the app does not call?" classify_url uses it to
+    stop a parent-domain vendor rule from claiming it (googleapis.com owning the declared
+    asset host fonts.googleapis.com), where a suffix walk would let the parent's own
+    declaration swallow real sibling APIs."""
+    cls = _load().get((host or "").lower())
+    return cls if cls in _NON_INTEGRATION else None
+
+
 def classify(host: str, *, url: str | None = None, in_call: bool = False,
              file_ext: str | None = None, own: dict | None = None) -> str:
     """Return the hostClass for an UNCATALOGUED host (always a member of VOCAB).

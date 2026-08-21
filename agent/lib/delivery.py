@@ -99,8 +99,18 @@ def queued_hosts(payload: dict) -> list:
     """[(host, [(repo, call_sites)])] for every DETECTED host with no vendor name, sorted by
     exposure. Derived from the payload alone so the body stays a pure function of the scan."""
     by_host: dict = {}
+    # A host is NAMED once ANY record attributes it — not merely when the record in hand is
+    # classified. A vendor with no catalog domain (Salesforce Commerce Cloud: OCAPI runs on the
+    # merchant's own host) is named by its path signature and labelled with the observed host,
+    # while plain URL extraction on the same line also emits an Unknown record for that host.
+    # Skipping only classified RECORDS queued a host the report had already named and dated —
+    # the work-order asking a human to identify a vendor we were simultaneously reporting on.
+    named = {str(e.get("domain") or "").lower()
+             for e in payload.get("endpoints", []) if e.get("classified")}
     for e in payload.get("endpoints", []):
         if e.get("classified") or not e.get("domain"):
+            continue
+        if str(e["domain"]).lower() in named:
             continue
         if e.get("hostClass") not in _QUEUE_CLASSES:
             continue

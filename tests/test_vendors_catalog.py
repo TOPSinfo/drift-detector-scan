@@ -138,3 +138,49 @@ def test_the_post_order_signature_does_not_steal_shopify_paths():
     v = _vendors()
     got = classify_url.path_signature_match("/admin/api/2023-10/shop.json", v)
     assert got and got[0].vendor == "Shopify" and got[1] == "2023-10"
+
+
+# ── Salesforce Commerce Cloud: a per-CUSTOMER host, so only the path identifies it ──
+# Found on the fleet's resolution queue as a merchant-owned host — which reads like a
+# customer's own domain, and in a sense is: OCAPI is served from each merchant's own
+# Commerce Cloud host. A domains: entry can therefore never work, exactly like Magento.
+#
+# The PATH is unmistakable. Salesforce documents it as
+# `example.com/dw/shop/v24_5/products/foo`, so `/dw/{shop|data|meta}/v{version}/` identifies
+# OCAPI on anyone's host — the same argument as Shopify's /admin/api/{version}/.
+
+def test_salesforce_commerce_cloud_is_identified_by_its_ocapi_path():
+    v = _vendors()
+    sfcc = next(x for x in v if x.vendor == "Salesforce Commerce Cloud")
+    assert sfcc.domains == (), "OCAPI is served per-merchant; a host list cannot identify it"
+    got = classify_url.path_signature_match(
+        "https://shop.example-merchant.com/s/AU/dw/shop/v24_5/products", v)
+    assert got and got[0].vendor == "Salesforce Commerce Cloud"
+    assert got[1] == "v24_5", "group 1 is the OCAPI version, which is what goes obsolete"
+
+
+def test_the_ocapi_signature_covers_the_other_api_types():
+    """`shop`, `data` and `meta` are the three OCAPI types in Salesforce's URL syntax."""
+    v = _vendors()
+    for kind in ("shop", "data", "meta"):
+        got = classify_url.path_signature_match(f"https://m.example.com/dw/{kind}/v23_2/x", v)
+        assert got and got[0].vendor == "Salesforce Commerce Cloud", kind
+
+
+def test_the_ocapi_signature_matches_a_base_url_with_no_trailing_slash():
+    """THE REAL CASE, and the one the first version of this signature missed: the fleet
+    stores it as a base_url — `https://<merchant-host>/s/AU/dw/shop/v24_5`
+    — with nothing after the version. Requiring a trailing slash matched the documentation
+    example and none of the actual code."""
+    v = _vendors()
+    got = classify_url.path_signature_match(
+        "'base_url' => 'https://shop.example-merchant.com/s/AU/dw/shop/v24_5'", v)
+    assert got and got[0].vendor == "Salesforce Commerce Cloud"
+    assert got[1] == "v24_5"
+
+
+def test_the_ocapi_signature_does_not_match_an_unrelated_dw_path():
+    """`/dw/` alone is not enough — it must be OCAPI-shaped, or a merchant's /dw/ download
+    directory would be claimed as an integration."""
+    v = _vendors()
+    assert classify_url.path_signature_match("https://x.example.com/dw/assets/logo.png", v) is None

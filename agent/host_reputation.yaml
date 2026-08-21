@@ -87,6 +87,11 @@ boilerplate:        # schema / namespace / doc / code hosts — links & namespac
   - www.esri.com
   - google.com
   - www.amazon.com
+  # Seller Central is the merchant PORTAL. It appears in code as a `seller_central_link`
+  # rendered into the UI for a human to click — never called. Sits beside www.amazon.com,
+  # which is here for the same reason.
+  - sellercentral.amazon.com
+  - sellercentral.amazon.com.au
   - www.walmart.com
   - open.spotify.com
   - esriurl.com

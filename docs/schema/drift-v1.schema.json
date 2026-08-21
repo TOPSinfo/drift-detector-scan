@@ -200,7 +200,7 @@
     },
     "catalog": {
       "type": "array",
-      "description": "Per-vendor catalog-coverage verdicts — whether anyone has checked this vendor's retirement list. A vendor with call-sites and no attestation is UNAUDITED, which is why '0 findings' is not the same as 'clean'.",
+      "description": "Per-vendor catalog-coverage verdicts — whether anyone has checked this vendor's retirement list. A vendor with call-sites and no attestation is UNAUDITED, which is why '0 findings' is not the same as 'clean'. BLOCKED means the check was made and REFUSED \u2014 the vendor publishes retirements only behind a partner/seller login \u2014 a documented blind spot rather than an unworked one; its call-sites still count as unchecked.",
       "items": {
         "type": "object",
         "properties": {
@@ -211,7 +211,8 @@
             "enum": [
               "CURRENT",
               "STALE",
-              "UNAUDITED"
+              "UNAUDITED",
+              "BLOCKED"
             ]
           },
           "callSites": {

@@ -366,3 +366,20 @@ def test_parity_catches_a_call_sites_cell_that_understates_the_payload():
     with pytest.raises(Violation) as e:
         check_md_matches_payload(tampered, p)
     assert e.value.check == "md-call-site-parity"
+
+
+def test_the_summary_does_not_file_an_access_blocked_vendor_under_unaudited():
+    """A BLOCKED vendor IS unchecked exposure, so it belongs in the unchecked total — but the
+    row must not call it "unaudited", because that word now names a different verdict and
+    sends the reader after the wrong fix. UNAUDITED asks someone for effort; BLOCKED asks
+    someone for access. Splitting the count is the whole point of the verdict existing."""
+    payload = {"generated": "2026-08-21", "counts": {"unaudited": 4, "blocked": 3},
+               "catalog": [{"vendor": "Temu", "verdict": "BLOCKED", "callSites": 1,
+                            "catalogEntries": 0, "checked": "2026-08-21",
+                            "blocked": "seller portal login required"}],
+               "actions": [], "shapes": [], "coverageNotes": []}
+    out = md.render_markdown(payload, "2026-08-21")
+    rows = {line.split("|")[1].strip(): line.split("|")[2].strip()
+            for line in out.splitlines() if line.startswith("|") and line.count("|") >= 3}
+    assert "Unaudited vendors" not in rows, "the umbrella row must no longer claim that word"
+    assert rows.get("— of which blocked (need access, not effort)") == "3"

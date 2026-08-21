@@ -866,7 +866,7 @@ _SHOPIFY = Vendor("Shopify", "api:shopify", ("myshopify.com",), DEFAULT_VERSION_
 
 
 def test_path_signature_attributes_a_bare_path_literal_in_a_multi_vendor_repo(tmp_path):
-    """The ksupply shape, generalised: the host is built at runtime so nothing on the line
+    """A config-injected wrapper shape, generalised: the host is built at runtime so nothing on the line
     classifies, and the repo talks to several vendors so the single-vendor branch is out.
     The path itself is unmistakably Shopify, and the version comes with it."""
     _write(tmp_path, "cfg.php",
@@ -1000,3 +1000,46 @@ def test_sdk_declared_vendor_does_not_weaken_the_guard_for_others(tmp_path):
     out = scan_endpoints(ms, str(tmp_path), [_OPENAI, groq], sdk_vendors={"OpenAI"})
     ops = sorted({e["operation"] for e in out["endpoints"] if e.get("operation")})
     assert ops == ["gpt-3.5-turbo"], f"Groq was not corroborated in this repo: {ops}"
+
+
+def test_a_pathsignature_vendor_with_no_domains_does_not_crash_the_scan(tmp_path):
+    """REGRESSION: the url arm did `sv.domains[0]` unguarded, assuming any vendor carrying a
+    pathSignature also has a host. Salesforce Commerce Cloud is the first that does not —
+    OCAPI is served from each MERCHANT's own domain, so the vendor has `domains: []` and only
+    the path identifies it.
+
+    The scan died with "tuple index out of range" and the repo was recorded in reposErrored —
+    honest, but the headline still read "0 action-required", which is the shape of report this
+    tool exists to prevent. A vendor definition must never be able to crash a scan."""
+    sfcc = Vendor("Salesforce Commerce Cloud", "api:sfcc", (), DEFAULT_VERSION_REGEX,
+                  path_signature=r"/dw/(?:shop|data|meta)/(v[0-9]+_[0-9]+)")
+    _write(tmp_path, "seed.php",
+           "'base_url' => 'https://shop.example-merchant.com/s/AU/dw/shop/v24_5',\n")
+    ms = [{"kind": "url", "path": "seed.php", "line": 1}]
+    out = scan_endpoints(ms, str(tmp_path), [sfcc, _SP])       # must not raise
+    got = [e for e in out["endpoints"] if e.get("techKey") == "api:sfcc"]
+    assert got, "the path signature should still attribute it"
+    assert got[0]["version"] == "v24_5"
+
+
+def test_a_declared_asset_host_is_not_claimed_by_a_parent_domain_vendor_rule(tmp_path):
+    """REGRESSION: host_reputation.yaml declares fonts.googleapis.com an `asset-cdn` — a font
+    stylesheet, not a service the app calls. But the `Google APIs` vendor rule owns the PARENT
+    domain googleapis.com, and a vendor match sets classified=True, which forces hostClass to
+    "api" without ever consulting the declaration. Every page that loads a Google Font was
+    therefore counted as a live Google APIs integration, inflating the integration total and
+    putting a vendor on the audit backlog for a <link rel=stylesheet>.
+
+    The exact host is the more specific statement and must win over a parent-domain rule.
+    sheets.googleapis.com — a real API, not declared anything — must still attribute."""
+    google = Vendor("Google APIs", "api:google", ("googleapis.com",), DEFAULT_VERSION_REGEX)
+    _write(tmp_path, "page.html",
+           '<link href="https://fonts.googleapis.com/css2?family=Inter" rel="stylesheet">\n'
+           "<?php $u = 'https://sheets.googleapis.com/v4/spreadsheets/abc'; ?>\n")
+    ms = [{"kind": "url", "path": "page.html", "line": 1},
+          {"kind": "url", "path": "page.html", "line": 2}]
+    out = scan_endpoints(ms, str(tmp_path), [google])
+    by_host = {e["domain"]: e for e in out["endpoints"]}
+    assert by_host["fonts.googleapis.com"]["classified"] is False
+    assert by_host["fonts.googleapis.com"]["hostClass"] == "asset-cdn"
+    assert by_host["sheets.googleapis.com"]["vendor"] == "Google APIs"

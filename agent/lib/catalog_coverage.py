@@ -37,8 +37,15 @@ STALE_DAYS = 90
 CURRENT = "CURRENT"
 STALE = "STALE"
 UNAUDITED = "UNAUDITED"
+# Checked, and REFUSED. The vendor publishes retirements only behind a partner/seller login
+# nobody here holds. Distinct from UNAUDITED on purpose: one is unworked, the other is
+# externally blocked, and a reader who cannot tell them apart will chase the wrong one.
+# It is NOT an attestation — it never becomes CURRENT and its call-sites keep counting as
+# unchecked exposure (principle 1: naming why we are blind does not make us sighted).
+BLOCKED = "BLOCKED"
 
 NO_ATTESTATION = "no-catalog-attestation"
+ACCESS_BLOCKED = "partner-access-required"
 CATALOG_STALE = "catalog-stale"
 # The whole vendor API is catalogued as retired, so there is nothing left to audit:
 # no future retirement can be missed once every version is already gone.
@@ -46,7 +53,7 @@ WHOLE_API_RETIRED = "whole-api-retired"
 
 
 def load_attestations(path: str | None = None) -> dict:
-    """{vendor: {checked, source, note}}. Absent file is fine — everything is UNAUDITED."""
+    """{vendor: {checked, source, note, by, blocked}}. Absent file is fine — all UNAUDITED."""
     p = path or _DEFAULT
     try:
         with open(p, encoding="utf-8") as fh:
@@ -59,12 +66,41 @@ def load_attestations(path: str | None = None) -> dict:
         raw = list(raw) + catalog_overlay.load_list(catalog_overlay.ATTESTATIONS)
     out = {}
     for a in raw:
-        if isinstance(a, dict) and a.get("vendor") and a.get("checked") and a.get("source"):
+        if not isinstance(a, dict) or not a.get("vendor"):
+            continue
+        blk = a.get("blocked")
+        if blk is not None:
+            # BLOCKED nests its OWN provenance, and the entry carries no top-level
+            # checked/source. That is not tidiness — it is what makes the data safe to deploy
+            # ahead of the code. The catalog overlay ships independently of the scanner, so a
+            # BLOCKED entry WILL be read by scanners older than this verdict; encoded flat,
+            # they ignored the key they did not know, saw a complete attestation, and rendered
+            # the vendor CURRENT — "checked, fine" — from evidence saying its docs cannot be
+            # read at all. Nested, an older loader finds no checked/source, skips the entry,
+            # and falls back to UNAUDITED: it under-claims instead of over-claiming.
+            # The flat form is REFUSED (not merely ignored) so the unsafe encoding, which
+            # would mean two scanner versions reading opposite verdicts off the same bytes,
+            # cannot be committed back in quietly.
+            if not isinstance(blk, dict) or a.get("checked") or a.get("source"):
+                continue
+            since, src = blk.get("since"), blk.get("source")
+            if not (since and src):
+                continue                    # a block with no provenance is just an assertion
+            out[a["vendor"]] = {"checked": str(since), "source": str(src),
+                                "note": a.get("note", ""), "by": str(a.get("by") or "human"),
+                                "blocked": str(blk.get("why") or "")}
+            continue
+        if a.get("checked") and a.get("source"):
             # `by` records provenance: "human" (default) vs "ai-research". An AI-attested "current"
             # is weaker than a human one — a missed sunset renders green and nobody re-checks green —
             # so it is surfaced distinctly and still governed by the same STALE_DAYS TTL.
+            # `blocked` must be copied here, not just read in verdict_for: this whitelist is
+            # the only path from YAML to verdict, and dropping the key turned three vendors
+            # whose docs are provably unreachable into CURRENT — the strongest claim in the
+            # vocabulary, produced from evidence that said the opposite.
             out[a["vendor"]] = {"checked": str(a["checked"]), "source": str(a["source"]),
-                                "note": a.get("note", ""), "by": str(a.get("by") or "human")}
+                                "note": a.get("note", ""), "by": str(a.get("by") or "human"),
+                                "blocked": ""}
     return out
 
 
@@ -80,6 +116,11 @@ def verdict_for(vendor: str, attestations: dict, now: str, *, stale_days: int = 
     att = attestations.get(vendor)
     if not att:
         return UNAUDITED, [NO_ATTESTATION], None
+    # `blocked:` records a check that was REFUSED. `checked` is kept — the gate page was
+    # really fetched on that date — but it never ages into CURRENT, so a re-check that is
+    # still blocked simply restates the block rather than expiring into false confidence.
+    if att.get("blocked"):
+        return BLOCKED, [ACCESS_BLOCKED], att.get("checked")
     age = _age_days(att["checked"], now)
     if age is None or age > stale_days:
         return STALE, [CATALOG_STALE], att["checked"]
@@ -130,8 +171,10 @@ def build(endpoints: list, sunsets: list, attestations: dict, now: str,
                     "verdict": verdict, "reasons": reasons,
                     "checked": checked, "source": att.get("source", ""),
                     "by": att.get("by", "human")})   # provenance: human vs ai-research
+        if verdict == BLOCKED:
+            out[-1]["blocked"] = att.get("blocked", "")   # WHAT would unblock it, in words
     # loudest first: unaudited before stale before current, then by exposure
-    rank = {UNAUDITED: 0, STALE: 1, CURRENT: 2}
+    rank = {UNAUDITED: 0, BLOCKED: 1, STALE: 2, CURRENT: 3}
     out.sort(key=lambda r: (rank[r["verdict"]], -r["callSites"], r["vendor"]))
     return out
 
@@ -139,6 +182,7 @@ def build(endpoints: list, sunsets: list, attestations: dict, now: str,
 def summary(records: list) -> dict:
     return {
         "unaudited": sum(1 for r in records if r["verdict"] == UNAUDITED),
+        "blocked": sum(1 for r in records if r["verdict"] == BLOCKED),
         "stale": sum(1 for r in records if r["verdict"] == STALE),
         "current": sum(1 for r in records if r["verdict"] == CURRENT),
         # the number that matters: call-sites nobody has checked a retirement list for

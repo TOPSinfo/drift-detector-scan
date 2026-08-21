@@ -227,6 +227,11 @@ def _build_projection(inventory: dict, audit: dict, gitlab_hosts=frozenset(), *,
         # unaudited+stale, because both mean "0 findings here is not evidence of clean".
         "unaudited": sum(1 for r in (audit.get("coverage") or {}).get("catalog", [])
                          if r.get("verdict") != "CURRENT"),
+        # ...and how many of those are BLOCKED rather than merely unworked. Same umbrella,
+        # split out: an unworked vendor needs someone's time, a blocked one needs someone's
+        # credentials, and a reader who cannot tell them apart chases the wrong fix.
+        "blocked": sum(1 for r in (audit.get("coverage") or {}).get("catalog", [])
+                       if r.get("verdict") == "BLOCKED"),
         # the two delivery streams, tallied from the actions' owner field. devops =
         # packages + runtimes; developer = API sunsets + frameworks. verify checks these
         # sum back to the fixes/review totals so the two queues can't silently miscount.

@@ -65,3 +65,92 @@ def test_an_undated_whole_api_deprecation_also_clears_it():
         [{"vendor": "GoneSoon", "classified": True, "file_count": 3, "files": ["a:1"]}],
         sun, {}, "2026-08-20")}
     assert rows["GoneSoon"]["verdict"] != cc.UNAUDITED
+
+
+def test_a_vendor_whose_deprecation_page_is_behind_partner_access_is_BLOCKED_not_UNAUDITED():
+    """Three marketplaces (Temu, THE ICONIC, Mirakl) publish retirements only behind a
+    partner/seller login nobody on this side holds. They sat in the same UNAUDITED bucket as
+    "nobody got around to it", so the report could not tell an unworked item from one that is
+    externally blocked — and the freshness work-order kept asking a human to open a door they
+    have no key to. That is the same mistake `whole-api-retired` already fixed for dead
+    marketplaces: a task that can never succeed must not stay on a recurring list.
+
+    BLOCKED is NOT an attestation. It never becomes CURRENT, its call-sites keep counting as
+    unchecked exposure, and it must carry the gate page that was actually hit."""
+    att = {"Temu": {"checked": "2026-08-21", "source": "https://partner.temu.com/",
+                    "blocked": "seller portal login required; no public deprecation page"}}
+    verdict, reasons, checked = cc.verdict_for("Temu", att, "2026-08-21")
+    assert verdict == cc.BLOCKED
+    assert reasons == [cc.ACCESS_BLOCKED]
+    assert checked == "2026-08-21"          # we DID check — and were refused
+
+
+def test_BLOCKED_keeps_counting_as_unchecked_exposure_and_stays_out_of_CURRENT():
+    """Principle 1: a documented blind spot is still a blind spot. Naming WHY we are blind
+    must not quietly convert the vendor's call-sites into audited ones."""
+    eps = [{"vendor": "Temu", "classified": True, "file_count": 7, "domain": "temu.test"}]
+    att = {"Temu": {"checked": "2026-08-21", "source": "https://partner.temu.com/",
+                    "blocked": "seller portal login required"}}
+    recs = cc.build(eps, [], att, "2026-08-21")
+    row = next(r for r in recs if r["vendor"] == "Temu")
+    assert row["verdict"] == cc.BLOCKED
+    assert row["blocked"] == "seller portal login required"
+    s = cc.summary(recs)
+    assert s["blocked"] == 1 and s["current"] == 0 and s["unaudited"] == 0
+    assert s["unauditedCallSites"] == 7      # still exposure nobody has checked
+
+
+def test_the_LOADER_carries_blocked_through_from_the_yaml(tmp_path):
+    """REGRESSION: `blocked:` was implemented in verdict_for and the unit tests passed a dict
+    straight to it — so nothing exercised load_attestations, which whitelists the fields it
+    copies out of the YAML. It silently dropped `blocked`, and three vendors whose docs are
+    genuinely unreachable came back CURRENT: the strongest possible claim, from evidence that
+    said the opposite. Caught by running it on the real catalog, not by the unit tests."""
+    p = tmp_path / "att.yaml"
+    p.write_text("- vendor: Temu\n  blocked:\n    since: '2026-08-21'\n"
+                 "    source: https://seller.temu.com/\n"
+                 "    why: 'seller portal login required'\n", encoding="utf-8")
+    att = cc.load_attestations(str(p))
+    assert att["Temu"]["blocked"] == "seller portal login required"
+    assert cc.verdict_for("Temu", att, "2026-08-21")[0] == cc.BLOCKED
+
+
+def test_a_blocked_entry_reads_as_UNAUDITED_to_a_scanner_that_predates_the_verdict(tmp_path):
+    """REGRESSION, found live on the fleet. The overlay catalog deploys independently of the
+    code that reads it, so a BLOCKED entry WILL be parsed by scanners older than this verdict.
+    Encoded flat (`blocked:` beside top-level checked/source), the old loader ignored the key
+    it did not know and saw a complete attestation: Temu rendered CURRENT — "checked, fine" —
+    from evidence stating its docs cannot be read at all.
+
+    So `blocked` nests its own provenance and the entry carries NO top-level checked/source.
+    An older reader requiring those skips the entry entirely and falls back to UNAUDITED,
+    which under-claims instead of over-claiming. The flat form is refused outright (below) so
+    the unsafe encoding cannot be written back in."""
+    p = tmp_path / "att.yaml"
+    p.write_text(
+        "- vendor: Temu\n"
+        "  blocked:\n"
+        "    since: '2026-08-21'\n"
+        "    source: https://seller.temu.com/\n"
+        "    why: 'seller portal login required'\n", encoding="utf-8")
+    att = cc.load_attestations(str(p))
+    assert cc.verdict_for("Temu", att, "2026-08-21")[0] == cc.BLOCKED
+    assert att["Temu"]["checked"] == "2026-08-21"     # provenance survives the nesting
+    assert att["Temu"]["source"] == "https://seller.temu.com/"
+
+    # what an OLDER scanner does: it requires top-level checked+source, and there are none
+    raw = __import__("yaml").safe_load(p.read_text(encoding="utf-8"))
+    assert not (raw[0].get("checked") or raw[0].get("source")), \
+        "top-level provenance would make an old reader call this CURRENT"
+
+
+def test_the_unsafe_flat_blocked_form_is_refused_rather_than_trusted(tmp_path):
+    """The dangerous shape is `blocked:` sitting BESIDE top-level checked/source: this scanner
+    would read BLOCKED while every older one reads CURRENT off the same bytes. Refusing it
+    (vendor falls through to UNAUDITED) means the mistake cannot be committed quietly."""
+    p = tmp_path / "att.yaml"
+    p.write_text("- vendor: Temu\n  checked: '2026-08-21'\n  source: https://seller.temu.com/\n"
+                 "  blocked: 'seller portal login required'\n", encoding="utf-8")
+    att = cc.load_attestations(str(p))
+    assert "Temu" not in att
+    assert cc.verdict_for("Temu", att, "2026-08-21")[0] == cc.UNAUDITED

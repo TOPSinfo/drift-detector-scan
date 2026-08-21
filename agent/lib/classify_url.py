@@ -11,6 +11,7 @@ from __future__ import annotations
 import re
 from urllib.parse import urlparse
 
+from agent.lib import host_class
 from agent.lib.vendors import DEFAULT_VERSION_REGEX
 
 _URL_RE = re.compile(r"""https?://[^\s"'`<>)\]}]+""", re.IGNORECASE)
@@ -164,6 +165,16 @@ def classify_host(host: str, vendors: list):
         for d in v.domains:
             if _matches(host, d) and len(d) > best_len:
                 best, best_len = v, len(d)
+    # An exact host DECLARED a non-integration (asset-cdn / boilerplate / …) outranks a vendor
+    # rule that only owns its PARENT domain. host_reputation.yaml calls fonts.googleapis.com an
+    # asset-cdn, but `Google APIs` owns googleapis.com, and a vendor match forces hostClass to
+    # "api" — so every page loading a Google Font counted as a live Google APIs integration and
+    # put the vendor on the audit backlog for a <link rel=stylesheet>. The exact host is the more
+    # specific statement. A vendor rule naming the host EXACTLY still wins: that is a deliberate
+    # catalog decision, not an accident of suffix matching.
+    if best is not None and (host or "").lower() not in {d.lower() for d in best.domains}:
+        if host_class.declared_non_integration(host):
+            return None
     return best
 
 

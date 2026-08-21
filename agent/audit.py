@@ -271,6 +271,15 @@ def audit_inventory(doc: dict, now: str, *, http=None,
                 f"{r['vendor']}: {r['callSites']} call-site(s) detected, but nobody has "
                 f"checked this vendor's retirement list — 0 findings here means UNAUDITED, "
                 f"not clean.")
+        elif r["verdict"] == catalog_coverage.BLOCKED:
+            # Says WHY, and says what would fix it. An UNAUDITED note asks for effort; this
+            # one asks for ACCESS, which is a different request to a different person.
+            why = r.get("blocked") or "its deprecation page is not publicly reachable"
+            coverage["notes"].append(
+                f"{r['vendor']}: {r['callSites']} call-site(s) detected, and the retirement "
+                f"list could NOT be read — {why}. 0 findings here is a blind spot we can "
+                f"name, not a clean result; it clears only when someone supplies access "
+                f"(last attempt {r.get('checked') or 'unknown'}).")
 
     counts = {
         "DEPRECATED": sum(1 for f in findings if f["status"] == "DEPRECATED"),
