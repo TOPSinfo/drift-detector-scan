@@ -45,8 +45,20 @@ theme:
     - content.code.copy
     - search.highlight
 
+# Generates /llms.txt and /llms-full.txt from the build's own file set, so the "Ask Claude"
+# button has something to read. Derived from `files`, never from a hand-kept list — see the
+# module docstring: a manifest would re-publish the pages `exclude_docs` just removed.
+hooks:
+  - docs/hooks/llms_txt.py
+
 extra_css:
   - stylesheets/extra.css
+
+extra_javascript:
+  # Adds "Ask Claude about this page" under each page title, pointed at that page plus
+  # the generated llms-full.txt. Progressive enhancement: with JS off the docs are
+  # unchanged, and the hero button (plain markup) still works.
+  - javascripts/ask-claude.js
 
 markdown_extensions:
   - admonition
@@ -89,6 +101,7 @@ nav:
 # project's memory and deleting it would break real references), but NOT published to the site.
 # A customer searching the docs should not surface planning trails or internal positioning notes.
 exclude_docs: |
+  hooks/
   superpowers/
   PUBLIC-POSITIONING-CLAUDE.md
   POC-ADHOC-SHAPES.md

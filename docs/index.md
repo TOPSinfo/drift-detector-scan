@@ -20,6 +20,12 @@ stops working. Drift Detector finds those calls before that day — down to the 
 [Reading the report](reading-the-report.md){ .md-button }
 [Common questions](FAQ.md){ .md-button }
 </div>
+
+<div class="dd-hero__ask" markdown>
+[Ask Claude about it](https://claude.ai/new?q=Read%20https%3A%2F%2Ftopsinfo.github.io%2Fdrift-detector-scan%2Fllms-full.txt%20%E2%80%94%20it%20is%20the%20complete%20documentation%20for%20Drift%20Detector%2C%20a%20tool%20that%20finds%20third-party%20APIs%20a%20codebase%20calls%20which%20are%20being%20switched%20off%20%28deprecated%20packages%2C%20retired%20vendor%20API%20versions%29%2C%20down%20to%20file%3Aline.%0A%0AThen%20help%20me%20with%20my%20question%20about%20it.%20If%20you%20cannot%20fetch%20that%20URL%2C%20say%20so%20plainly%20rather%20than%20guessing%20what%20the%20tool%20does.%0A%0AMy%20question%3A%20){ .dd-ask target="_blank" rel="noopener" }
+<span class="dd-hero__ask-note">Opens Claude with this site's documentation as context — ask
+instead of reading.</span>
+</div>
 </div>
 
 <div class="dd-grid" markdown>
