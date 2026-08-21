@@ -867,3 +867,68 @@ def test_claude_link_does_not_change_the_fingerprint():
     body = delivery.issue_body(a, "g/r", {"report": "https://x/y", "run": "https://ci/1"})
     assert before in body                                  # same marker as before the link existed
     assert delivery.markers_in(body) == {before}
+
+
+# ── the vendor-queue stream: a detected host nobody has named ─────────────────────
+# The scanner extracts EVERY url and surfaces the ones it cannot name as "unresolved".
+# That queue was computed on every run and thrown away: it lived only in `drift-scan
+# resolve`, a CLI nobody was required to run, and never reached an issue tracker. It went
+# 28 hosts deep before anyone looked — among them a repo whose entire purpose was a
+# marketplace integration, and a dead marketplace the catalog already held a closure for.
+#
+# Same shape as the freshness work-order: ONE issue for the whole queue, updating in place,
+# closing itself when the queue empties. One issue per host would be a dozen tickets on
+# first run and would train people to mute the label.
+
+def _ep(domain, *, repo="svc", classified=False, host_class="api-lead", n=1):
+    return {"domain": domain, "repo": repo, "classified": classified,
+            "hostClass": host_class, "file_count": n,
+            "files": [f"src/Client.php:{n}"], "vendor": None if not classified else "X"}
+
+
+def _pl_eps(eps):
+    return {"actions": [], "endpoints": eps, "generated": "2026-08-21"}
+
+
+def test_vendor_queue_files_one_maintainer_issue_for_the_whole_queue():
+    eps = [_ep("openapi-b-global.temu.com"), _ep("api.addressify.com.au"),
+           _ep("c.dotwms.com", host_class="unclassified")]
+    plan = delivery.build_plan(_pl_eps(eps), _META, {"issues": [], "mrs": {}},
+                               "root/drift-detector", resolve_stream=True)
+    creates = [i for i in plan["issues"] if i["op"] == "create"]
+    assert len(creates) == 1, "one work-order, not one ticket per host"
+    op = creates[0]
+    assert op["project"] == "root/drift-detector"        # maintainer, never a client repo
+    assert op.get("stream") == "resolve"
+    assert "3" in op["title"]                            # the count is the headline
+    for host in ("temu.com", "addressify", "dotwms"):
+        assert host in op["body"], f"{host} must be named in the work-order"
+
+
+def test_vendor_queue_ignores_hosts_that_are_not_candidate_integrations():
+    """own-infra, CDNs and vendored libraries are already triaged away by hostClass. Listing
+    them would bury the real leads — the queue's value is that every line is actionable."""
+    eps = [_ep("api.addressify.com.au"),
+           _ep("app.internal.example.com", host_class="own-infra"),
+           _ep("cdn.example.com", host_class="asset-cdn"),
+           _ep("api.stripe.com", classified=True)]
+    plan = delivery.build_plan(_pl_eps(eps), _META, {"issues": [], "mrs": {}},
+                               "root/drift-detector", resolve_stream=True)
+    op = [i for i in plan["issues"] if i["op"] == "create"][0]
+    assert "addressify" in op["body"]
+    for absent in ("internal.example.com", "cdn.example.com", "api.stripe.com"):
+        assert absent not in op["body"], f"{absent} is not a queued integration"
+
+
+def test_an_empty_vendor_queue_files_nothing():
+    plan = delivery.build_plan(_pl_eps([_ep("api.stripe.com", classified=True)]), _META,
+                               {"issues": [], "mrs": {}}, "root/drift-detector",
+                               resolve_stream=True)
+    assert [i for i in plan["issues"] if i["op"] == "create"] == []
+
+
+def test_the_stream_is_off_unless_asked_for():
+    """Existing deployments must not sprout a new issue stream on upgrade."""
+    plan = delivery.build_plan(_pl_eps([_ep("openapi-b-global.temu.com")]), _META,
+                               {"issues": [], "mrs": {}}, "root/drift-detector")
+    assert plan["issues"] == []

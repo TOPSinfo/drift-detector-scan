@@ -30,7 +30,8 @@ DEVELOPER_LABEL = "drift:developer"
 # maintainer work filters as one queue, while shape vs freshness stay distinguishable.
 MAINTAINER_LABEL = "drift:maintainer"
 SHAPE_LABEL = "drift:shape"           # absorption: a repo shape the scanner can't read
-FRESHNESS_LABEL = "drift:freshness"   # a catalogued vendor's retirements went stale / need a re-check
+FRESHNESS_LABEL = "drift:freshness"
+RESOLVE_LABEL = "drift:resolve"      # the vendor-resolution work-order   # a catalogued vendor's retirements went stale / need a re-check
 MR_BRANCH = "drift/migrations"
 MIGRATIONS_PATH = ".drift/MIGRATIONS.md"
 _MARKER = re.compile(r"<!--\s*drift-detector:([0-9a-f]{16})\s*-->")
@@ -75,6 +76,74 @@ def shape_fingerprint(repo: str) -> str:
     the residue drifts (a new residueFingerprint rewrites the body, the marker stays), rather
     than a sibling per code change. Distinct namespace from repo_fingerprint / action_fingerprint."""
     return hashlib.sha256(f"shape|{repo}".encode()).hexdigest()[:16]
+
+
+# The two hostClass buckets that can plausibly be a third-party API. Everything else
+# host_class already triaged away — own-infra, asset-cdn, social-widget, boilerplate,
+# vendored-lib — and listing those would bury the real leads. The queue is only worth
+# reading if every line is actionable.
+_QUEUE_CLASSES = ("api-lead", "unclassified")
+
+
+def resolve_fingerprint() -> str:
+    """Constant identity for THE vendor-resolution work-order: one issue for the whole queue,
+    updating in place as hosts get named and closing itself via `_finish` when it empties.
+
+    One issue PER HOST was the obvious design and is wrong: a first run would file a dozen
+    tickets at once, and a label that arrives in bulk gets muted. Same reasoning as the
+    freshness work-order, which this mirrors deliberately."""
+    return hashlib.sha256(b"resolve|vendor-queue").hexdigest()[:16]
+
+
+def queued_hosts(payload: dict) -> list:
+    """[(host, [(repo, call_sites)])] for every DETECTED host with no vendor name, sorted by
+    exposure. Derived from the payload alone so the body stays a pure function of the scan."""
+    by_host: dict = {}
+    for e in payload.get("endpoints", []):
+        if e.get("classified") or not e.get("domain"):
+            continue
+        if e.get("hostClass") not in _QUEUE_CLASSES:
+            continue
+        by_host.setdefault(e["domain"], []).append(
+            (e.get("repo") or "?", e.get("file_count") or len(e.get("files") or []) or 1))
+    return sorted(by_host.items(),
+                  key=lambda kv: (-sum(n for _, n in kv[1]), kv[0]))
+
+
+def resolve_work_order_md(hosts: list, generated: str) -> str:
+    """The work-order body: what was found, where, and the one command that resolves it."""
+    total = sum(n for _, uses in hosts for _, n in uses)
+    out = [f"# Vendor resolution — {len(hosts)} host(s) detected, not yet named",
+           "",
+           f"The scan of {generated} found these outbound hosts and has **no vendor entry** for "
+           "them. They are real calls: they were extracted from the code, not guessed. But an "
+           "unnamed vendor cannot be audited for retirements, so each of these is a blind spot "
+           "that reads as `0 findings` today.",
+           "",
+           f"**{total} call-site(s) across {len(hosts)} host(s).**",
+           "",
+           "| Host | Call-sites | Seen in |",
+           "|---|---|---|"]
+    for host, uses in hosts:
+        repos = ", ".join(sorted({r for r, _ in uses})[:3])
+        out.append(f"| `{host}` | {sum(n for _, n in uses)} | {repos} |")
+    out += ["",
+            "## Resolving one",
+            "",
+            "Identify the vendor, then record it with a source that proves the host is theirs:",
+            "",
+            "```bash",
+            '# verdicts.json: [{ "host": "<host>", "status": "vendor-identity",',
+            '#                   "vendor": "<Name>", "source_url": "<proof>" }]',
+            "drift-scan resolve --state <state> --apply verdicts.json --now $(date +%F)",
+            "```",
+            "",
+            "The gate refuses a claim with no `source_url`. For your own infrastructure use "
+            "`own-domain` with a `reason`; for a host you cannot identify, `unknown` is a "
+            "legitimate answer and keeps it on this list rather than guessing it away.",
+            "",
+            "This issue updates itself each scan and closes when the queue empties."]
+    return "\n".join(out)
 
 
 def freshness_fingerprint() -> str:
@@ -425,6 +494,7 @@ def _audience_ops(acts: list, audience: str, title_word: str, body_fn, repo_meta
 def build_plan(payload: dict, repo_meta: dict, existing: dict, devops_project: str,
                *, dev_as_issues: bool = False, links: dict | None = None,
                shape_stream: bool = False, freshness_stream: bool = False,
+               resolve_stream: bool = False,
                assignees: dict | None = None,
                granularity: str = "comprehensive") -> dict:
     """Compute the create/update/close plan. PURE: no I/O.
@@ -444,6 +514,11 @@ def build_plan(payload: dict, repo_meta: dict, existing: dict, devops_project: s
                     the whole catalog) while any DETECTED vendor is STALE/unaudited and off the
                     auto lane — the drift:freshness label's producer. Constant-keyed, updates
                     in place, closes itself via `_finish` when the due-list empties.
+    `resolve_stream`: also file THE maintainer vendor-resolution work-order (one issue for the
+                      whole queue) while any DETECTED host has no vendor entry. Until this
+                      existed the queue was recomputed every scan and thrown away — it lived
+                      only in `drift-scan resolve`, a CLI nobody was required to run, and it
+                      went 28 hosts deep before anyone looked.
     `granularity` : how the DevOps/Developer audiences split into issues — "comprehensive"
                     (default, one issue per repo per audience), "per-problem" (one issue per
                     action, keyed by `action_fingerprint`), or "per-vendor" (one issue per
@@ -517,6 +592,23 @@ def build_plan(payload: dict, repo_meta: dict, existing: dict, devops_project: s
             op["stream"] = "freshness"      # so execute_plan labels it drift:freshness
             issue_plan.append(op)
 
+    # ---- vendor resolution work-order (maintainer: ONE issue while the queue is non-empty) ----
+    # The detected-but-unnamed hosts. Placed with the other maintainer streams so it lands in
+    # live_fps for both return paths; a queue that empties drops the fp and _finish closes the
+    # work-order on its own.
+    if resolve_stream:
+        hosts = queued_hosts(payload)
+        if hosts:
+            fp = resolve_fingerprint()
+            live_fps.add(fp)
+            # `generated` (the scan date), never wall-clock, so an unchanged queue SKIPS
+            body = (marker(fp) + "\n\n"
+                    + resolve_work_order_md(hosts, payload.get("generated", "")))
+            op = _issue_op(fp, f"[drift] vendor resolution: {len(hosts)} host(s) detected, not named",
+                           body, by_fp, devops_project)
+            op["stream"] = "resolve"
+            issue_plan.append(op)
+
     # ---- Developer: filed IN the repo, assigned to the resolved repo owner ----
     _audience_ops(developer, "developer", "API migrations for", migrations_md, repo_meta,
                  assignees, links, granularity, by_fp, live_fps, issue_plan)
@@ -540,8 +632,9 @@ def _finish(issue_plan, mr_plan, by_fp, live_fps, devops_project) -> dict:
 # stream (it's a resolved finding dropping out) → shown under "closing".
 _STREAM_HEAD = {"devops": "DevOps issues", "developer": "Developer issues",
                 "shape": "Maintainer · absorption", "freshness": "Maintainer · catalog freshness",
+                "resolve": "Maintainer · vendor resolution",
                 "closing": "Closing (resolved)"}
-_STREAM_ORDER = ("devops", "developer", "shape", "freshness", "closing")
+_STREAM_ORDER = ("devops", "developer", "shape", "freshness", "resolve", "closing")
 
 
 def _by_stream(issues: list) -> dict:
@@ -608,6 +701,8 @@ def _issue_labels(stream: str) -> str:
         return f"{LABEL},{MAINTAINER_LABEL},{SHAPE_LABEL}"
     if stream == "freshness":
         return f"{LABEL},{MAINTAINER_LABEL},{FRESHNESS_LABEL}"
+    if stream == "resolve":
+        return f"{LABEL},{MAINTAINER_LABEL},{RESOLVE_LABEL}"
     if stream == "developer":
         return f"{LABEL},{DEVELOPER_LABEL}"
     return f"{LABEL},{DEVOPS_LABEL}"

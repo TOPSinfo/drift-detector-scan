@@ -188,3 +188,25 @@ def test_classify_without_signals_is_unchanged():
     """The `own` keyword is optional; every existing caller must behave identically without it."""
     assert hc.classify("crm.zenithapp.io") == "unclassified"
     assert hc.classify("api.justcall.io") == "api-lead"
+
+
+def test_documentation_hosts_classify_as_boilerplate_not_a_lead():
+    """Found on the fleet's resolution queue: curl's manual, Guzzle's docs and GitHub's raw
+    file host sat there as "unresolved integrations" nobody could ever resolve.
+
+    This is the SECOND attempt at this. The first added them to classify_url._IGNORE — which
+    is dead code: `is_ignored` has no callers anywhere in the tool, so the entry changed
+    nothing and the hosts kept appearing. The unit test passed because it called is_ignored
+    directly. host_class is what actually runs, and `boilerplate` is its existing bucket for
+    exactly this ("links & namespaces, never a runtime integration")."""
+    from agent.lib import host_class
+    for host in ("curl.haxx.se", "docs.guzzlephp.org", "raw.githubusercontent.com"):
+        assert host_class.classify(host) == "boilerplate", host
+
+
+def test_a_real_api_host_is_untouched_by_those_entries():
+    """githubusercontent.com must not drag api.github.com with it, and the AWS docs domain
+    must not touch the AWS API domain."""
+    from agent.lib import host_class
+    assert host_class.classify("api.github.com") == "api-lead"
+    assert host_class.classify("s3.amazonaws.com") != "boilerplate"

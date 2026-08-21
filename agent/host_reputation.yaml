@@ -98,6 +98,15 @@ boilerplate:        # schema / namespace / doc / code hosts — links & namespac
   - schema.org
   - json-schema.org
   - xmlsoap.org
+  # Documentation and raw-source hosts found in the fleet's resolution queue, where they sat
+  # as "unresolved integrations" nobody could resolve — there is nothing to resolve about a
+  # link to curl's manual. Each is a DIFFERENT registrable domain from a sibling already
+  # covered elsewhere: githubusercontent.com is not github.com, amazonwebservices.com is not
+  # amazonaws.com (which is deliberately absent — that is the real AWS API domain).
+  - haxx.se
+  - guzzlephp.org
+  - githubusercontent.com
+  - amazonwebservices.com
   - purl.org
   - apache.org
   - iso.org
