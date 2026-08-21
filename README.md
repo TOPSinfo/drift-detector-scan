@@ -194,7 +194,16 @@ terminal.
 | **`drift.json`** | **The one report** everything else is derived from (and `verify`-checked against). |
 | `dashboard.html` | The **Cockpit** — the interactive dashboard. |
 | `drift.md` | The plain-text version of the report. |
-| `sbom.json` / `*.sarif` | Standard SBOM (CycloneDX/SPDX) + SARIF exports for compliance/other tools. |
+| `summary.html` | The quick view — the coverage tree on its own page. |
+| `chart.html` | The timeline of what changed across runs. |
+
+Two more are **exports, written on demand** rather than by `run` — `drift-scan sbom --state <dir>`
+and `drift-scan sarif --state <dir>`:
+
+| File | What it is |
+|---|---|
+| `sbom.json` | Standard SBOM (CycloneDX/SPDX) for compliance tooling. |
+| `drift.sarif.json` | SARIF, for GitHub code scanning and VS Code. Note `verify` does **not** re-parse it: it is an export, not a verified projection. |
 
 ## What's built today
 
@@ -221,7 +230,9 @@ commands/            the plugin commands — drift-detector · drift-research ·
 bin/drift-scan       self-provisioning engine the plugin calls (fetches the pinned scanner + a venv)
 agent/               the pipeline: scan · audit · run · deliver · absorb (catalog intake)
 agent/lib/           the pieces — engine, endpoint detection, OSV/EOL, ranking, delivery, verify, dashboard, config
-agent/*.yaml         the reviewed catalogs — vendors · vendor_sunsets · idioms · frameworks
+agent/*.yaml         the reviewed catalogs — vendors · vendor_sunsets · idioms ·
+                     catalog_attestations · host_reputation · sdk_clients ·
+                     sdk_profiles · frameworks
 agent/assets/        the Cockpit — dashboard template + app + vendored runtime
 templates/ci/        CI templates copied into a CUSTOMER's repo by onboarding (not run here)
 deploy/drift-ops/    template for the private state/config repo a fleet needs

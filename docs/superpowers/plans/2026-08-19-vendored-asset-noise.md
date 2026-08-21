@@ -340,7 +340,7 @@ cat > /tmp/noise-rerun.sh <<'EOF'
 #!/usr/bin/env bash
 set -eu
 S=/tmp/claude-1000/-home-tops-Projects-tops-deprication-agent/11607c13-7fe3-46e0-bddb-facf4211fab2/scratchpad
-cd /home/tops/Projects/tops/drift/drift-detector-scan
+cd <repo>
 mapfile -t R < <(python3 -c "import json;[print(u) for u in json.load(open('$S/new-roots.json'))]")
 echo "roots=${#R[@]}"
 ARGS=(); for u in "${R[@]}"; do ARGS+=(--root "$u"); done

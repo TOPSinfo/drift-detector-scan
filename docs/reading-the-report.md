@@ -121,13 +121,26 @@ Separately from findings, each vendor carries a verdict about **our knowledge of
 |---|---|
 | **CURRENT** | Checked against the vendor's own announcements, recently |
 | **STALE** | Checked, but longer than 90 days ago — treat as expiring |
-| **UNAUDITED** | Never checked |
+| **UNAUDITED** | Never checked — nobody has looked up what this vendor is retiring |
+| **BLOCKED** | Checked, and **refused**: this vendor publishes retirements only behind a partner or seller login |
 
 Attestations expire on purpose. A vendor checked a year ago is not a vendor you know about
 today, and nobody ever re-reads a green tick unless something makes them.
 
+**UNAUDITED and BLOCKED are not the same problem, which is why they are not the same word.**
+An unaudited vendor needs somebody's *time*. A blocked one needs somebody's *credentials* —
+no amount of further research will reach a page that requires a seller account. A blocked row
+tells you exactly what was tried and what would open it, so the request goes to the right
+person instead of back onto a research list it can never leave.
+
+BLOCKED never becomes CURRENT on its own, and its call-sites keep counting as unchecked
+exposure. Naming why we are blind does not make us sighted.
+
 You may also see `whole-api-retired`: the entire vendor is catalogued as shut down, so there
 is nothing further to check. That's a resolved state, not an unchecked one.
+
+Every term used here — and the rest of the tool's vocabulary — is defined in the
+[Glossary](glossary.md).
 
 ---
 
