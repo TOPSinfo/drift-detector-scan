@@ -1326,6 +1326,7 @@ def _cmd_deliver(args) -> int:
     deliver_var = None                              # env-var NAME the delivery token is read from
     shape_stream = False                            # flag UNKNOWN repos for absorption (config opt-in)
     freshness_stream = False                        # file the catalog work-order (config opt-in)
+    resolve_stream = False                          # file the vendor-resolution queue (config opt-in)
     granularity = "comprehensive"                   # how findings become issues (config opt-in)
     if getattr(args, "config", None):
         from agent.lib import ops_config
@@ -1340,6 +1341,7 @@ def _cmd_deliver(args) -> int:
         deliver_var = cfg["auth"]["deliver"]
         shape_stream = cfg["delivery"]["shape_stream"]
         freshness_stream = cfg["delivery"]["freshness_stream"]
+        resolve_stream = cfg["delivery"].get("resolve_stream", False)
         granularity = cfg["delivery"]["granularity"]
         if not args.dry_run:                        # an explicit --dry-run always wins
             mode = cfg["delivery"]["mode"]
@@ -1394,6 +1396,7 @@ def _cmd_deliver(args) -> int:
     plan = delivery.build_plan(payload, repo_meta, existing, devops_project,
                                dev_as_issues=dev_as_issues, links=links,
                                shape_stream=shape_stream, freshness_stream=freshness_stream,
+                               resolve_stream=resolve_stream,
                                assignees=assignees, granularity=granularity)
 
     print(f"delivery mode: {mode}")
