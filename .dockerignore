@@ -1,0 +1,9 @@
+# The image needs only agent/ and requirements-plugin.txt. Keep the build context tiny and
+# the image AI-free: no venv, no plugin promptfiles, no tests, no art.
+*
+!agent/
+!requirements-plugin.txt
+
+# even inside agent/, drop caches
+**/__pycache__/
+**/*.pyc
