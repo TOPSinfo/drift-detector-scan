@@ -208,15 +208,15 @@ def test_dev_as_issues_is_idempotent_across_reruns():
     assert len(closes) == 0, f"Bug: re-run is closing the developer issue instead of skipping it"
 
 
-def test_issue_and_mr_bodies_link_back_to_the_run_and_report():
+def test_issue_bodies_link_back_to_the_run_and_report():
     """Provenance + hand-off: every issue footer links the scan run + the public Cockpit
-    (`report` is now the GitHub Pages cockpit, relabelled from the old 'full report' readme)."""
+    (`report` is now the GitHub Pages cockpit, relabelled from the old 'full report' readme).
+
+    The mr_description half of this test went with the draft-MR path it covered."""
     links = {"run": "https://gh/run/1", "report": "https://TOPSinfo.github.io/drift-detector-scan/"}
     ib = delivery.issue_body(_cve(), "root/web", links)
     assert "[scan run](https://gh/run/1)" in ib
     assert "📊 [open the cockpit](https://TOPSinfo.github.io/drift-detector-scan/)" in ib
-    mr = delivery.mr_description("g/ebayapi", [_sunset()], links)
-    assert "[scan run](https://gh/run/1)" in mr and "Draft, filed by Drift Detector" in mr
 
 
 def test_developer_finding_with_no_known_project_falls_back_to_repo_name():
@@ -231,10 +231,14 @@ def test_developer_finding_with_no_known_project_falls_back_to_repo_name():
 
 
 def test_no_mrs_are_ever_planned_for_findings_even_with_a_pending_mr():
-    """The draft-MR path is retired: even if a legacy MR already exists on the drift/migrations
-    branch, build_plan never plans against it — plan["mrs"] stays empty."""
+    """The draft-MR path is retired: even if a legacy MR already exists on the old
+    drift/migrations branch, build_plan never plans against it — plan["mrs"] stays empty.
+
+    Worth keeping after the MR code itself was deleted, because this is the property that made
+    the deletion safe. If someone reintroduces MR planning, this fails and they have to argue
+    for it deliberately rather than have it reappear as a side effect."""
     existing = {"issues": [], "mrs": {"g/ebayapi": [
-        {"iid": 4, "source_branch": delivery.MR_BRANCH, "state": "opened"}]}}
+        {"iid": 4, "source_branch": "drift/migrations", "state": "opened"}]}}
     plan = delivery.build_plan(_payload([_sunset()]), _META, existing, "root/drift-detector")
     assert plan["mrs"] == []
 

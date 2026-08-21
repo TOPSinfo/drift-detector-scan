@@ -115,52 +115,8 @@ class GitLab:
         return data
 
     # --- branches + files ---
-    def branch(self, project_id, name) -> dict | None:
-        status, data, _ = self._call(
-            "GET", f"/projects/{_enc(project_id)}/repository/branches/{_enc(name)}")
-        return data if status == 200 else None
 
-    def create_branch(self, project_id, name, ref) -> dict:
-        status, data, _ = self._call(
-            "POST", f"/projects/{_enc(project_id)}/repository/branches",
-            params={"branch": name, "ref": ref})
-        if status not in (200, 201):
-            raise GitLabError(f"create branch {name} -> {status}: {data}")
-        return data
 
-    def get_file(self, project_id, path, ref) -> dict | None:
-        status, data, _ = self._call(
-            "GET", f"/projects/{_enc(project_id)}/repository/files/{_enc(path)}",
-            params={"ref": ref})
-        return data if status == 200 else None
 
-    def set_file(self, project_id, path, *, branch, content, message, exists: bool) -> dict:
-        method = "PUT" if exists else "POST"
-        status, data, _ = self._call(
-            method, f"/projects/{_enc(project_id)}/repository/files/{_enc(path)}",
-            body={"branch": branch, "content": content, "commit_message": message})
-        if status not in (200, 201):
-            raise GitLabError(f"set file {path} -> {status}: {data}")
-        return data
 
-    # --- merge requests ---
-    def list_mrs(self, project_id, *, labels: str) -> list:
-        return self._paged(f"/projects/{_enc(project_id)}/merge_requests",
-                           params={"labels": labels, "state": "all"})
 
-    def create_mr(self, project_id, *, source_branch, target_branch, title,
-                  description, labels) -> dict:
-        status, data, _ = self._call(
-            "POST", f"/projects/{_enc(project_id)}/merge_requests",
-            body={"source_branch": source_branch, "target_branch": target_branch,
-                  "title": title, "description": description, "labels": labels})
-        if status not in (200, 201):
-            raise GitLabError(f"create MR -> {status}: {data}")
-        return data
-
-    def update_mr(self, project_id, iid, **fields) -> dict:
-        status, data, _ = self._call(
-            "PUT", f"/projects/{_enc(project_id)}/merge_requests/{iid}", body=fields)
-        if status != 200:
-            raise GitLabError(f"update MR {iid} -> {status}: {data}")
-        return data
