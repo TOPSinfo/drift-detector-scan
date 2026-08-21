@@ -98,10 +98,22 @@ def _coverage(host_class: str, classified: bool, own_infra_reason: str | None = 
 def _endpoints_of(inventory: dict) -> list:
     from agent.lib import needs_human as _needs_human
     recorded = _needs_human.recorded_keys()
+    # A host is unresolved only if NOTHING has named it. A vendor with no catalog domain
+    # (Salesforce Commerce Cloud: OCAPI runs on the merchant's own host) is attributed by its
+    # path signature, while plain URL extraction emits a SECOND, unclassified record for the
+    # same host — so typing each record independently reported the host as "not yet confirmed
+    # clean or third-party" on the same page that named the vendor, dated its deprecation and
+    # filed a finding for it. delivery.queued_hosts already excluded it; this is that same
+    # contradiction in a second surface.
+    named = {str(e.get("domain") or "").lower()
+             for r in inventory.get("repos", []) for e in r.get("endpoints", [])
+             if e.get("classified") and e.get("domain")}
     out = []
     for r in inventory.get("repos", []):
         for e in r.get("endpoints", []):
             hc = e.get("hostClass") or ("api" if e.get("classified") else "unclassified")
+            if not e.get("classified") and str(e.get("domain") or "").lower() in named:
+                hc = "api"          # the HOST is named; this record is a duplicate view of it
             reason = e.get("ownInfraReason")
             rec = {"repo": r.get("path"), "domain": e.get("domain"),
                    "vendor": e.get("vendor"), "version": e.get("version"),
