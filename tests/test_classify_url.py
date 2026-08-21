@@ -162,3 +162,27 @@ def test_ordinary_urls_are_untouched():
     from agent.lib.classify_url import extract_urls
     assert extract_urls('$u = "https://api.stripe.com/v1/charges";') == \
         ["https://api.stripe.com/v1/charges"]
+
+
+def test_documentation_and_source_hosts_are_not_integrations():
+    """Found working the fleet's resolution queue: four of its 28 "unresolved hosts" were
+    documentation and raw-source hosts a developer had linked in a comment or a README —
+    curl's docs, Guzzle's docs, an AWS docs domain, and GitHub's raw file host.
+
+    They are the same category `_IGNORE` already covers (php.net, packagist.org, github.com)
+    and were missed only because each uses a DIFFERENT registrable domain from the entry that
+    covers its sibling — githubusercontent.com is not github.com, amazonwebservices.com is not
+    amazonaws.com. Left unignored they sit in the human work-list forever, and nobody can
+    resolve them because there is nothing to resolve."""
+    from agent.lib.classify_url import is_ignored
+    for host in ("curl.haxx.se", "docs.guzzlephp.org", "docs.amazonwebservices.com",
+                 "raw.githubusercontent.com"):
+        assert is_ignored(host), f"{host} is documentation, not an integration"
+
+
+def test_the_vendors_real_api_hosts_are_still_classified():
+    """The boundary: ignoring an AWS *docs* domain must not touch the AWS API domain, and
+    ignoring GitHub's raw host must not silently drop a genuine api.github.com integration."""
+    from agent.lib.classify_url import is_ignored
+    assert not is_ignored("s3.amazonaws.com")
+    assert not is_ignored("sqs.us-east-1.amazonaws.com")
