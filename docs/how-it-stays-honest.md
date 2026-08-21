@@ -10,9 +10,15 @@ not look".
 
 ## `verify` — the only correctness claim
 
-`drift-scan verify` re-parses **every** rendered surface — `drift.md`, the dashboard, the summary
-page, SARIF, SBOM — and fails if any of them disagrees with `drift.json`. It runs about **60
-named invariant checks**, including:
+`drift-scan verify` re-parses the rendered surfaces — `drift.md`, the dashboard, the summary
+page, and `sbom.json` when one has been written — and fails if any of them disagrees with
+`drift.json`. It runs about **60 named invariant checks**, including:
+
+!!! warning "What `verify` does NOT cover"
+    **SARIF is not checked.** `drift.sarif.json` is written by a separate `drift-scan sarif`
+    command and no invariant re-parses it, so it carries the trust of an export, not of a
+    verified projection. Saying otherwise would overstate the one claim this tool makes —
+    which is precisely the failure the rest of this page exists to prevent.
 
 | invariant | what it stops |
 |---|---|
@@ -64,8 +70,29 @@ An entry count is not coverage. `agent/lib/catalog_coverage.py` holds the distin
   nothing
 - an attestation records **the day a human checked** that vendor's schedule
 - after `STALE_DAYS = 90` a `CURRENT` vendor flips to `STALE` on its own
+- a vendor that was checked and **refused** — its retirements published only behind a partner
+  login — is `BLOCKED`, not `UNAUDITED`
 
 So "no findings for Vendor X" is always qualified by whether anyone ever looked.
+
+`BLOCKED` is worth a note for anyone extending the catalog, because its **encoding** carries the
+guarantee. A blocked entry nests its provenance under `blocked:` and has no top-level
+`checked`/`source`:
+
+```yaml
+- vendor: Temu
+  blocked:
+    since: '2026-08-21'
+    source: https://seller.temu.com/
+    why: 'Seller Center requires an account …'
+```
+
+Catalog data ships independently of the code that reads it, so a scanner older than this verdict
+*will* parse the entry. Encoded flat, it ignored the key it did not recognise, saw a complete
+attestation, and rendered the vendor `CURRENT` — the strongest claim in the vocabulary, from
+evidence saying the opposite. Nested, that older loader finds no provenance, skips the entry and
+falls back to `UNAUDITED`. **An unknown verdict must fail toward under-claiming.** The flat form
+is refused outright so the unsafe shape cannot be reintroduced.
 
 ## The AI plane is quarantined by construction
 
@@ -119,7 +146,7 @@ itself when its repo comes back `KNOWN`. Running the scanner more often does not
 
 ## Test discipline
 
-1349 tests, and the convention is that a test **comment names the real bug it pins** — nine test
+1448 tests, and the convention is that a test **comment names the real bug it pins** — nine test
 files cite a specific shipped defect. The comments are load-bearing documentation of things that
 actually went wrong.
 

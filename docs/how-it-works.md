@@ -100,6 +100,7 @@ Every number on those surfaces is explained in **[Reading the report](reading-th
 | **SARIF** | A standard file format for scan results that GitHub and VS Code can read. |
 | **the Cockpit** | The interactive dashboard the tool publishes on each run. |
 | **UNAUDITED** | We detected this vendor but have never checked its announcements. |
+| **BLOCKED** | We tried to check, and could not — this vendor only publishes retirements behind a partner login. |
 | **file:line** | The exact place in a file — `Orders.php:35` means line 35 of that file. |
 
 ---
@@ -114,7 +115,9 @@ commands/            the plugin commands — drift-detector · drift-research ·
 bin/drift-scan       self-provisioning engine the plugin calls (fetches the pinned scanner + a venv)
 agent/               the pipeline: scan · audit · run · deliver · absorb (catalog intake)
 agent/lib/           the pieces — engine, endpoint detection, OSV/EOL, ranking, delivery, verify, dashboard, config
-agent/*.yaml         the reviewed catalogs — vendors · vendor_sunsets · idioms · frameworks
+agent/*.yaml         the reviewed catalogs — vendors · vendor_sunsets · idioms ·
+                     catalog_attestations · host_reputation · sdk_clients ·
+                     sdk_profiles · frameworks
 agent/assets/        the Cockpit — dashboard template + app + vendored runtime
 templates/ci/        CI templates copied into a CUSTOMER's repo by onboarding (not run here)
 deploy/drift-ops/    template for the private state/config repo a fleet needs
