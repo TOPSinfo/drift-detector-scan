@@ -64,3 +64,13 @@ def test_nothing_due_says_so():
 def test_output_is_byte_identical():
     due = freshness.due_for_refresh([_cov("MyDeal", "UNAUDITED")], _AUTO, _UNAUTO)
     assert freshness.work_order_md(due, "2026-07-29") == freshness.work_order_md(due, "2026-07-29")
+
+
+def test_a_blocked_vendor_is_off_the_recurring_freshness_work_order():
+    """A BLOCKED vendor cannot be cleared by re-checking — it needs credentials from outside.
+    Leaving it on the weekly due-list makes the work-order permanently non-empty, which is how
+    a list stops being read. It stays visible in the report's catalog table instead."""
+    recs = [{"vendor": "Temu", "verdict": "BLOCKED", "callSites": 7, "checked": "2026-08-21"},
+            {"vendor": "Kogan", "verdict": "UNAUDITED", "callSites": 3, "checked": None}]
+    due = [r["vendor"] for r in freshness.due_for_refresh(recs, set(), {})]
+    assert due == ["Kogan"]

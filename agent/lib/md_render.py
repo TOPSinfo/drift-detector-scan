@@ -176,7 +176,11 @@ def render_markdown(payload: dict, now: str) -> str:
         ["— of which already retired (past-due)", counts.get("pastDue", 0)],
         ["Runtime/framework EOL", counts.get("eol", 0)],
         ["Critical CVEs", counts.get("critical", 0)],
-        ["Unaudited vendors", counts.get("unaudited", 0)],
+        # NOT "Unaudited vendors": that word names one specific verdict now, and a BLOCKED
+        # vendor filed under it sends the reader looking for someone who never had the time,
+        # when what is actually missing is access.
+        ["Vendors with an unchecked retirement list", counts.get("unaudited", 0)],
+        ["— of which blocked (need access, not effort)", counts.get("blocked", 0)],
         ["Repos affected / scanned", f"{affected} / {scanned}"],
     ]
     if unscannable:                       # only show the row when there's something to admit
