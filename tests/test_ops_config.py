@@ -31,7 +31,7 @@ def test_valid_config_loads_and_derives_the_host(tmp_path):
     assert cfg["delivery"] == {"mode": "dry-run", "dev_as_issues": True,
                                "devops_project": "root/ops", "devopsAssignee": None,
                                "developerFallbackAssignee": None, "shape_stream": False,
-                               "freshness_stream": False, "granularity": "comprehensive"}
+                               "freshness_stream": False, "resolve_stream": False, "granularity": "comprehensive"}
 
 
 def test_delivery_defaults_when_omitted(tmp_path):
@@ -41,7 +41,7 @@ def test_delivery_defaults_when_omitted(tmp_path):
     assert cfg["delivery"] == {"mode": "dry-run", "dev_as_issues": True,
                                "devops_project": None, "devopsAssignee": None,
                                "developerFallbackAssignee": None, "shape_stream": False,
-                               "freshness_stream": False, "granularity": "comprehensive"}
+                               "freshness_stream": False, "resolve_stream": False, "granularity": "comprehensive"}
 
 
 def test_freshness_stream_opt_in(tmp_path):

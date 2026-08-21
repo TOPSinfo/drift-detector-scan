@@ -1341,7 +1341,7 @@ def _cmd_deliver(args) -> int:
         deliver_var = cfg["auth"]["deliver"]
         shape_stream = cfg["delivery"]["shape_stream"]
         freshness_stream = cfg["delivery"]["freshness_stream"]
-        resolve_stream = cfg["delivery"].get("resolve_stream", False)
+        resolve_stream = cfg["delivery"]["resolve_stream"]
         granularity = cfg["delivery"]["granularity"]
         if not args.dry_run:                        # an explicit --dry-run always wins
             mode = cfg["delivery"]["mode"]
