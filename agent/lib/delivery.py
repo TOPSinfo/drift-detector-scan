@@ -34,8 +34,6 @@ MAINTAINER_LABEL = "drift:maintainer"
 SHAPE_LABEL = "drift:shape"           # absorption: a repo shape the scanner can't read
 FRESHNESS_LABEL = "drift:freshness"
 RESOLVE_LABEL = "drift:resolve"      # the vendor-resolution work-order   # a catalogued vendor's retirements went stale / need a re-check
-MR_BRANCH = "drift/migrations"
-MIGRATIONS_PATH = ".drift/MIGRATIONS.md"
 _MARKER = re.compile(r"<!--\s*drift-detector:([0-9a-f]{16})\s*-->")
 
 
@@ -405,22 +403,6 @@ def devops_repo_body(repo: str, actions: list, links: dict | None = None) -> str
     return "\n".join(out)
 
 
-def mr_title(repo: str) -> str:
-    return f"Draft: [drift] API migrations for {repo}"
-
-
-def mr_description(repo: str, actions: list, links: dict | None = None) -> str:
-    fp = repo_fingerprint(repo)
-    n = len(actions)
-    lines = [marker(fp), "",
-             f"Drift Detector found **{n}** retiring API surface(s) / EOL framework(s) this "
-             f"repo calls. The checklist is in `{MIGRATIONS_PATH}` on this branch; migrate "
-             f"here and this draft becomes your fix.", ""]
-    for a in actions:
-        when = f" (retires {a['date']})" if a.get("date") else ""
-        lines.append(f"- **{_label_of(a)}**{when} — {a.get('recommendation') or a.get('status')}")
-    lines += ["", _footer(links, draft=True)]
-    return "\n".join(lines)
 
 
 def _norm(s: str) -> str:
@@ -700,8 +682,10 @@ def fetch_existing(gl, devops_project: str, dev_projects: list) -> dict:
     issues = list(gl.list_issues(devops_project, labels=LABEL))
     for p in dev_projects:
         issues += gl.list_issues(p, labels=LABEL)
-    # findings no longer produce MRs, and nothing reads existing["mrs"] — so don't spend a
-    # list_mrs call per repo every run. (Legacy in-flight drift/migrations MRs are swept by hand.)
+    # Findings no longer produce MRs and nothing reads existing["mrs"], so no MR listing is
+    # fetched — the GitLab client has no MR methods left to call. The key is still returned so
+    # callers built against the old shape keep working. (Legacy in-flight drift/migrations MRs
+    # are swept by hand.)
     return {"issues": issues, "mrs": {}}
 
 
@@ -750,24 +734,8 @@ def execute_plan(gl, plan: dict) -> dict:
                 done["skipped"] += 1
         except Exception as exc:                     # a failed file is REPORTED, never dropped
             done["failed"].append((it.get("project"), str(exc)))
-    for it in plan["mrs"]:
-        if it["op"] == "unroutable":
-            done["unroutable"] += 1
-            continue
-        project, branch = it["project"], it["branch"]
-        default = (gl.project(project) or {}).get("default_branch") or "main"
-        if gl.branch(project, branch) is None:
-            gl.create_branch(project, branch, default)
-        existing_file = gl.get_file(project, it["file_path"], branch)
-        gl.set_file(project, it["file_path"], branch=branch, content=it["file_content"],
-                    message="drift: update migration checklist",
-                    exists=existing_file is not None)
-        if it["op"] == "create":
-            gl.create_mr(project, source_branch=branch, target_branch=default,
-                         title=it["title"], description=it["description"],
-                         labels=f"{LABEL},{DEVELOPER_LABEL}")
-            done["created"] += 1
-        else:
-            gl.update_mr(project, it["iid"], description=it["description"], title=it["title"])
-            done["updated"] += 1
+    # NOTE: there is no `for it in plan["mrs"]` loop any more. `plan["mrs"]` is always []
+    # (build_plan returns _finish(issue_plan, [], ...)) and fetch_existing returns {"mrs": {}},
+    # so the branch/commit/open-MR path it drove was unreachable code carrying six GitLab
+    # write methods with it. Findings are filed as in-repo ISSUES; legacy MRs are swept by hand.
     return done

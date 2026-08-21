@@ -33,19 +33,14 @@ def test_list_issues_follows_pagination():
     assert [i["iid"] for i in out] == [1, 2] and len(f.calls) == 2
 
 
-def test_absent_project_and_branch_return_none_not_raise():
-    f = _recorder([(404, None, ""), (404, None, "")])
+def test_an_absent_project_returns_none_rather_than_raising():
+    """A 404 is an answer, not a crash: delivery asks about projects it may not be able to see,
+    and one unreadable project must not take the whole run down. (The companion assertion for
+    `gl.branch` went with the draft-MR path — branch/file writes are no longer made at all.)"""
+    f = _recorder([(404, None, "")])
     gl = GitLab("git.x", "t", fetch=f)
     assert gl.project("nope") is None
-    assert gl.branch("g/r", "x") is None
 
-
-def test_set_file_put_when_it_exists_post_when_not():
-    f = _recorder([(200, {}, ""), (201, {}, "")])
-    gl = GitLab("git.x", "t", fetch=f)
-    gl.set_file("g/r", ".drift/M.md", branch="b", content="c", message="m", exists=True)
-    gl.set_file("g/r", ".drift/M.md", branch="b", content="c", message="m", exists=False)
-    assert f.calls[0][0] == "PUT" and f.calls[1][0] == "POST"
 
 
 def _fake(routes):
