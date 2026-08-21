@@ -66,7 +66,31 @@ def load_attestations(path: str | None = None) -> dict:
         raw = list(raw) + catalog_overlay.load_list(catalog_overlay.ATTESTATIONS)
     out = {}
     for a in raw:
-        if isinstance(a, dict) and a.get("vendor") and a.get("checked") and a.get("source"):
+        if not isinstance(a, dict) or not a.get("vendor"):
+            continue
+        blk = a.get("blocked")
+        if blk is not None:
+            # BLOCKED nests its OWN provenance, and the entry carries no top-level
+            # checked/source. That is not tidiness — it is what makes the data safe to deploy
+            # ahead of the code. The catalog overlay ships independently of the scanner, so a
+            # BLOCKED entry WILL be read by scanners older than this verdict; encoded flat,
+            # they ignored the key they did not know, saw a complete attestation, and rendered
+            # the vendor CURRENT — "checked, fine" — from evidence saying its docs cannot be
+            # read at all. Nested, an older loader finds no checked/source, skips the entry,
+            # and falls back to UNAUDITED: it under-claims instead of over-claiming.
+            # The flat form is REFUSED (not merely ignored) so the unsafe encoding, which
+            # would mean two scanner versions reading opposite verdicts off the same bytes,
+            # cannot be committed back in quietly.
+            if not isinstance(blk, dict) or a.get("checked") or a.get("source"):
+                continue
+            since, src = blk.get("since"), blk.get("source")
+            if not (since and src):
+                continue                    # a block with no provenance is just an assertion
+            out[a["vendor"]] = {"checked": str(since), "source": str(src),
+                                "note": a.get("note", ""), "by": str(a.get("by") or "human"),
+                                "blocked": str(blk.get("why") or "")}
+            continue
+        if a.get("checked") and a.get("source"):
             # `by` records provenance: "human" (default) vs "ai-research". An AI-attested "current"
             # is weaker than a human one — a missed sunset renders green and nobody re-checks green —
             # so it is surfaced distinctly and still governed by the same STALE_DAYS TTL.
@@ -76,7 +100,7 @@ def load_attestations(path: str | None = None) -> dict:
             # vocabulary, produced from evidence that said the opposite.
             out[a["vendor"]] = {"checked": str(a["checked"]), "source": str(a["source"]),
                                 "note": a.get("note", ""), "by": str(a.get("by") or "human"),
-                                "blocked": str(a.get("blocked") or "")}
+                                "blocked": ""}
     return out
 
 

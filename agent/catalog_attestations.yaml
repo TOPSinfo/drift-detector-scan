@@ -219,11 +219,12 @@
     changes (case-sensitive FIC matching, auth-code reuse, POST parsing) but no dated
     retirement of the v1.'
 - vendor: Mirakl
-  checked: '2026-08-21'
-  source: https://help.mirakl.com/
   by: ai-research
-  blocked: 'documentation portal is account-gated — it serves no readable content to an
-    unauthenticated client, and developer.mirakl.net does not resolve'
+  blocked:
+    since: '2026-08-21'
+    source: https://help.mirakl.com/
+    why: 'documentation portal is account-gated — it serves no readable content to an
+      unauthenticated client, and developer.mirakl.net does not resolve'
   note: 'BLOCKED, not unaudited. help.mirakl.net 302-redirects to help.mirakl.com, which
     returns an empty document without a session; developer.mirakl.net does not resolve at
     all (DNS NXDOMAIN). Mirakl is white-label — each operator runs its own instance — so
@@ -322,11 +323,12 @@
   note: Date-string (x-api-version) versioning; valid versions 2012-01-01/2020-08-07/2022-01-24;
     no retirement/sunset of any version announced.
 - vendor: THE ICONIC
-  checked: '2026-08-21'
-  source: https://www.theiconic.com.au/sell-with-us/
   by: ai-research
-  blocked: 'seller pages refuse automated fetches (HTTP 403); no public seller-API
-    documentation or deprecation changelog was reachable'
+  blocked:
+    since: '2026-08-21'
+    source: https://www.theiconic.com.au/sell-with-us/
+    why: 'seller pages refuse automated fetches (HTTP 403); no public seller-API
+      documentation or deprecation changelog was reachable'
   note: 'BLOCKED, and the reason is stated narrowly ON PURPOSE: both /marketplace/ and
     /sell-with-us/ returned 403 to this fetcher, which is evidence the page would not be
     read — it is NOT evidence that a partner login exists behind it. A human browser may
