@@ -44,5 +44,3 @@ def registered_basenames() -> set:
     return set(_BY_NAME)
 
 
-def registered_suffixes() -> set:
-    return set(_BY_SUFFIX)
