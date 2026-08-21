@@ -15,7 +15,7 @@ import yaml
 import pytest
 
 from agent import resolve
-from agent.lib import catalog_overlay, own_domains
+from agent.lib import catalog_overlay, delivery, own_domains
 from agent.lib.vendors import load_vendors
 
 
@@ -333,3 +333,22 @@ def test_retiring_with_malformed_date_field_is_refused_by_the_absorb_gate():
     assert any("YYYY-MM-DD" in p for p in problems)
     with pytest.raises(resolve.ResolveRejected):
         resolve.apply([v], now="2026-08-13")
+
+
+def test_a_host_already_attributed_to_a_vendor_is_not_also_queued_as_unnamed():
+    """REGRESSION: Salesforce Commerce Cloud has NO catalog domain — OCAPI runs on each
+    merchant's own host — so it is named by its path signature and the record is labelled with
+    the host observed at the call-site. That host also produces an Unknown record from plain
+    URL extraction, and the resolve queue only skipped `classified` RECORDS, not classified
+    HOSTS. The result contradicted itself: the report named the vendor and dated its
+    deprecation, while the work-order asked a human to go identify the very same host."""
+    payload = {"endpoints": [
+        {"domain": "shop.example-merchant.com", "repo": "storefront-bridge", "classified": True,
+         "techKey": "api:sfcc", "hostClass": "api", "file_count": 1},
+        {"domain": "shop.example-merchant.com", "repo": "storefront-bridge", "classified": False,
+         "hostClass": "unclassified", "file_count": 1},
+        {"domain": "api.unknown-vendor.test", "repo": "storefront-bridge", "classified": False,
+         "hostClass": "api-lead", "file_count": 3},
+    ]}
+    hosts = [h for h, _ in delivery.queued_hosts(payload)]
+    assert hosts == ["api.unknown-vendor.test"]
