@@ -48,7 +48,7 @@ _TOP = {"version", "fleet", "delivery", "auth", "notify", "probe"}
 _DELIVERY_V1 = {"mode", "dev_as_issues", "devops_project"}
 _DELIVERY_V2 = {"mode", "devops", "developer"}
 # orthogonal to the v1/v2 split — allowed in either form, never counts toward the mix check
-_DELIVERY_COMMON = {"shape_stream", "freshness_stream", "granularity"}
+_DELIVERY_COMMON = {"shape_stream", "freshness_stream", "resolve_stream", "granularity"}
 _DELIVERY = _DELIVERY_V1 | _DELIVERY_V2 | _DELIVERY_COMMON
 _AUTH = {"clone", "persist", "deliver"}
 _NOTIFY = {"gchat"}
@@ -184,15 +184,18 @@ def _load_delivery(path: str, raw: dict) -> dict:
         raise ConfigError(f"{path}: delivery.granularity must be one of "
                           f"{sorted(_GRANULARITIES)}, got {granularity!r}")
 
-    # the two maintainer streams, both off by default and opted into independently:
+    # the three maintainer streams, all off by default and opted into independently:
     # shape_stream files an absorption flag per UNKNOWN repo (opt in once the fleet is stable,
     # so early scans don't flag every not-yet-modeled repo); freshness_stream files THE
     # catalog-freshness work-order while any detected vendor is STALE/unaudited off the auto
-    # lane (opt in once someone owns the maintainer queue — an issue nobody triages is noise).
+    # lane (opt in once someone owns the maintainer queue — an issue nobody triages is noise);
+    # resolve_stream files THE vendor-resolution work-order while any DETECTED host has no
+    # vendor entry (same caveat — it is a work-list, and a work-list nobody works is noise).
     return {"mode": mode, "dev_as_issues": dev_as_issues, "devops_project": devops_project,
             "devopsAssignee": devops_assignee, "developerFallbackAssignee": developer_fallback,
             "shape_stream": bool(d.get("shape_stream", False)),
             "freshness_stream": bool(d.get("freshness_stream", False)),
+            "resolve_stream": bool(d.get("resolve_stream", False)),
             "granularity": granularity}
 
 
