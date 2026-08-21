@@ -370,6 +370,23 @@
     player, a callable JS integration surface. The vendor-owned vimeo/player.js repo
     REA'
   by: ai-research
+- vendor: Virtualstock
+  by: ai-research
+  blocked:
+    since: '2026-08-21'
+    source: https://www.virtualstock.com/
+    why: 'no public developer portal — API documentation and credentials are issued by the
+      service desk to onboarded suppliers, so there is no page to read a retirement from'
+  note: 'BLOCKED, and it was the LARGEST unchecked exposure on the fleet (24 call-sites in one
+    repo) — bigger than two of the three vendors already blocked, which is why it is worth
+    stating plainly rather than leaving as a silent UNAUDITED row. What was actually tried,
+    2026-08-21: www.virtualstock.com carries no API docs, changelog or deprecation notice and
+    routes all technical enquiry through sales/contact; developer.virtualstock.com and
+    docs.virtualstock.com do not resolve (DNS NXDOMAIN). The Edge is a supplier platform whose
+    API access (client id/secret) is granted per onboarded supplier, so version retirements
+    reach integrators through their account contact, not a public page. Unblocking needs the
+    client''s Virtualstock supplier contact to forward the API changelog — no amount of further
+    research reaches it.'
 - vendor: Vonage Nexmo
   checked: '2026-08-11'
   source: https://developer.vonage.com/en/blog/number-verification-api-to-be-replaced-by-verify-with-silent-authentication
