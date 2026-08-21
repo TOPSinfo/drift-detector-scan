@@ -208,11 +208,13 @@ def scan_endpoints(matches: list, repo_root: str, vendors: list, *, max_files: i
         line = m.get("text") or _read_line(repo_root, rel, lineno, line_cache)
         kind = m.get("kind")
         if kind == "url":
+            seen_host = ""
             for url in classify_url.extract_urls(line):
                 host = classify_url.host_of(url)
                 v = classify_url.classify_host(host, vendors)
                 if v is None and classify_url.is_nonhost(host):
                     continue
+                seen_host = seen_host or host
                 add(v.vendor if v else UNKNOWN, v.techKey if v else "", host,
                     classify_url.version_of(url, v), url, rel, lineno, line=line)
             # Interpolated/variable host ("https://{$shop}/admin/api/2024-01/…"): the host is
@@ -224,7 +226,17 @@ def scan_endpoints(matches: list, repo_root: str, vendors: list, *, max_files: i
             sig = classify_url.path_signature_match(line, vendors)
             if sig:
                 sv, sver, ssample = sig
-                add(sv.vendor, sv.techKey, sv.domains[0], sver, ssample, rel, lineno)
+                # A pathSignature vendor need not have a catalog domain at all: Salesforce
+                # Commerce Cloud's OCAPI is served from each MERCHANT's own host
+                # (<merchant-host>), so the vendor is `domains: []` and the
+                # PATH is the only identifier. Indexing [0] unguarded crashed the whole repo
+                # scan with "tuple index out of range" the first time such a vendor existed.
+                # For those, the host observed ON THIS LINE is the honest label — it is the
+                # real evidence, and it keeps the finding alive: repo_scan drops any endpoint
+                # whose domain is empty, so an unlabelled one would vanish from the report.
+                add(sv.vendor, sv.techKey,
+                    sv.domains[0] if sv.domains else seen_host,
+                    sver, ssample, rel, lineno)
         elif kind == "endpoint":
             v = by_tk.get(m.get("techKey", ""))
             d = classify_url.domain_in_line(line, v.domains) if v else ""

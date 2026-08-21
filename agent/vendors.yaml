@@ -43,7 +43,22 @@
 - { vendor: Tradevine,         techKey: api:tradevine,           domains: [api.tradevine.com] }
 - { vendor: Trade Me,          techKey: api:trademe,             domains: [api.trademe.co.nz] }
 - { vendor: Catch,             techKey: api:catch,               domains: [catch.com.au] }
+# Login with Amazon: the OAuth token endpoint (api.amazon.com/auth/o2/token) that every
+# SP-API client exchanges refresh tokens against. A separate service from the SP-API data
+# hosts, so it gets its own entry rather than being folded into Amazon SP-API — a
+# retirement of one says nothing about the other.
+- { vendor: Login with Amazon,  techKey: api:amazon-lwa,          domains: [api.amazon.com] }
 - { vendor: Magento,           techKey: api:magento,             domains: [] }   # self-hosted; identified by the /rest/V1 path-constant idiom, not a host
+# Salesforce B2C Commerce OCAPI. Like Magento there is no vendor host: OCAPI is served from
+# each MERCHANT's own Commerce Cloud domain (<merchant-host>), so a domains
+# list could never identify it. The PATH can — Salesforce documents the syntax as
+# `example.com/dw/shop/v24_5/products/foo`, and group 1 is the version, which is the thing
+# that goes obsolete. `shop|data|meta` are the three API types in that syntax; requiring one
+# of them stops a merchant's own /dw/ download directory being claimed as an integration.
+# NO trailing slash is required: the real code stores it as a base_url ending at the
+# version (`.../dw/shop/v24_5`), so requiring one matched the docs example and nothing
+# in the corpus. The `vNN_N` shape carries the specificity on its own.
+- { vendor: Salesforce Commerce Cloud, techKey: api:sfcc, domains: [], pathSignature: '/dw/(?:shop|data|meta)/(v[0-9]+_[0-9]+)' }
 - { vendor: MySale,            techKey: api:mysale,              domains: [mysalemarketplace.com] }
 - { vendor: Marketplacer,      techKey: api:marketplacer,        domains: [marketplacer.com] }
 
