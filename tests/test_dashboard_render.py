@@ -835,3 +835,27 @@ def test_ai_tier_blobs_leave_certified_drift_data_byte_identical():
     assert drift_blob(plain) == drift_blob(with_ai)                       # ← the headline assertion
     assert 'id="adhoc-data"' not in plain and 'id="leads-data"' not in plain   # absent → not emitted
     assert 'id="adhoc-data"' in with_ai and 'id="leads-data"' in with_ai       # present → additive blobs
+
+
+def test_a_host_already_named_as_a_vendor_is_not_also_listed_unresolved():
+    """REGRESSION, seen on a live fleet run. Salesforce Commerce Cloud has no catalog domain —
+    OCAPI runs on the merchant's own host — so one record attributes the host to SFCC while
+    plain URL extraction emits a second, unclassified record for the SAME host. The coverage
+    lifecycle typed each record independently, so the cockpit reported the host as
+    "unresolved — not yet confirmed clean or third-party" on the same page where the report
+    named the vendor, dated its deprecation, and filed a finding for it.
+
+    The resolve work-order already excluded it (delivery.queued_hosts); this is the same
+    contradiction surviving in a second surface. A host is unresolved only if NOTHING has
+    named it."""
+    inv = {"repos": [{"path": "shop", "endpoints": [
+        {"domain": "shop.example-merchant.com", "vendor": "Salesforce Commerce Cloud",
+         "classified": True, "hostClass": "api", "version": "v24_5", "file_count": 1},
+        {"domain": "shop.example-merchant.com", "vendor": "Unknown",
+         "classified": False, "hostClass": "unclassified", "file_count": 1},
+        {"domain": "api.genuinely-unknown.test", "vendor": "Unknown",
+         "classified": False, "hostClass": "api-lead", "file_count": 3},
+    ]}]}
+    eps = dr._endpoints_of(inv)
+    queued = {e["domain"] for e in eps if e["coverage"] == "queued"}
+    assert queued == {"api.genuinely-unknown.test"}, queued
