@@ -658,8 +658,15 @@ def _cmd_verify(args) -> int:
             print(f"  [{v.check}] {v.detail}")
         return 3
     n = payload.get("counts", {})
+    # "unchecked", not "unaudited": the count is every non-CURRENT vendor, and since BLOCKED
+    # exists that includes vendors we DID check and were refused. Naming the blocked share
+    # here keeps the one line a reader sees from overstating how much is merely undone.
+    blocked = n.get("blocked", 0)
+    unchecked = f"{n.get('unaudited', 0)} unchecked-vendor(s)"
+    if blocked:
+        unchecked += f" ({blocked} blocked on access)"
     print(f"✓ report is self-consistent — {n.get('sunsets', 0)} sunsets, "
-          f"{n.get('eol', 0)} eol, {n.get('unaudited', 0)} unaudited-vendor(s); "
+          f"{n.get('eol', 0)} eol, {unchecked}; "
           f"drift.md, summary.html, dashboard.html and drift.json all agree")
     return 0
 

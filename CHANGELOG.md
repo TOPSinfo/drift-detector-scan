@@ -2,6 +2,71 @@
 
 All notable changes to the Drift Detector plugin. Dates are YYYY-MM-DD.
 
+## v1.0.0 — 2026-08-21
+
+**First stable release.** Supersedes the `0.19`/`0.20` betas, which shipped without changelog
+entries; this covers everything since `v0.18.0-beta` (2026-08-12). The `-beta` suffix is gone and
+the version now means one thing — the plugin. The correctness claim is unchanged and remains the
+only one worth making: **`drift-scan verify` passing is the claim; nothing else is.**
+
+### Added
+
+- **Endpoint attribution beyond the host.** A vendor can now be identified by what its URLs *look
+  like*, not only by the host they point at. `pathSignature` names a vendor + version from a
+  distinctive path (`/dw/shop/v24_5`), including on bare path literals and on runtime-assembled
+  URLs where the host is a variable. `modelSignature` does the same for the AI category, whose
+  retirements are published per *model id* rather than per endpoint — corroborated against the
+  repo's SDK dependency so a model name in a comment cannot attribute on its own.
+- **Vendors with no host at all.** Salesforce Commerce Cloud (OCAPI) and Magento are served from
+  each merchant's own domain, so no domain list can ever name them. They are catalogued by path,
+  and the call-site's observed host becomes the record's label.
+- **`BLOCKED` — a fourth catalog verdict.** For vendors that publish retirements only behind a
+  partner or seller login. Previously indistinguishable from "nobody got to it", which sent
+  readers after the wrong fix and kept the freshness work-order permanently non-empty with a task
+  that can never succeed. BLOCKED is *not* an attestation: it never ages into CURRENT, its
+  call-sites keep counting as unchecked exposure, and it must carry the gate page actually hit.
+  Its provenance nests inside the `blocked:` key so that a scanner predating the verdict reads
+  the entry as UNAUDITED rather than CURRENT — data may ship ahead of the code that understands
+  it, and an unknown verdict must fail toward under-claiming.
+- **`uncatalogued-vendor` and `whole-api-retired`** — a detected host with no catalog entry is now
+  its own verdict rather than silence, and a vendor whose entire API is already retired is not
+  reported as "unaudited".
+- **The vendor-resolution queue files itself** (`resolve_stream`). Unnamed hosts were recomputed
+  every scan and thrown away; the queue reached 28 hosts deep before anyone looked. It is now a
+  self-updating work-order that closes when it empties.
+- **The absorb trail** — every `absorb --check` attempt is recorded, so the climb from residue to
+  attribution is auditable rather than a claim about work that already happened.
+- **Inventory extractors for Go, Maven, Gradle, NuGet, Bundler and Cargo**, plus NuGet central
+  package management and lockfile version joins.
+- **Documentation site** (MkDocs Material, GitHub Pages): a landing page, a plain-English
+  "how it works", a guide to reading the report with screenshots rendered from the public corpus,
+  a rewritten FAQ, and architecture diagrams.
+- **Container channel** — a published image, so a fleet runner needs no Python toolchain.
+- **Catalog coverage**: Amazon MWS dated and attested, eBay Post-Order, Amazon SP-API operation
+  paths, Anthropic and Mistral model retirements, Amazon Ads path-scoped sunsets, Login with
+  Amazon, and dead-marketplace closures (Catch, MyDeal, MySale, TheMarket).
+
+### Fixed
+
+- **A vendor definition could crash an entire repo scan.** A catalogued vendor with a path
+  signature and no domains raised `IndexError`, and the run still printed "0 action-required"
+  beside the errored repo — the exact shape of report this tool exists to prevent.
+- **The report contradicted its own work-order**: a host could be named and dated as a finding
+  while simultaneously queued for a human to go identify it.
+- **A declared asset host was claimed by a parent-domain vendor rule.** `fonts.googleapis.com` is
+  declared an asset CDN, but the `googleapis.com` vendor rule overrode it — so every page loading
+  a Google Font counted as a live API integration and put the vendor on the audit backlog for a
+  `<link rel=stylesheet>`.
+- **Call-site counts silently maxed out at six**, understating exposure in the one column readers
+  use to judge it.
+- **Precision, measured on a real corpus**: XML namespace URIs are identifiers, not endpoints
+  (−589 sites, no real findings lost); an SDK's own service descriptors are not call-sites (−380,
+  with SP-API attribution unchanged at 945); documentation hosts are not unresolved integrations;
+  vendored UI libraries are skipped by filename with a token boundary.
+- **Path-constant attributions were counted as residue**, making coverage look worse than it was.
+- **The client-identifier guard now runs at push, not in CI**, and refuses when its deny-list is
+  unset — a guard that silently passes is worse than no guard.
+
 ## v0.18.0-beta — 2026-08-12
 
 **Coverage follow-ups — SDK-mediated detection, batch 2, and a freshness loop.**

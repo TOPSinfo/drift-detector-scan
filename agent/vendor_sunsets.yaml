@@ -328,6 +328,19 @@
   source: https://insideretail.co.nz/2024/05/13/the-warehouse-gives-up-on-themarket-com/
   note: 'Inside Retail NZ 2024-05-13: "The Warehouse Group has confirmed it will shut down TheMarket.com by late June." CEO: "we will close the front-end of the platform." Marketplace closed; migrate off.'
 
+# Salesforce B2C Commerce OCAPI — the WHOLE API is deprecated, with no retirement date.
+# NO `retires` on purpose: Salesforce states the deprecation plainly but gives no end date
+# for OCAPI itself. What it does give is a rolling rule — a version is supported ~2 years
+# from publish, then "becomes obsolete automatically" and is "deleted without further
+# notice" — so an old version dies quietly rather than on an announced day. Recording a
+# date would invent one; recording nothing would lose a real deprecation.
+- vendor: Salesforce Commerce Cloud
+  version: "*"
+  status: deprecated-no-date
+  replacement: B2C Commerce API (SCAPI)
+  source: https://developer.salesforce.com/docs/commerce/b2c-commerce/references/b2c-commerce-ocapi/versioninganddeprecationpolicy.html
+  note: 'Salesforce: "The Open Commerce API (OCAPI) is now deprecated." Versions go obsolete two years after publish and are "deleted without further notice"; migrate to SCAPI.'
+
 # eBay legacy "traditional" APIs — deprecated 2024-01-04, DECOMMISSIONED 2025-02-05 (already dead).
 # Domain-scoped so the live OAuth/REST host (api.ebay.com) and modern Sell/Buy APIs are NOT flagged.
 # Source: eBay Developers Program API Deprecation Status + Q3 2024 newsletter.

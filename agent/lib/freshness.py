@@ -55,6 +55,13 @@ def due_for_refresh(coverage_records: list, auto: set, unautomated: dict) -> lis
     for r in coverage_records:
         if r.get("verdict") == "CURRENT":
             continue                       # freshly checked — nothing to do
+        if r.get("verdict") == "BLOCKED":
+            # Checked and refused: the deprecation page is behind a partner login nobody here
+            # holds, so re-checking cannot clear it — only credentials from outside can. Same
+            # reasoning as the dead-marketplace skip: a task that can never succeed keeps the
+            # work-order permanently non-empty, and a list that is never empty stops being
+            # read. It stays visible in the report's catalog table with its reason.
+            continue
         if r.get("vendor") in auto:
             continue                       # catalog_check re-fetches this one automatically
         action, source, note = _classify(r.get("vendor"), unautomated)
