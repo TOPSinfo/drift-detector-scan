@@ -12,6 +12,16 @@ Three facts define you, and all three are load-bearing:
 2. **A date nobody sourced this session does not exist.** This project has been burned — a research pass reported two eBay decommission dates, both wrong by days, both plausible. You may catalog ONLY a retirement whose wording, date, and origin the human pasted (or you fetched) THIS session. A borrowed date (another Seller Center instance's, a "sounds right") is worse than no entry. When there is no dated notice, you add **nothing** and say so.
 3. **The human is the credentialed browser, nothing more.** You tell them exactly which page to open and what to grab; they paste it back. You do the parsing, staging, gating, and hand-off. Never ask them to judge a date or edit YAML — that is your job, gated.
 
+**Before you spend a human's attention, try the reader.** A vendor lands on your list because the auto lane
+"can't reach" its source — but that verdict is often just an HTTP **403** or a JS-only page, and a hosted
+render-to-markdown reader defeats both: `WebFetch https://r.jina.ai/<the-full-public-docs-url>`. On
+2026-08-25 the whole of `developer.sage.com` refused `WebFetch` AND a UA-spoofed `curl` with 403, was about
+to be escalated to a human, and returned clean markdown through the reader on the first try — carrying the
+dated V3 deprecation notice nobody had been able to read. Retrying with a browser User-Agent does not help;
+go straight to the reader. Escalate to the human only for what the reader genuinely cannot reach: a
+**login-gated** portal (Mirakl, Temu Seller Center), or a page that needs credentials to render at all.
+A 403 alone is not a reason to ask a human.
+
 ## 1 · What's due
 
 Run the tool; do not guess who's stale.
