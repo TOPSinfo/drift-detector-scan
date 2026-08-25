@@ -2,6 +2,50 @@
 
 All notable changes to the Drift Detector plugin. Dates are YYYY-MM-DD.
 
+## Unreleased
+
+### Added
+
+- **A vendor-coverage digest for management** (`drift-scan coverage-report`). The scanner has
+  always known which detected vendors nobody has audited; it had no way to say so to anyone who
+  does not read `drift.json`. The digest states how many of the detected vendors are settled,
+  how many call-sites sit behind the ones that are not, what moved since the previous scan, and
+  which human sign-offs are about to lapse. It is a **projection** of `drift.json` — a new
+  `verify` invariant (`check_digest_matches_coverage`) re-parses the rendered document and
+  refuses one whose figures disagree with the report, because a digest gets mailed to people
+  who will never open the report it summarises. No email is sent: the scanner renders the file
+  and CI delivers it, so no SMTP credential or network dependency enters the scan path.
+- **`INTERNAL` and `ACCEPTED` — two human-signed terminal dispositions.** Two cases can never be
+  settled by reading a vendor's page: a library built in-house, and a vendor that publishes
+  nothing findable. Both previously sat `UNAUDITED` forever, keeping a work-order permanently
+  non-empty with tasks that can never succeed — the defect `BLOCKED` fixed one case earlier.
+  They are deliberately **two** verdicts: `INTERNAL` settles a vendor because in-house code has
+  no external lifecycle, while `ACCEPTED` names a risk without measuring it and so keeps
+  counting toward unaudited exposure exactly as `BLOCKED` does. Collapsing them would render a
+  live exposure identically to a resolved one.
+- **A named approver, enforced.** A disposition is refused unless it carries an approver name,
+  a role, a substantive basis and a future expiry date. Expiry is mandatory and lapses the
+  vendor back to `UNAUDITED`: a signed judgement may persist, but not forever and not silently.
+  Like `BLOCKED`, the payload nests under its verdict key so a scanner predating these verdicts
+  reads the entry as `UNAUDITED` rather than `CURRENT` — data ships ahead of the code that
+  understands it, and an unknown verdict must fail toward under-claiming. The flat form is
+  refused outright rather than ignored.
+- **Run-over-run catalog movement** (`catalogDelta` in `drift.json`). A first run reports no
+  transitions and says `comparedAgainst: null`: diffing against an absent state file would
+  present every existing attestation as freshly earned. A vendor seen for the first time counts
+  as *detected*, never as *newly attested* — nobody did that work this period.
+
+### Fixed
+
+- **`catalogSummary` never reached `drift.json`.** The absorption counts existed in
+  `audit.json` and stopped there, so the canonical contract — which every other surface is a
+  verified projection of — could not state them. Both it and `catalogDelta` are now pinned in
+  `docs/schema/drift-v1.schema.json`.
+- **A signed-off vendor would have joined the human freshness work-order**, asking someone to go
+  read the deprecation page of a library we wrote ourselves. `due_for_refresh` skipped only
+  `CURRENT` and `BLOCKED`; it now skips the two dispositions too, and they return on their own
+  when the expiry lapses them.
+
 ## v1.0.0 — 2026-08-21
 
 **First stable release.** Supersedes the `0.19`/`0.20` betas, which shipped without changelog

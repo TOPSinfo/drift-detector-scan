@@ -894,6 +894,35 @@ def _cmd_freshness(args) -> int:
     return 3 if due else 0
 
 
+def _cmd_coverage_report(args) -> int:
+    """The management digest: the absorption scoreboard as a document someone can be sent.
+
+    Reads drift.json — the CANONICAL report — never audit.json, so the digest cannot quote a
+    figure the published contract does not carry. Verifies itself against that payload before
+    writing: a digest is mailed to people who will never open the report it summarises, so it
+    is the surface where an unnoticed disagreement does the most damage.
+
+    exit 0 written, 2 no report to summarise.
+    """
+    import json as _json
+    from agent.lib import coverage_digest, verify
+    path = os.path.join(args.state, "drift.json")
+    try:
+        with open(path, encoding="utf-8") as fh:
+            payload = _json.load(fh)
+    except (OSError, ValueError) as exc:
+        print(f"coverage-report: cannot read drift.json in {args.state} — run a scan first "
+              f"({exc})", file=sys.stderr)
+        return 2
+    md = coverage_digest.render(payload, now=args.now)
+    verify.check_digest_matches_coverage(md, payload)   # never write a digest that disagrees
+    out = getattr(args, "out", None) or os.path.join(args.state, "coverage-digest.md")
+    with open(out, "w", encoding="utf-8") as fh:
+        fh.write(md)
+    print(f"\u2713 coverage digest \u2192 {out}")
+    return 0
+
+
 def _cmd_recommend(args) -> int:
     """Suggest a scan profile per repo — for when the user can't decide which mode to run.
 
@@ -1732,6 +1761,12 @@ def main(argv: list[str]) -> int:
     pfr.add_argument("--now", required=True)
     pfr.add_argument("--out", help="write the work-order here (default: stdout)")
     pfr.set_defaults(func=_cmd_freshness)
+
+    pcov = sub.add_parser("coverage-report")   # management digest: the absorption scoreboard
+    pcov.add_argument("--state", required=True)
+    pcov.add_argument("--now", required=True)
+    pcov.add_argument("--out", help="write the digest here (default: <state>/coverage-digest.md)")
+    pcov.set_defaults(func=_cmd_coverage_report)
 
     lds = sub.add_parser("leads")           # AI cross-check -> leads.json (AI Frontier tab)
     lds.add_argument("--state", required=True)

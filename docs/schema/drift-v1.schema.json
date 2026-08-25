@@ -200,7 +200,7 @@
     },
     "catalog": {
       "type": "array",
-      "description": "Per-vendor catalog-coverage verdicts — whether anyone has checked this vendor's retirement list. A vendor with call-sites and no attestation is UNAUDITED, which is why '0 findings' is not the same as 'clean'. BLOCKED means the check was made and REFUSED \u2014 the vendor publishes retirements only behind a partner/seller login \u2014 a documented blind spot rather than an unworked one; its call-sites still count as unchecked.",
+      "description": "Per-vendor catalog-coverage verdicts — whether anyone has checked this vendor's retirement list. A vendor with call-sites and no attestation is UNAUDITED, which is why '0 findings' is not the same as 'clean'. BLOCKED means the check was made and REFUSED — the vendor publishes retirements only behind a partner/seller login — a documented blind spot rather than an unworked one; its call-sites still count as unchecked.",
       "items": {
         "type": "object",
         "properties": {
@@ -212,7 +212,9 @@
               "CURRENT",
               "STALE",
               "UNAUDITED",
-              "BLOCKED"
+              "BLOCKED",
+              "INTERNAL",
+              "ACCEPTED"
             ]
           },
           "callSites": {
@@ -386,6 +388,80 @@
         "object",
         "null"
       ]
+    },
+    "catalogSummary": {
+      "type": "object",
+      "description": "The absorption scoreboard: how many DETECTED vendors have had their retirement list checked, and how many have not. The unit is an attestation (somebody opened the vendor's page on a stated date), never an entry count, which is gameable. INTERNAL and ACCEPTED are human-signed terminal dispositions; only INTERNAL settles a vendor, because in-house code has no external lifecycle. ACCEPTED names a risk without measuring it, so its call-sites keep counting toward unauditedCallSites exactly as BLOCKED's do.",
+      "properties": {
+        "current": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "stale": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "unaudited": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "blocked": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "internal": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Vendors signed off as built in-house by a named approver."
+        },
+        "accepted": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Vendors whose residual risk a named approver accepted; still counted as unchecked exposure."
+        },
+        "unauditedCallSites": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Call-sites belonging to vendors nobody has checked a retirement list for. The number that matters: it is the size of the blind spot."
+        }
+      }
+    },
+    "catalogDelta": {
+      "type": "object",
+      "description": "Movement in catalog coverage since the PREVIOUS scan. `comparedAgainst` is the date of that scan, or null when no baseline existed — an empty delta with a null baseline means 'nothing to compare against', NOT 'a quiet week', and must never be rendered as calm.",
+      "properties": {
+        "comparedAgainst": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "newlyAttested": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Vendors already known last scan that have since become CURRENT or INTERNAL. A vendor seen for the first time is NOT listed here — nobody did that work this period."
+        },
+        "newlyStale": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "newlyDetected": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "noLongerDetected": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
     }
   }
 }

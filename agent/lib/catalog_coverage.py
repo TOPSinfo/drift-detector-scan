@@ -43,8 +43,25 @@ UNAUDITED = "UNAUDITED"
 # It is NOT an attestation — it never becomes CURRENT and its call-sites keep counting as
 # unchecked exposure (principle 1: naming why we are blind does not make us sighted).
 BLOCKED = "BLOCKED"
+# Two terminal dispositions a HUMAN signs. Neither is reachable by reading a vendor page, which
+# is why both sat as UNAUDITED forever before they existed — a work-order item that can never
+# succeed, the same defect BLOCKED was introduced to fix one case earlier.
+#   INTERNAL  in-house code. No external vendor lifecycle exists, so the risk is genuinely
+#             ABSENT and the vendor's call-sites stop counting as unchecked exposure.
+#   ACCEPTED  an external vendor publishing nothing findable. A human accepted the residual
+#             risk. The risk is REAL, so its call-sites KEEP counting, exactly like BLOCKED.
+# They are two verdicts and not one flagged verdict on purpose: collapsing them would render a
+# live exposure identically to a resolved one.
+INTERNAL = "INTERNAL"
+ACCEPTED = "ACCEPTED"
+# The verdicts that mean "nothing is going unchecked here". Everything else contributes to
+# unaudited exposure. ACCEPTED is deliberately absent.
+SETTLED = (CURRENT, INTERNAL)
 
 NO_ATTESTATION = "no-catalog-attestation"
+IN_HOUSE = "in-house-no-vendor-lifecycle"
+RISK_ACCEPTED = "residual-risk-accepted"
+DISPOSITION_LAPSED = "signed-disposition-expired"
 ACCESS_BLOCKED = "partner-access-required"
 CATALOG_STALE = "catalog-stale"
 # The whole vendor API is catalogued as retired, so there is nothing left to audit:
@@ -90,6 +107,29 @@ def load_attestations(path: str | None = None) -> dict:
                                 "note": a.get("note", ""), "by": str(a.get("by") or "human"),
                                 "blocked": str(blk.get("why") or "")}
             continue
+        # INTERNAL / ACCEPTED nest their own provenance for the same reason BLOCKED does, and
+        # carry no top-level checked/source: that absence is precisely what makes an older
+        # scanner skip the entry and fall back to UNAUDITED instead of reading a human's waiver
+        # as a clean bill of health. The flat form is REFUSED, not ignored, so the unsafe
+        # encoding cannot be committed back in quietly.
+        disp = next((d for d in ("internal", "accepted") if a.get(d) is not None), None)
+        if disp is not None:
+            blk_d = a[disp]
+            if not isinstance(blk_d, dict) or a.get("checked") or a.get("source"):
+                continue
+            since = blk_d.get("since")
+            approver = blk_d.get("approver")
+            if not (since and isinstance(approver, dict) and blk_d.get("expires")):
+                continue          # a disposition with no date, approver or expiry is an assertion
+            out[a["vendor"]] = {"checked": str(since), "source": "",
+                                "note": a.get("note", ""), "by": str(a.get("by") or "human"),
+                                "blocked": "", "disposition": disp,
+                                "approver": approver, "expires": str(blk_d.get("expires"))}
+            continue
+        # A top-level `disposition:` is the flat form of the above. Refuse it outright — left
+        # alone it loads as an ordinary attestation and grades CURRENT.
+        if a.get("disposition") is not None:
+            continue
         if a.get("checked") and a.get("source"):
             # `by` records provenance: "human" (default) vs "ai-research". An AI-attested "current"
             # is weaker than a human one — a missed sunset renders green and nobody re-checks green —
@@ -102,6 +142,69 @@ def load_attestations(path: str | None = None) -> dict:
                                 "note": a.get("note", ""), "by": str(a.get("by") or "human"),
                                 "blocked": ""}
     return out
+
+
+def _substantive(text) -> bool:
+    """A truthiness check lets 'ours' through. Require something that reads as an actual
+    reason. Mirrors resolve.py::_is_substantive_reason — duplicated rather than imported
+    because resolve imports absorb, and this module must stay importable by both."""
+    if not isinstance(text, str):
+        return False
+    return len(text.strip().split()) >= 3 and len(text.strip()) >= 10
+
+
+def check_dispositions(entries: list, *, now: str) -> list:
+    """Gate every INTERNAL/ACCEPTED entry. Returns the list of problems — empty means all pass.
+
+    Refuses, never sanitises: a disposition missing its approver is not dropped-and-continued,
+    it is a reason the whole batch fails. `load_attestations` merely SKIPS such an entry, which
+    is safe but silent; this is what tells the author their sign-off never took effect.
+    """
+    problems = []
+    for e in entries:
+        if not isinstance(e, dict):
+            problems.append("an entry is not a mapping")
+            continue
+        vendor = e.get("vendor") or "<no vendor>"
+        for kind in ("internal", "accepted"):
+            body = e.get(kind)
+            if body is None:
+                continue
+            where = f"{vendor} ({kind})"
+            if not isinstance(body, dict):
+                problems.append(f"{where}: the disposition must be a mapping")
+                continue
+            approver = body.get("approver")
+            if not isinstance(approver, dict):
+                problems.append(f"{where}: needs an `approver` with name, role and basis")
+                continue
+            if not str(approver.get("name") or "").strip():
+                problems.append(f"{where}: approver.name is required — a disposition with no "
+                                "named person behind it is exactly what this refuses")
+            if not str(approver.get("role") or "").strip():
+                problems.append(f"{where}: approver.role is required — a bare name does not say "
+                                "what standing they had to sign this")
+            if not _substantive(approver.get("basis")):
+                problems.append(f"{where}: approver.basis must state a real reason "
+                                "(at least a few words), not a placeholder")
+            expires = body.get("expires")
+            try:
+                if date.fromisoformat(str(expires)) < date.fromisoformat(now):
+                    problems.append(f"{where}: expires {expires!r} is already past — this "
+                                    "disposition would never take effect")
+            except (ValueError, TypeError):
+                problems.append(f"{where}: expires must be a real YYYY-MM-DD date, got "
+                                f"{expires!r} — an unreadable expiry is not an expiry")
+    return problems
+
+
+def _lapsed(expires, now: str) -> bool:
+    """Has a signed disposition passed its expiry? Unreadable or absent counts as lapsed —
+    failing toward the work-list, never toward silence."""
+    try:
+        return date.fromisoformat(str(expires)) < date.fromisoformat(now)
+    except (ValueError, TypeError):
+        return True
 
 
 def _age_days(checked: str, now: str) -> int | None:
@@ -121,6 +224,18 @@ def verdict_for(vendor: str, attestations: dict, now: str, *, stale_days: int = 
     # still blocked simply restates the block rather than expiring into false confidence.
     if att.get("blocked"):
         return BLOCKED, [ACCESS_BLOCKED], att.get("checked")
+    disposition = att.get("disposition")
+    if disposition:
+        # A signed judgement is allowed to persist, but never forever and never silently: past
+        # its expiry it lapses back to the work-list rather than continuing to speak for a
+        # person who signed it a year ago. An unparseable or missing expiry lapses too —
+        # a disposition whose end date cannot be read is not one anybody can rely on.
+        if _lapsed(att.get("expires"), now):
+            return UNAUDITED, [DISPOSITION_LAPSED], att.get("checked")
+        if disposition == "internal":
+            return INTERNAL, [IN_HOUSE], att.get("checked")
+        if disposition == "accepted":
+            return ACCEPTED, [RISK_ACCEPTED], att.get("checked")
     age = _age_days(att["checked"], now)
     if age is None or age > stale_days:
         return STALE, [CATALOG_STALE], att["checked"]
@@ -173,8 +288,15 @@ def build(endpoints: list, sunsets: list, attestations: dict, now: str,
                     "by": att.get("by", "human")})   # provenance: human vs ai-research
         if verdict == BLOCKED:
             out[-1]["blocked"] = att.get("blocked", "")   # WHAT would unblock it, in words
-    # loudest first: unaudited before stale before current, then by exposure
-    rank = {UNAUDITED: 0, BLOCKED: 1, STALE: 2, CURRENT: 3}
+        if verdict in (INTERNAL, ACCEPTED):
+            # WHO signed this and when it lapses. Carried onto the record so the report can name
+            # them: a sign-off the reader has to go find in YAML is not an auditable one.
+            out[-1]["approver"] = att.get("approver") or {}
+            out[-1]["expires"] = att.get("expires", "")
+    # loudest first: unaudited before stale before current, then by exposure.
+    # ACCEPTED sits beside BLOCKED — both are real, unmeasured exposure someone has named.
+    # INTERNAL sorts last, quieter even than CURRENT: there is no external lifecycle to watch.
+    rank = {UNAUDITED: 0, BLOCKED: 1, ACCEPTED: 2, STALE: 3, CURRENT: 4, INTERNAL: 5}
     out.sort(key=lambda r: (rank[r["verdict"]], -r["callSites"], r["vendor"]))
     return out
 
@@ -185,7 +307,12 @@ def summary(records: list) -> dict:
         "blocked": sum(1 for r in records if r["verdict"] == BLOCKED),
         "stale": sum(1 for r in records if r["verdict"] == STALE),
         "current": sum(1 for r in records if r["verdict"] == CURRENT),
-        # the number that matters: call-sites nobody has checked a retirement list for
+        "internal": sum(1 for r in records if r["verdict"] == INTERNAL),
+        "accepted": sum(1 for r in records if r["verdict"] == ACCEPTED),
+        # the number that matters: call-sites nobody has checked a retirement list for.
+        # INTERNAL is excluded because there is no retirement list to check — in-house code has
+        # no external lifecycle. ACCEPTED is NOT excluded: a human accepting a risk does not
+        # measure it, and those call-sites are still genuinely unchecked.
         "unauditedCallSites": sum(r["callSites"] for r in records
-                                  if r["verdict"] != CURRENT),
+                                  if r["verdict"] not in SETTLED),
     }

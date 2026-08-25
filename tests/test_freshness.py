@@ -74,3 +74,18 @@ def test_a_blocked_vendor_is_off_the_recurring_freshness_work_order():
             {"vendor": "Kogan", "verdict": "UNAUDITED", "callSites": 3, "checked": None}]
     due = [r["vendor"] for r in freshness.due_for_refresh(recs, set(), {})]
     assert due == ["Kogan"]
+
+
+def test_human_signed_dispositions_stay_off_the_freshness_work_order():
+    """The bug this guards: INTERNAL/ACCEPTED verdicts are not CURRENT, so without an explicit
+    skip they join the human work-order — asking someone to go read the deprecation page of a
+    library we wrote ourselves, or of a vendor a human already established publishes nothing.
+    Neither task can ever succeed, and a work-order that is never empty stops being read. Same
+    reasoning as the BLOCKED and dead-marketplace skips directly above.
+
+    They stay visible in the report's catalog table; what they leave is the ACTION list."""
+    records = [{"vendor": "AcmeBilling", "verdict": "INTERNAL", "callSites": 3},
+               {"vendor": "ObscureCo", "verdict": "ACCEPTED", "callSites": 2},
+               {"vendor": "RealVendor", "verdict": "UNAUDITED", "callSites": 9}]
+    due = freshness.due_for_refresh(records, auto=set(), unautomated={})
+    assert [r["vendor"] for r in due] == ["RealVendor"]

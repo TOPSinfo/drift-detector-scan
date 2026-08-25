@@ -62,6 +62,14 @@ def due_for_refresh(coverage_records: list, auto: set, unautomated: dict) -> lis
             # work-order permanently non-empty, and a list that is never empty stops being
             # read. It stays visible in the report's catalog table with its reason.
             continue
+        if r.get("verdict") in ("INTERNAL", "ACCEPTED"):
+            # A human already settled these, and neither can be advanced by re-reading a page:
+            # INTERNAL has no external vendor to read, and ACCEPTED records that a person looked
+            # and found nothing published. Re-asking every scan is the same permanent-task
+            # problem as BLOCKED. Both stay visible in the catalog table; what they leave is the
+            # ACTION list. They return here on their own when the disposition's expiry lapses
+            # them back to UNAUDITED.
+            continue
         if r.get("vendor") in auto:
             continue                       # catalog_check re-fetches this one automatically
         action, source, note = _classify(r.get("vendor"), unautomated)

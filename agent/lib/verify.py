@@ -1164,3 +1164,36 @@ def check_no_queue_label(html: str, where: str = "dashboard.html") -> None:
                         f"{where} renders the word 'Queued' — a queue on the page promises "
                         f"work later; label unresolved hosts as unresolved and say whether "
                         f"the resolution pass ran")
+
+
+def check_digest_matches_coverage(md_text: str, payload: dict) -> None:
+    """The coverage digest states the same figures as drift.json.
+
+    The digest is MAILED, to people who will never open drift.json. A number that drifts from
+    the report is therefore a lie with a long half-life and no reader positioned to catch it —
+    the same reasoning as check_md_matches_payload, applied to the surface that travels
+    furthest from its evidence. Re-parses the rendered Markdown rather than trusting the
+    renderer's own variables, so a template edit cannot pass by construction.
+    """
+    s = payload.get("catalogSummary") or {}
+    settled = s.get("current", 0) + s.get("internal", 0)
+    detected = (settled + s.get("stale", 0) + s.get("unaudited", 0)
+                + s.get("blocked", 0) + s.get("accepted", 0))
+
+    m = re.search(r"\*\*(\d+) of (\d+) detected vendors\*\*", md_text)
+    if not m:
+        raise Violation("digest-coverage",
+                        "the digest states no 'N of M detected vendors' headline — the one "
+                        "figure it exists to carry")
+    got_settled, got_detected = int(m.group(1)), int(m.group(2))
+    if (got_settled, got_detected) != (settled, detected):
+        raise Violation("digest-coverage",
+                        f"digest headline says {got_settled} of {got_detected}; drift.json's "
+                        f"catalogSummary says {settled} of {detected}")
+
+    sites = s.get("unauditedCallSites", 0)
+    if not re.search(r"\*\*%d call-site\(s\)\*\*" % sites, md_text):
+        raise Violation("digest-coverage",
+                        f"the digest does not state drift.json's unaudited call-site count "
+                        f"({sites}) — under-reporting the blind spot is the failure this tool "
+                        f"exists to prevent")

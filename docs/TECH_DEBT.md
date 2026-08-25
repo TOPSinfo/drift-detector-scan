@@ -202,6 +202,58 @@ scanner a workaround.
 
 ---
 
+## A published lifecycle source for human-signed dispositions
+
+**Status:** concept, parked 2026-08-24. Not scheduled. Raised by the PM; deliberately left
+unresolved rather than guessed at.
+
+**Today.** `INTERNAL` and `ACCEPTED` (see `agent/lib/catalog_coverage.py`) let a named person
+settle a vendor that no vendor page can settle — a library built in-house, or a vendor that
+publishes nothing findable. The record carries an approver name, role, basis and a mandatory
+expiry, and the gate (`check_dispositions`) refuses anything missing them.
+
+**The limitation, and it is a real one.** These are the ONLY records in this tool that assert
+something with no fetchable `source:`. Every other record traces to a URL that was fetched that
+session — CLAUDE.md principle 2, enforced by the absorb gate. An approver name is *attribution*
+(who said it), not *evidence* (what they read).
+
+The sharper consequence: a disposition cannot be **re-checked**, only **re-signed**.
+`catalog_check.stale_attestations` can re-fetch a real vendor's page and diff it; there is
+nothing to re-fetch here, so the expiry prompts a human to re-assert from memory rather than to
+re-verify against anything. That is weaker than the expiry makes it look, and it sits in the
+failure class the roadmap names as the one to fear — the tool sounding more confident than its
+evidence supports.
+
+**The idea.** Publish in-house component lifecycles in the same shape a real vendor does, so an
+in-house component stops being a special case: it gets a genuine `source:` URL and joins the
+existing auto lane. The machinery is already here — `agent/lib/catalog_sources.py` parses
+eBay's RSS deprecation feed and `agent/catalog_check.py::CHECKS` fetches and diffs it on a
+schedule. An internal feed in that shape would reuse both, with no new parsing.
+
+**Where it would plug in.** A lifecycle file in the private `drift-ops` repo, served as
+RSS/JSON via GitLab Pages (see "Go GitLab-native" above, which already contemplates GitLab
+Pages from `drift-ops`), registered in `CHECKS`, with `check_dispositions` extended to require
+the `source:` URL alongside the approver block.
+
+**Two constraints that decided nothing yet, and must be settled first.**
+
+1. **It cannot be public by default.** An in-house component name is a client identifier, and
+   `CONTEXT.md` plus `tests/test_no_internal_identifiers.py` forbid those in a public tree.
+   "This org runs an internal billing service, v1 sunsets on date X" is an infrastructure
+   disclosure on a permanent, indexable URL. Published yes; public only for components the
+   owner explicitly wants named.
+2. **Self-citation.** If the team that signs the disposition also owns the feed, the source is
+   the same party as the claim. Still a real gain — dated, versioned, diffable, re-fetchable by
+   machine rather than by memory — but it is provenance, not independent corroboration, and it
+   should never be presented to a reader as the latter.
+
+**Open questions the concept was parked on:** whether the audience is our own scanner
+re-fetching it or any external reader citing it; whether "in-house" means client-owned services
+(client identifiers, private) or Tops' own libraries (nameable, possibly public); and whether
+this is one Tops-published catalog or one feed per client fleet.
+
+---
+
 ## Go GitLab-native (move the CI runner from GitHub Actions to GitLab CI)
 
 **Status:** decided in principle (Fable-5 reviewed), **deferred pending a Tops-provided GitLab

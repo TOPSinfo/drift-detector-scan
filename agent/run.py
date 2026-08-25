@@ -17,6 +17,7 @@ from agent.lib.dashboard_render import build_payload, build_bundle, render_paylo
 from agent.lib.md_render import render_markdown
 from agent.lib.summary_render import render_summary
 from agent.lib.findings_state import apply_lifecycle
+from agent.lib import coverage_state
 from agent.lib.repo_discovery import discover_repos
 from agent.lib.http_util import default_http
 from agent.lib import ir_store
@@ -116,6 +117,10 @@ def run_pipeline(roots, state_dir, now, *, pull=False,
 
     audit = audit_inventory(doc, now, http=http) if http else audit_inventory(doc, now)
     apply_lifecycle(audit, state_dir, now)
+    # Catalog movement since the previous scan. Lives here rather than in audit_inventory
+    # because it is the only stage that knows the state dir, exactly like apply_lifecycle.
+    cov = audit.setdefault("coverage", {})
+    cov["catalogDelta"] = coverage_state.apply(cov.get("catalog", []), state_dir, now=now)
     _write_json(os.path.join(state_dir, "audit.json"), audit)
     # ONE payload, five sinks that cannot disagree:
     #   drift.json     the canonical machine-readable report (the "spec")

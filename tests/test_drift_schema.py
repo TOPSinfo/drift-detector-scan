@@ -74,3 +74,28 @@ def test_schema_rejects_a_bad_status_enum():
            "actions": [{"repo": "r", "ref": "eBay", "kind": "sunset", "status": "MADE-UP"}]}
     with pytest.raises(jsonschema.ValidationError):
         jsonschema.validate(instance=bad, schema=_load_schema())
+
+
+def test_the_schema_admits_the_two_human_signed_verdicts():
+    """The verdict enum is CLOSED, so a verdict the schema does not list makes the whole report
+    invalid — a scan that produced one would fail validation with the catalog entry, not the
+    code, blamed. INTERNAL and ACCEPTED are produced by catalog_coverage, so the published
+    contract has to name them."""
+    jsonschema = pytest.importorskip("jsonschema")
+    from agent.lib import catalog_coverage as cc
+
+    schema = _load_schema()
+    item = schema["properties"]["catalog"]["items"]
+    for verdict in (cc.INTERNAL, cc.ACCEPTED):
+        jsonschema.validate({"vendor": "AcmeBilling", "verdict": verdict,
+                             "callSites": 3, "catalogEntries": 0,
+                             "checked": "2026-08-24", "source": ""}, item)
+
+
+def test_the_absorption_scoreboard_is_part_of_the_contract():
+    """The digest is a PROJECTION of drift.json, so any number absent from the contract is a
+    number no report may state. Pinning catalogSummary/catalogDelta is what stops the digest
+    quietly recomputing them from somewhere else."""
+    schema = _load_schema()
+    assert "catalogSummary" in schema["properties"]
+    assert "catalogDelta" in schema["properties"]

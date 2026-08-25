@@ -275,6 +275,11 @@ def _build_projection(inventory: dict, audit: dict, gitlab_hosts=frozenset(), *,
         "coveredDeps": covered_deps,
         "sdkMediated": cov.get("sdkMediated", []),
         "catalog": (audit.get("coverage") or {}).get("catalog", []),
+        # The absorption scoreboard and its movement. Both must be in the CANONICAL payload:
+        # every other surface is a verified projection of it, so a number absent here is a
+        # number no report may state.
+        "catalogSummary": (audit.get("coverage") or {}).get("catalogSummary", {}),
+        "catalogDelta": (audit.get("coverage") or {}).get("catalogDelta", {}),
         "coverageNotes": (audit.get("coverage") or {}).get("notes", []),
         "coverageGrades": [dict(g, repoLabel=_repo_label(
             repo_meta.get(g.get("repo"), {}).get("remote_url"), g.get("repo")))
