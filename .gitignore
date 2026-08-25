@@ -36,3 +36,6 @@ adhoc/
 # the absorb trail — a debug by-product carrying client repo ids and file:line data.
 # Ignored by NAME so it is covered wherever a --state dir happens to live.
 absorb-trail.jsonl
+
+# Vendor spec downloads kept locally for reference — the catalog cites the source URL instead
+docs/vendor_sunset_docs/

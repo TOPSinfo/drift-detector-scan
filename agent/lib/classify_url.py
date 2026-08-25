@@ -154,9 +154,25 @@ def classify_host(host: str, vendors: list):
     return best
 
 
+# A version can live in the QUERY STRING rather than the path — Sage's OAuth authorize URL
+# carries it as `?filter=apiv3.1`. Matched only as a fallback, after the path regex misses, so
+# a normal `/v3/` URL is unaffected.
+#
+# The `api` prefix is MANDATORY, and that is the whole guard. A bare `v<n>` value is far too
+# common to trust: node-forge's docstrings carry `?k1=v1&k2=v2` as placeholder text, which an
+# api-optional pattern read as "version v1" — inventing a version for an endpoint that has none.
+# That is worse than leaving it unknown, because a wrong version silently matches the wrong
+# sunset entry, whereas an unknown one is reported as needing verification. Likewise `version=515`
+# (an asset/build number) must not match: it has no `v` token at all.
+_QUERY_VERSION_REGEX = re.compile(r'[?&][A-Za-z0-9_.-]+=api(v[0-9][0-9.]*)(?=&|$)')
+
+
 def version_of(url: str, vendor) -> str | None:
     regex = vendor.version_regex if vendor else DEFAULT_VERSION_REGEX
     m = re.search(regex, url)
+    if m:
+        return m.group(1)
+    m = _QUERY_VERSION_REGEX.search(url)
     return m.group(1) if m else None
 
 

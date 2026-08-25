@@ -170,3 +170,25 @@ def test_the_vendors_real_api_hosts_are_still_classified():
     for h in ("s3.amazonaws.com", "sqs.us-east-1.amazonaws.com", "api.github.com"):
         assert not is_nonhost(h), h                       # not an extraction artefact
         assert host_class.classify(h) != "boilerplate", h  # and not filed as a doc/link host
+
+
+def test_version_of_reads_a_query_string_version_marker():
+    """A version can live in the query string, not just the path.
+
+    Sage's OAuth authorize URL carries it as `?filter=apiv3.1`; without this the endpoint
+    is version-UNKNOWN, and audit.py sweeps every unknown-version endpoint of a vendor into
+    that vendor's version-scoped sunset entry as an unconfirmed "verify" row — so a repo
+    pinned to v3.1 gets flagged against the retired v3.
+    """
+    assert version_of("https://www.sageone.com/oauth2/auth/central?filter=apiv3.1", None) == "v3.1"
+
+
+def test_version_of_ignores_an_opaque_query_value_that_merely_looks_like_a_version():
+    """`?k1=v1` is a placeholder in node-forge's docstrings, not an API version.
+
+    Reading it as one would invent a version for an endpoint that has none — worse than
+    leaving it unknown, because a wrong version silently matches the wrong sunset entry.
+    """
+    assert version_of("https://example.com/api?k1=v1", None) is None
+    # a build/asset number is not an API version either
+    assert version_of("https://example.com/a?version=515", None) is None
