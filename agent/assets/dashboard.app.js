@@ -75,6 +75,10 @@
         RESEARCH: RESEARCH ? Vue.markRaw(RESEARCH) : null,
         LEADS: LEADS ? Vue.markRaw(LEADS) : null,
         generated: DATA.generated || "",
+        drawerOpen: false,     // the bottom drawer. A plain ref, deliberately: bound to a
+                               // COMPUTED it reopened itself on every re-render, so changing
+                               // tabs kept reinflating a panel the reader had just closed.
+        drawerTab: "notices",  // notices | help | method
         scope: "",            // global repo scope ("" = all)
         plane: "drift",        // active TOP-LEVEL plane: supply | drift | ai. Opens on Vendor
                                // Drift (the moat + timeline hero). Each plane owns its own
@@ -87,7 +91,6 @@
                                // hero region — Task 2/3 — so it is not a sub-tab option)
         expanded: {},         // row drill-down: idx (within `rows`) -> open/closed
         expandedShaped: {},   // AI Frontier shaped-row expand (sibling doc — not certified rows)
-        sumView: "prev",       // Summary sub-tab: Preview | JSON · drift.json
         sbomView: "prev",      // SBOM sub-tab: Preview | CycloneDX | SPDX
         sarifView: "prev",     // SARIF sub-tab: Preview | JSON · sarif.json
         copyState: {},         // per-view "Copy"/"Copied" label for the JSON copy buttons
@@ -117,7 +120,6 @@
         return (this.DATA.actions||[]).filter(function(a){
           return a.status==="DEPRECATED" && a.kind!=="sunset"; }).length;
       },
-      shapedRepos: function(){ return ((this.ADHOC&&this.ADHOC.byRepo)||[]).length; },
       // the AI-research tier — what the research loop found in the wild
       hasResearch: function(){ return !!this.RESEARCH; },
       researchList: function(){ return (this.RESEARCH && this.RESEARCH.verdicts) || []; },
@@ -327,7 +329,6 @@
       // ---- JSON views: drift.json / CycloneDX / SPDX / SARIF, pretty-printed for the
       // read-only "view / copy" panels. Same DATA/SBOM/SPDX/SARIF the tables above render
       // from — the verified source of truth, not a re-derived summary. ----
-      driftJsonText: function(){ return JSON.stringify(this.DATA, null, 2); },
       sbomJsonText: function(){ return JSON.stringify(this.SBOM, null, 2); },
       spdxJsonText: function(){ return JSON.stringify(this.SPDX, null, 2); },
       sarifJsonText: function(){ return JSON.stringify(this.SARIF, null, 2); },
@@ -429,6 +430,34 @@
         return this.rootsUnscannable.length > 0 || this.coverageNotesSpecific.length > 0 ||
                this.unknownShapes.length > 0 || this.gradedRepos.length > 0 ||
                this.sdkMediated.length > 0 || this.coveredDeps.length > 0;
+      },
+      // ---- the STATUS STRIP: every message this scan wants to tell you, in one place.
+      // These notices were scattered — the resolution note sat under the plane cards while six
+      // coverage caveats sat at the very bottom of the page, below a full screen of static
+      // explainer text nobody scrolls past. They are one KIND of thing (what this scan could and
+      // could not establish) and now read as one.
+      //
+      // Consolidating RAISES them; it must never hide them. Principle 1 — "cannot see" is not
+      // "clean" — means a blind spot is a finding, so the strip opens itself whenever one exists
+      // (`noticesOpen`) and only sits collapsed when there is nothing to admit.
+      noticeBits: function(){
+        var b = [];
+        // the same expression resolutionNote itself counts on — `counts.unresolved`
+        // does not exist and rendered the literal string "undefined unresolved".
+        if(this.resolutionNote) b.push(((this.counts.coverage||{})["queued"]||0) + " unresolved");
+        if(this.rootsUnscannable.length) b.push(this.rootsUnscannable.length + " source(s) unreadable");
+        if(this.unknownShapes.length) b.push(this.unknownShapes.length + " repo(s) partially read");
+        if(this.gradedRepos.length) b.push(this.gradedRepos.length + " repo(s) with unattributed calls");
+        if(this.sdkMediated.length) b.push(this.sdkMediated.length + " repo(s) SDK-mediated");
+        if(this.coveredDeps.length) b.push(this.coveredDeps.length + " private dep(s) scanned directly");
+        if(this.driftHasContent) b.push("changed since last scan");
+        return b;
+      },
+      // A blind spot is the one thing this tool exists not to hide, so its presence — not the
+      // reader's last click — decides whether the strip starts open.
+      noticesOpen: function(){
+        return this.rootsUnscannable.length > 0 || this.unknownShapes.length > 0 ||
+               this.gradedRepos.length > 0 || !!this.resolutionNote;
       },
       inventoryDrift: function(){ return this.DATA.inventoryDrift || null; },
       driftChangeRows: function(){
@@ -734,9 +763,30 @@
         });
       },
 
-      actionLabel: function(a){ return a.ref + (a.unit ? " " + a.unit : ""); },
-      targetText: function(a){
-        return a.fix_version ? (a.current_version + " → " + a.fix_version) : (a.recommendation || "review");
+      // ---- the Vendor Drift plane's status column. A retirement date alone makes the reader
+      // do the arithmetic on every row; "past due" / "in 34 days" is the fact they came for.
+      //
+      // Anchored to DATA.generated — the scan date — NEVER the live clock, for the same reason
+      // the timeline is: the same drift.json must render identically on any machine on any day
+      // it is opened, or the page stops being a projection of the report.
+      dueDays: function(row){
+        if(!row || !row.date) return null;
+        var a = Date.parse(row.date + "T00:00:00Z"), b = Date.parse(this.generated + "T00:00:00Z");
+        if(isNaN(a) || isNaN(b)) return null;
+        return Math.round((a - b) / 86400000);
+      },
+      dueLabel: function(row){
+        var d = this.dueDays(row);
+        if(d === null) return row && row.status === "DEPRECATED" ? "undated" : "—";
+        if(d < 0) return "past due " + (-d) + "d";
+        if(d === 0) return "today";
+        return "in " + d + "d";
+      },
+      dueClass: function(row){
+        var d = this.dueDays(row);
+        if(d === null) return "med";
+        if(d < 0) return "crit";
+        return d <= 180 ? "soon" : "up";
       },
       catalogWhy: function(cv){
         if(cv.verdict==="UNAUDITED"){
@@ -780,6 +830,18 @@
       trackLabel: function(e){
         return {tracked:"tracked", queued:"queued · research pending", "needs-human":"needs review",
                 blocked:"blocked · doc access", na:"—"}[this.trackState(e)] || "—";
+      },
+      // ---- drift.json, downloadable. The Preview|JSON pane that used to render it inline is
+      // gone (one table is the view; a second rendering of the same rows earned nothing). But
+      // drift.json is the CERTIFIED record this page is a projection of — the tier key says so
+      // — and the dashboard travels as a single self-contained file, so "it's next to it on
+      // disk" is not always true. Removing the pane must not remove access to the artifact.
+      // Serialised from the payload already embedded in this page, so it stays offline.
+      exportDrift: function(){
+        var json = JSON.stringify(this.DATA, null, 2);
+        var blob = new Blob([json], {type: "application/json"}), url = URL.createObjectURL(blob);
+        var link = document.createElement("a");
+        link.href = url; link.download = "drift.json"; link.click(); URL.revokeObjectURL(url);
       },
       exportCsv: function(){
         var self = this, head = ["repo","host","kind","recognized_as","tracking","call_sites","files"];
@@ -873,6 +935,33 @@
       q: function(){ this.expanded = {}; this.expandedShaped = {}; }
     },
     mounted: function(){
+      // The sticky header's height changes with the plane bar and the headline's wrapping, so
+      // anything that sticks BELOW it cannot use a constant. Measured once and on every
+      // resize; --hdr has a sane fallback so the layout is never broken if this never runs.
+      var hdr = document.querySelector(".sticky");
+      if(hdr && window.ResizeObserver){
+        var root = document.documentElement;
+        var setH = function(){
+          root.style.setProperty("--hdr", hdr.offsetHeight + "px");
+          // MEASURE the space the two cards can actually have rather than reserving a constant
+          // for it. The old `100vh - --hdr - 190px` guessed at the tab row and the drawer
+          // together and over-reserved, leaving a dead band above the drawer. Here the card's
+          // own top offset already accounts for everything above it — header, plane bar, tab
+          // row — so the only other unknown is the drawer's collapsed bar.
+          var split = document.querySelector(".split");
+          var bar = document.querySelector(".dbar");
+          if(!split) return;
+          var top = split.getBoundingClientRect().top + window.scrollY;
+          var avail = window.innerHeight - top - (bar ? bar.offsetHeight : 56) - 14;
+          root.style.setProperty("--panelh", Math.max(320, Math.round(avail)) + "px");
+        };
+        setH();
+        new ResizeObserver(setH).observe(hdr);
+        var bar = document.querySelector(".dbar");
+        if(bar) new ResizeObserver(setH).observe(bar);
+        window.addEventListener("resize", setH);
+      }
+
       try{ var s=localStorage.getItem("drift-theme"); if(s) this.theme=s; }catch(e){}
       document.documentElement.style.colorScheme = this.theme==="auto" ? "light dark" : this.theme;
       document.title = "Drift Detector — DevSecOps Cockpit · " + this.generated;

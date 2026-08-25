@@ -5,7 +5,7 @@
   color-scheme:dark;
   --accent:#e0533d; --accent-2:#3d7de0;
   --bg:light-dark(#f5f5f2,#0f1114); --panel:light-dark(#fff,#16191e);
-  --panel-2:light-dark(#efefEA,#1b1f26); --line:light-dark(#e4e4de,#2a2f38);
+  --panel-2:light-dark(#efefea,#1b1f26); --line:light-dark(#e4e4de,#2a2f38);
   --ink:light-dark(#191b1f,#e8ebf1); --muted:light-dark(#6a7180,#98a1b1);
   --crit:#e0533d; --high:#e08a3d; --med:#cdb63a; --low:#5f9e6a; --info:#3d7de0; --sun:#b06ee0;
   --track:light-dark(#ecece7,#20242c);
@@ -14,227 +14,246 @@
      stuck in their light-mode fallback colours under dark mode. */
   --amber-bg:light-dark(#fdf1dc,#3a2c12); --amber-fg:light-dark(#7a4b00,#e0a83d);
   --muted-bg:light-dark(#eceff3,#1b1f26); --muted-fg:light-dark(#52606d,#98a1b1);
-  --mono:ui-monospace,"SF Mono",Menlo,Consolas,monospace; --sans:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif; --r:12px;
+  /* TYPE SCALE — seven steps, no fractions. Replaces fifteen ad-hoc sizes (9 … 19px, in
+     half-pixel increments); 12.5 vs 13px is a distinction no reader makes and every editor
+     had to decide about. */
+  --t-micro:10px; --t-tiny:11px; --t-sm:12px; --t-base:13px; --t-md:14px; --t-lg:16px; --t-xl:19px;
+  /* WEIGHTS — three. The old set ran 500/550/600/620/640/650/660/680/700; the system font
+     stack this page ships with cannot render 620 and 660 differently. */
+  --w-normal:500; --w-semi:600; --w-bold:700;
+  /* RADII — four steps plus a pill. `--r` existed and was used twice out of eleven radii. */
+  --r-xs:4px; --r-sm:6px; --r-md:10px; --r-lg:14px; --r-pill:999px;
+  /* the timeline's label gutter. The axis, the TODAY line and every row label must share it
+     or the chart silently misaligns — it was three separate 260px literals. */
+  /* SPACING — a 4px rhythm. Padding ran across seventeen values (1 … 26px); density was
+     impossible to tune because no two components agreed on what "snug" meant. */
+  --s-1:2px; --s-2:4px; --s-3:6px; --s-4:8px; --s-5:12px; --s-6:16px; --s-7:24px;
+  --tl-gutter:260px;
+  /* colours that had escaped the token set entirely */
+  --ok:light-dark(#2e7d32,#5f9e6a);
+  --code-bg:light-dark(#f7f7f4,#0c0e12); --code-fg:light-dark(#333,#c8d0dc);
+  --mono:ui-monospace,"SF Mono",Menlo,Consolas,monospace; --sans:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
 }
 [v-cloak]{display:none}   /* hides the un-hydrated in-DOM template on first paint */
 *{box-sizing:border-box;margin:0}
-body{background:var(--bg);color:var(--ink);font-family:var(--sans);font-size:14px;line-height:1.5;
+body{background:var(--bg);color:var(--ink);font-family:var(--sans);font-size:var(--t-base);line-height:1.45;
   -webkit-font-smoothing:antialiased;font-variant-numeric:tabular-nums;
-  padding:0 clamp(16px,3vw,40px) 60px;container-type:inline-size}          /* full width — fluid, no max-width */
+  padding:0 clamp(var(--s-6),3vw,40px) var(--s-4);   /* the cards stop above the drawer; no band needed */container-type:inline-size}          /* full width — fluid, no max-width */
 code,.mono{font-family:var(--mono);font-size:.86em}
 a{color:var(--accent-2);text-decoration:none} a:hover{text-decoration:underline}
 
 .sticky{position:sticky;top:0;z-index:20;background:color-mix(in oklab,var(--bg) 88%,transparent);
-  backdrop-filter:blur(8px);padding-top:12px}
-.brand{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
-.brand .mark{width:26px;height:26px;border-radius:8px;
+  backdrop-filter:blur(8px);padding-top:var(--s-5)}
+.brand{display:flex;align-items:center;gap:var(--s-5);flex-wrap:wrap}
+.brand .mark{width:26px;height:26px;border-radius:var(--r-md);
   background:radial-gradient(120% 120% at 30% 20%,color-mix(in oklab,var(--accent) 70%,#fff),var(--accent) 55%,color-mix(in oklab,var(--accent) 60%,#000));
   box-shadow:0 0 0 1px color-mix(in oklab,var(--accent) 40%,transparent),0 4px 14px color-mix(in oklab,var(--accent) 35%,transparent)}
-.brand h1{font-size:16px;font-weight:650;letter-spacing:-.01em}
-.brand .sub{font-size:10.5px;font-weight:650;letter-spacing:.04em;text-transform:uppercase;color:var(--accent);
-  border:1px solid color-mix(in oklab,var(--accent) 45%,var(--line));border-radius:20px;padding:2px 9px}
-.brand .meta{color:var(--muted);font-size:12.5px} .spacer{flex:1}
-.caps{display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin-right:8px}
-.cap{font-size:10px;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:2px 7px;background:var(--panel)}
+.brand h1{font-size:var(--t-lg);font-weight:var(--w-semi);letter-spacing:-.01em}
+.brand .sub{font-size:var(--t-tiny);font-weight:var(--w-semi);letter-spacing:.04em;text-transform:uppercase;color:var(--accent);
+  border:1px solid color-mix(in oklab,var(--accent) 45%,var(--line));border-radius:var(--r-pill);padding:var(--s-1) var(--s-4)}
+.spacer{flex:1}
 /* endpoint type badge — a found integration reads as a type ("API lead"/"social"), never "Unknown" */
-.hc{font-size:9px;letter-spacing:.05em;text-transform:uppercase;color:var(--muted);border:1px solid var(--line);
-  border-radius:5px;padding:1px 5px;margin-left:7px;white-space:nowrap;vertical-align:middle}
+.hc{font-size:var(--t-micro);letter-spacing:.05em;text-transform:uppercase;color:var(--muted);border:1px solid var(--line);
+  border-radius:var(--r-xs);padding:var(--s-1) var(--s-2);margin-left:var(--s-3);white-space:nowrap;vertical-align:middle}
 .hc[data-hc="api-lead"]{color:var(--accent);border-color:color-mix(in oklab,var(--accent) 45%,var(--line))}
 .hc[data-hc="asset-cdn"],.hc[data-hc="vendored-lib"],.hc[data-hc="boilerplate"]{opacity:.55}
 /* tracking status — COVERAGE, not identity. "not yet tracked" is neutral/roadmap, never green. */
-.trk{font-size:10px;letter-spacing:.03em;padding:1px 8px;border-radius:20px;white-space:nowrap;
+.trk{font-size:var(--t-micro);letter-spacing:.03em;padding:var(--s-1) var(--s-4);border-radius:var(--r-pill);white-space:nowrap;
   border:1px solid var(--line);color:var(--muted);background:var(--panel)}
-.trk[data-trk="tracked"]{color:#2e7d32;border-color:color-mix(in oklab,#2e7d32 45%,var(--line))}
+.trk[data-trk="tracked"]{color:var(--ok);border-color:color-mix(in oklab,var(--ok) 45%,var(--line))}
 .trk[data-trk="queued"]{color:var(--accent);border-color:color-mix(in oklab,var(--accent) 40%,var(--line))}
-.trk[data-trk="needs-human"],.trk[data-trk="blocked"]{color:var(--sun,#b26a00);border-color:color-mix(in oklab,var(--sun,#b26a00) 40%,var(--line))}
+.trk[data-trk="needs-human"],.trk[data-trk="blocked"]{color:var(--sun);border-color:color-mix(in oklab,var(--sun) 40%,var(--line))}
 .trk[data-trk="na"]{opacity:.4}
-.cap.hot{color:var(--accent);border-color:color-mix(in oklab,var(--accent) 40%,var(--line))}
-@container (max-width:720px){.caps{display:none}}
 .themebtn{appearance:none;background:var(--panel);border:1px solid var(--line);color:var(--muted);
-  border-radius:20px;padding:5px 12px;font:inherit;font-size:12px;cursor:pointer}
+  border-radius:var(--r-pill);padding:var(--s-2) var(--s-5);font:inherit;font-size:var(--t-sm);cursor:pointer}
 .themebtn:hover{color:var(--ink);border-color:var(--accent-2)}
-.headline{font-size:15px;text-wrap:balance;margin:10px 0} .headline .big{font-weight:680} .dot{color:var(--crit)}
-.ownstat{margin-left:6px;font-size:12.5px;color:var(--muted);border-left:1px solid var(--line);padding-left:10px}
+.headline{font-size:var(--t-md);text-wrap:balance;margin:0} .headline .big{font-weight:var(--w-bold)} .dot{color:var(--crit)}
+.ownstat{margin-left:var(--s-3);font-size:var(--t-sm);color:var(--muted);border-left:1px solid var(--line);padding-left:var(--s-5)}
 
-/* ---- TOP-LEVEL PLANES: Supply Chain / Vendor Drift / AI Frontier. Each plane carries its own
-   accent (--pa) — amber for supply-chain, ember for the flagship drift plane, blue matching the
-   SHAPED badge for AI — differentiated by hue AND the left rail + tag, never hue alone. ---- */
-.planes{display:flex;gap:10px;margin:12px 0 8px;flex-wrap:wrap}
-.plane{--pa:var(--accent);appearance:none;flex:1;min-width:230px;text-align:left;cursor:pointer;
+/* ---- PLANE SWITCHER — one line. Each plane keeps its own accent (--pa) and is
+   differentiated by the rail + tag, never hue alone, so it survives greyscale. ---- */
+.planebar{display:flex;gap:var(--s-2);margin:var(--s-5) 0 var(--s-4);flex-wrap:wrap;
+  border-bottom:1px solid var(--line);padding-bottom:var(--s-3)}
+.pb{--pa:var(--accent);appearance:none;display:flex;align-items:center;justify-content:space-between;gap:var(--s-4);flex:1 1 0;min-width:0;cursor:pointer;
   background:var(--panel);border:1px solid var(--line);border-left:3px solid color-mix(in oklab,var(--pa) 55%,var(--line));
-  border-radius:12px;padding:11px 14px;font:inherit;color:var(--ink);
-  transition:border-color .12s,background .12s,box-shadow .12s,opacity .12s}
-.plane[data-plane="supply"]{--pa:var(--high)}
-.plane[data-plane="drift"]{--pa:var(--accent)}
-.plane[data-plane="ai"]{--pa:var(--accent-2)}
-.plane[data-on="0"]{opacity:.72}
-.plane:hover{opacity:1;border-color:color-mix(in oklab,var(--pa) 45%,var(--line));background:var(--panel-2)}
-.plane[data-on="1"]{opacity:1;border-color:color-mix(in oklab,var(--pa) 60%,var(--line));background:var(--panel-2);
-  box-shadow:inset 0 0 0 1px color-mix(in oklab,var(--pa) 28%,transparent),0 4px 16px color-mix(in oklab,var(--pa) 13%,transparent)}
-.plane:focus-visible{outline:2px solid var(--pa);outline-offset:2px}
-.pl-top{display:flex;align-items:center;gap:8px}
-.pl-name{font-size:14px;font-weight:660;letter-spacing:-.01em}
-.pl-tag{font:700 9px/1 var(--mono);letter-spacing:.08em;padding:2px 5px;border-radius:4px;
-  color:var(--pa);border:1px solid color-mix(in oklab,var(--pa) 45%,var(--line));white-space:nowrap}
-.pl-n{margin-left:auto;font-size:18px;font-weight:700;color:var(--pa)}
-.pl-blurb{display:block;margin-top:5px;font-size:11.5px;line-height:1.45;color:var(--muted)}
-@container (max-width:760px){.plane{min-width:100%}}
+  border-radius:var(--r-sm);padding:var(--s-3) var(--s-5);font:inherit;color:var(--ink);
+  transition:border-color .12s,background .12s,opacity .12s}
+.pb[data-plane="supply"]{--pa:var(--high)}
+.pb[data-plane="drift"]{--pa:var(--accent)}
+.pb[data-plane="ai"]{--pa:var(--accent-2)}
+.pb[data-on="0"]{opacity:.6}
+.pb:hover{opacity:1;border-color:color-mix(in oklab,var(--pa) 45%,var(--line));background:var(--panel-2)}
+.pb[data-on="1"]{opacity:1;border-color:color-mix(in oklab,var(--pa) 60%,var(--line));background:var(--panel-2);
+  box-shadow:inset 0 0 0 1px color-mix(in oklab,var(--pa) 26%,transparent)}
+.pb:focus-visible{outline:2px solid var(--pa);outline-offset:2px}
+.pb-name{font-size:var(--t-base);font-weight:var(--w-semi);letter-spacing:-.01em;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.pb-tag{font-family:var(--mono);font-size:9px;font-weight:var(--w-bold);letter-spacing:.07em;
+  padding:var(--s-1) var(--s-2);border-radius:var(--r-xs);color:var(--pa);
+  border:1px solid color-mix(in oklab,var(--pa) 45%,var(--line));white-space:nowrap}
+.pb-n{font-size:var(--t-lg);font-weight:var(--w-bold);color:var(--pa);min-width:1.4em;text-align:right}
 
 /* plane-intro hero (Supply Chain / AI Frontier get a headline card, not the timeline —
    the timeline is CERTIFIED-only and belongs to the Vendor Drift plane). */
-.planehero{padding:8px 0 2px;max-width:66ch}
-.planehero p{font-size:13.5px;line-height:1.7;color:var(--muted)}
-.planehero b{color:var(--ink);font-weight:600}
 
-/* ---- PRIMARY TABS = the metric tiles (cockpit IA) ---- */
-.tabstrip{display:flex;gap:8px 20px;flex-wrap:wrap;align-items:flex-end;
-  border-bottom:1px solid var(--line);padding-bottom:0;margin-top:10px}
-.tgroup{display:flex;flex-direction:column;gap:5px}
-.tglbl{font-size:9.5px;letter-spacing:.1em;text-transform:uppercase;color:var(--muted);padding-left:2px}
-.trow{display:flex;gap:4px}
-.mtab{appearance:none;display:flex;flex-direction:column;gap:0;min-width:66px;padding:7px 12px 9px;
-  background:transparent;border:0;border-bottom:2px solid transparent;color:var(--ink);border-radius:8px 8px 0 0;
-  cursor:pointer;font:inherit;transition:background .12s,border-color .12s}
-.mtab:hover{background:var(--panel-2)}
-.mtab .n{font-size:18px;font-weight:680;line-height:1.1} .mtab .t{font-size:10.5px;color:var(--muted)}
-.mtab[data-on="1"]{border-bottom-color:var(--accent);background:var(--panel-2)}
-.mtab[data-on="1"] .t{color:var(--ink)}
-.mtab[data-sev="crit"] .n{color:var(--crit)} .mtab[data-sev="warn"] .n{color:var(--high)}
-.mtab[data-zero="1"] .n{color:var(--muted);opacity:.55}
-@container (max-width:760px){.tabstrip{justify-content:flex-start}}
-@container (max-width:640px){.tabstrip{gap:6px 12px}.mtab{min-width:60px;padding:6px 9px}}
+/* ---- METRIC TABS — the same object as the plane switcher, one level down, so the two read
+   as one control family instead of two unrelated widgets. Label and count share a ROW, which
+   is what makes every tab the same height regardless of how long its label is; stacked, a
+   two-word label silently made its tab taller than its neighbours. ---- */
+.tabstrip{position:sticky;top:var(--hdr,150px);z-index:12;background:var(--bg);display:flex;gap:var(--s-2);
+  flex-wrap:wrap;padding:var(--s-3) 0 var(--s-4)}
+.tgroup,.trow{display:contents}
+.mtab{--pa:var(--muted);appearance:none;display:flex;align-items:center;justify-content:space-between;gap:var(--s-4);flex:1 1 0;min-width:0;cursor:pointer;
+  background:var(--panel);border:1px solid var(--line);border-left:3px solid transparent;
+  border-radius:var(--r-sm);padding:var(--s-3) var(--s-5);font:inherit;color:var(--ink);
+  transition:border-color .12s,background .12s,opacity .12s}
+.mtab .t{font-size:var(--t-base);font-weight:var(--w-semi);color:var(--ink);order:1}
+.mtab .n{font-size:var(--t-md);font-weight:var(--w-bold);color:var(--pa);order:2;
+  min-width:1.2em;text-align:right}
+.mtab:hover{background:var(--panel-2);border-color:color-mix(in oklab,var(--accent) 35%,var(--line))}
+.mtab[data-on="1"]{background:var(--panel-2);border-left-color:var(--accent);
+  border-color:color-mix(in oklab,var(--accent) 55%,var(--line));
+  box-shadow:inset 0 0 0 1px color-mix(in oklab,var(--accent) 22%,transparent)}
+.mtab[data-sev="crit"]{--pa:var(--crit)} .mtab[data-sev="warn"]{--pa:var(--high)}
+.mtab[data-zero="1"]{opacity:.5} .mtab[data-zero="1"] .n{color:var(--muted)}
+.mtab:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+
+/* table title and its filter on one row */
+.tablehead{display:flex;align-items:center;gap:var(--s-5);margin-bottom:var(--s-4);flex-wrap:wrap}
+.tablehead h3{margin:0;flex:none}
+.tablehead .search{flex:1;min-width:180px}
 
 /* ---- HERO REGION (where the cards used to be — Task 2/3 fill #hero-body) ---- */
-.hero{background:var(--panel);border:1px solid var(--line);border-top:0;border-radius:0 0 14px 14px;
-  padding:18px 20px 20px;margin-bottom:16px}
-.herohead{display:flex;align-items:baseline;gap:12px;flex-wrap:wrap;margin-bottom:4px}
-.herohead h2{font-size:15px;margin:0;font-weight:640}
-.herohead .why{color:var(--muted);font-size:12.5px}
+.hero{background:var(--panel);border:1px solid var(--line);border-radius:var(--r-lg);
+  padding:var(--s-5) var(--s-6) var(--s-6);margin-bottom:var(--s-5)}
+.herohead{display:flex;align-items:baseline;gap:var(--s-5);flex-wrap:wrap;margin-bottom:var(--s-2)}
+.herohead h2{font-size:var(--t-lg);margin:0;font-weight:var(--w-semi)}
+.herohead .why{color:var(--muted);font-size:var(--t-sm)}
 .herohead .sp{flex:1}
-.legend{display:flex;gap:14px;font-size:11.5px;color:var(--muted);align-items:center}
-.legend i{display:inline-block;width:9px;height:9px;border-radius:50%;margin-right:5px;vertical-align:-1px}
+.legend{display:flex;gap:var(--s-6);font-size:var(--t-tiny);color:var(--muted);align-items:center}
+.legend i{display:inline-block;width:9px;height:9px;border-radius:50%;margin-right:var(--s-2);vertical-align:-1px}
 .i-crit{background:var(--crit)} .i-up{background:var(--accent-2)} .i-soon{background:var(--high)}
 
-.tab{appearance:none;background:none;border:0;color:var(--muted);font:inherit;font-weight:550;padding:10px 16px;cursor:pointer;position:relative}
+.tab{appearance:none;background:none;border:0;color:var(--muted);font:inherit;font-weight:var(--w-normal);padding:var(--s-5) var(--s-6);cursor:pointer;position:relative}
 .tab:hover{color:var(--ink)} .tab.active{color:var(--ink)}
-.tab.active::after{content:"";position:absolute;left:10px;right:10px;bottom:-1px;height:2px;border-radius:2px;background:var(--accent)}
+.tab.active::after{content:"";position:absolute;left:10px;right:10px;bottom:-1px;height:2px;border-radius:var(--r-xs);background:var(--accent)}
 /* ---- SUB-TABS: the outer strip (Summary/SBOM/SARIF, `.subtab`) reuses the same `.subbar`
    container as the inner Preview/JSON strips (`.tab`) nested one level down — different
    child button classes, same boxy tab-strip shell. ---- */
-.subbar{display:flex;gap:2px;background:var(--panel);border:1px solid var(--line);border-bottom:0;border-radius:var(--r) var(--r) 0 0;padding:8px 8px 0}
-.subbar .tab{padding:6px 13px;font-size:12.5px} .subbar .tab.active::after{background:var(--accent-2)}
-.subtab{appearance:none;background:none;border:0;color:var(--muted);font:inherit;font-weight:550;padding:9px 15px;border-radius:8px 8px 0 0;cursor:pointer;position:relative}
+.subbar{display:flex;gap:var(--s-1);background:var(--panel);border:1px solid var(--line);border-bottom:0;border-radius:var(--r-lg) var(--r-lg) 0 0;padding:var(--s-4) var(--s-4) 0}
+.subbar .tab{padding:var(--s-3) var(--s-5);font-size:var(--t-sm)} .subbar .tab.active::after{background:var(--accent-2)}
+.subtab{appearance:none;background:none;border:0;color:var(--muted);font:inherit;font-weight:var(--w-normal);padding:var(--s-4) var(--s-6);border-radius:var(--r-md) var(--r-md) 0 0;cursor:pointer;position:relative}
 .subtab:hover{color:var(--ink)} .subtab[data-on="1"]{color:var(--ink)}
-.subtab[data-on="1"]::after{content:"";position:absolute;left:12px;right:12px;bottom:-1px;height:2px;border-radius:2px;background:var(--accent-2)}
-.panels{background:var(--panel);border:1px solid var(--line);border-top:0;border-radius:0 0 var(--r) var(--r);padding:18px}
+.subtab[data-on="1"]::after{content:"";position:absolute;left:12px;right:12px;bottom:-1px;height:2px;border-radius:var(--r-xs);background:var(--accent-2)}
+.panels{background:var(--panel);border:1px solid var(--line);border-radius:var(--r-lg);padding:var(--s-5)}
 .panel{display:none;animation:fade .18s ease} .panel.active{display:block}
 @keyframes fade{from{opacity:0;transform:translateY(2px)}to{opacity:1}}
 
-h3{font-size:13.5px;font-weight:620;margin-bottom:12px}
+h3{font-size:var(--t-base);font-weight:var(--w-semi);margin-bottom:var(--s-5)}
 /* the global repo scope, top-right in the header chip row (next to Theme) */
 .repopick{appearance:none;background:var(--panel);border:1px solid var(--line);color:var(--ink);
-  border-radius:20px;padding:5px 26px 5px 12px;font:inherit;font-size:12px;cursor:pointer;max-width:200px;
+  border-radius:var(--r-pill);padding:var(--s-2) var(--s-7) var(--s-2) var(--s-5);font:inherit;font-size:var(--t-sm);cursor:pointer;max-width:200px;
   background-image:linear-gradient(45deg,transparent 50%,var(--muted) 50%),linear-gradient(135deg,var(--muted) 50%,transparent 50%);
   background-position:right 12px center,right 7px center;background-size:5px 5px,5px 5px;background-repeat:no-repeat}
 .repopick:hover{color:var(--ink);border-color:var(--accent-2)}
 .repopick:focus{outline:2px solid var(--accent-2);outline-offset:1px}
 .repopick[data-scoped]{border-color:color-mix(in oklab,var(--accent) 55%,var(--line));color:var(--accent)}
-.toolbar{display:flex;gap:10px;align-items:center;margin-bottom:12px;flex-wrap:wrap}
-.search{flex:1;min-width:200px;background:var(--panel-2);border:1px solid var(--line);color:var(--ink);border-radius:9px;padding:7px 12px;font:inherit;accent-color:var(--accent)}
+.search{flex:1;min-width:200px;background:var(--panel-2);border:1px solid var(--line);color:var(--ink);border-radius:var(--r-md);padding:var(--s-3) var(--s-5);font:inherit;accent-color:var(--accent)}
 .search::placeholder{color:var(--muted)}
-table{width:100%;border-collapse:collapse;font-size:13px}
-thead th{position:sticky;top:0;background:var(--panel);text-align:left;color:var(--muted);font-weight:550;font-size:11px;text-transform:uppercase;letter-spacing:.04em;padding:8px 12px;border-bottom:1px solid var(--line)}
-td{padding:9px 12px;border-bottom:1px solid color-mix(in oklab,var(--line) 60%,transparent);vertical-align:top}
+table{width:100%;border-collapse:collapse;font-size:var(--t-base)}
+/* FIXED layout + ellipsis. `auto` layout sized columns to their content, so a long repo slug
+   (the shape `org-name-project-3a27d532` that a cloned remote produces) either wrapped to
+   three lines or pushed the table past its grid column and under the showcase beside it.
+   `min-width:0` on the column is not enough on its own — a table with auto layout ignores it.
+   Expanded detail rows still wrap. */
+#panel{table-layout:fixed}
+#panel>tbody>tr>td,#panel>thead>tr>th{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+#panel tr.detail td{white-space:normal;overflow:visible}
+thead th{position:sticky;top:0;z-index:3;background:var(--panel);text-align:left;color:var(--muted);font-weight:var(--w-semi);font-size:var(--t-micro);text-transform:uppercase;letter-spacing:.05em;padding:var(--s-3) var(--s-5);border-bottom:1px solid var(--line)}
+td{padding:var(--s-3) var(--s-5);border-bottom:1px solid color-mix(in oklab,var(--line) 60%,transparent);vertical-align:top}
 #panel tr.row{cursor:pointer;transition:background .12s} #panel tr.row:hover{background:color-mix(in oklab,var(--accent-2) 6%,transparent)}
 #sbom-table tbody tr:has(.pill.crit){box-shadow:inset 3px 0 0 var(--crit)}
 #sbom-table tbody tr:has(.pill.high){box-shadow:inset 3px 0 0 var(--high)}
-.big tbody tr{content-visibility:auto;contain-intrinsic-size:0 42px}
-.sev-CRITICAL{color:var(--crit);font-weight:700} .sev-HIGH{color:var(--high)}
+.bigtable tbody tr{content-visibility:auto;contain-intrinsic-size:0 42px}
+.sev-CRITICAL{color:var(--crit);font-weight:var(--w-bold)} .sev-HIGH{color:var(--high)}
 .sev-EOL,.sev-SUNSET{color:var(--sun)}
-.detail{background:var(--panel-2);border-left:3px solid var(--accent-2)} .detail td{padding:10px 14px}
-.cmd{font-family:var(--mono);background:var(--bg);padding:6px 8px;border-radius:5px;color:var(--accent-2);display:inline-block}
-.copy,.copy-loc{cursor:pointer;border:1px solid var(--line);background:none;color:var(--muted);border-radius:5px;margin-left:6px;padding:1px 7px;font-size:11px}
+.detail{background:var(--panel-2);border-left:3px solid var(--accent-2)} .detail td{padding:var(--s-5) var(--s-6)}
+.cmd{font-family:var(--mono);background:var(--bg);padding:var(--s-3) var(--s-4);border-radius:var(--r-xs);color:var(--accent-2);display:inline-block}
+.copy,.copy-loc{cursor:pointer;border:1px solid var(--line);background:none;color:var(--muted);border-radius:var(--r-xs);margin-left:var(--s-3);padding:var(--s-1) var(--s-3);font-size:var(--t-tiny)}
 .copy:hover,.copy-loc:hover{color:var(--ink)}
-.callsite{padding:2px 0;font-family:var(--mono);font-size:12px}
-.empty{padding:24px 6px;color:var(--muted)}
-.pagefoot{margin-top:26px;padding-top:8px;border-top:1px solid var(--line)}
-.pagefoot .coverage:first-child{margin-top:10px}
-.coverage{margin-top:18px;color:var(--muted);font-size:12.5px} .coverage h2{font-size:11.5px;text-transform:uppercase;letter-spacing:.06em;margin-bottom:6px;color:var(--muted)}
-.coverage .note{padding:3px 0} .coverage ul{margin:4px 0 10px 18px} .intro{color:var(--muted);font-style:italic;padding:6px 0}
+.callsite{padding:var(--s-1) 0;font-family:var(--mono);font-size:var(--t-sm)}
+.empty{padding:var(--s-7) var(--s-3);color:var(--muted)}
+.coverage{margin-top:var(--s-6);color:var(--muted);font-size:var(--t-sm)} .coverage h2{font-size:var(--t-tiny);text-transform:uppercase;letter-spacing:.06em;margin-bottom:var(--s-3);color:var(--muted)}
+.coverage .note{padding:var(--s-2) 0} .coverage ul{margin:var(--s-2) 0 var(--s-5) var(--s-6)} .intro{color:var(--muted);font-style:italic;padding:var(--s-3) 0}
 
-.pill{display:inline-flex;align-items:center;gap:5px;padding:2px 9px;border-radius:20px;font-size:11px;font-weight:600;white-space:nowrap}
+.pill{display:inline-flex;align-items:center;gap:var(--s-2);padding:var(--s-1) var(--s-4);border-radius:var(--r-pill);font-size:var(--t-tiny);font-weight:var(--w-semi);white-space:nowrap}
 .pill::before{content:"";width:6px;height:6px;border-radius:50%;background:currentColor}
 .pill.crit{color:var(--crit);background:color-mix(in oklab,var(--crit) 15%,transparent)}
-.pill.high{color:var(--high);background:color-mix(in oklab,var(--high) 15%,transparent)}
-.pill.soon{color:var(--high);background:color-mix(in oklab,var(--high) 15%,transparent)}
+/* `soon` and `high` are deliberately one appearance: an approaching cut-off IS a high
+   severity. Declared once, so a later edit cannot make them silently diverge. */
+.pill.high,.pill.soon{color:var(--high);background:color-mix(in oklab,var(--high) 15%,transparent)}
 .pill.med{color:var(--med);background:color-mix(in oklab,var(--med) 15%,transparent)}
 .pill.low{color:var(--low);background:color-mix(in oklab,var(--low) 15%,transparent)}
 .pill.sun{color:var(--sun);background:color-mix(in oklab,var(--sun) 15%,transparent)}
 .pill.eol{color:var(--info);background:color-mix(in oklab,var(--info) 15%,transparent)}
-details.grp{border:1px solid var(--line);border-radius:10px;margin-bottom:8px;overflow:clip}
-details.grp>summary{cursor:pointer;padding:10px 14px;font-weight:600;list-style:none;display:flex;align-items:center;gap:10px;background:var(--panel-2)}
+details.grp{border:1px solid var(--line);border-radius:var(--r-md);margin-bottom:var(--s-4);overflow:clip}
+details.grp>summary{cursor:pointer;padding:var(--s-5) var(--s-6);font-weight:var(--w-semi);list-style:none;display:flex;align-items:center;gap:var(--s-5);background:var(--panel-2)}
 details.grp>summary::-webkit-details-marker{display:none}
 details.grp>summary::before{content:"▸";color:var(--muted);transition:transform .15s}
 details.grp[open]>summary::before{transform:rotate(90deg)}
-.count{margin-left:auto;color:var(--muted);font-size:12px;background:var(--bg);border:1px solid var(--line);border-radius:20px;padding:1px 9px}
-.jsonhint{color:var(--muted);font-size:12px;margin-bottom:8px}
-.viewbtn{display:inline-block;border:1px solid color-mix(in oklab,var(--accent-2) 45%,var(--line));color:var(--accent-2);border-radius:20px;padding:2px 10px;font-size:11.5px;text-decoration:none}
+.count{margin-left:auto;color:var(--muted);font-size:var(--t-sm);background:var(--bg);border:1px solid var(--line);border-radius:var(--r-pill);padding:var(--s-1) var(--s-4)}
+.jsonhint{color:var(--muted);font-size:var(--t-sm);margin-bottom:var(--s-4)}
+.viewbtn{display:inline-block;border:1px solid color-mix(in oklab,var(--accent-2) 45%,var(--line));color:var(--accent-2);border-radius:var(--r-pill);padding:var(--s-1) var(--s-5);font-size:var(--t-tiny);text-decoration:none}
 .viewbtn:hover{background:color-mix(in oklab,var(--accent-2) 12%,transparent);text-decoration:none}
 .jsonwrap{position:relative}
-pre{background:light-dark(#f7f7f4,#0c0e12);border:1px solid var(--line);border-radius:10px;padding:14px;overflow:auto;font-family:var(--mono);font-size:12px;line-height:1.6;color:light-dark(#333,#c8d0dc);max-height:460px}
-.copybtn{position:absolute;top:8px;right:8px;background:var(--panel-2);border:1px solid var(--line);color:var(--muted);font:inherit;font-size:11.5px;padding:4px 11px;border-radius:7px;cursor:pointer}
+pre{background:var(--code-bg);border:1px solid var(--line);border-radius:var(--r-md);padding:var(--s-6);overflow:auto;font-family:var(--mono);font-size:var(--t-sm);line-height:1.6;color:var(--code-fg);max-height:460px}
+.copybtn{position:absolute;top:8px;right:8px;background:var(--panel-2);border:1px solid var(--line);color:var(--muted);font:inherit;font-size:var(--t-tiny);padding:var(--s-2) var(--s-5);border-radius:var(--r-sm);cursor:pointer}
 .copybtn:hover{color:var(--ink);border-color:var(--accent-2)}
-dialog{border:1px solid var(--line);background:var(--panel);color:var(--ink);border-radius:14px;padding:0;max-width:520px;width:92vw}
-dialog::backdrop{background:color-mix(in oklab,#000 55%,transparent);backdrop-filter:blur(2px)}
-dialog .dh{padding:16px 18px;border-bottom:1px solid var(--line);display:flex;align-items:center;gap:10px}
-dialog .db{padding:16px 18px} dialog .x{margin-left:auto;background:none;border:0;color:var(--muted);font-size:18px;cursor:pointer}
-.kv{display:grid;grid-template-columns:96px 1fr;gap:5px 12px;font-size:13px} .kv b{color:var(--muted);font-weight:500}
 
 /* ---- Retirement Timeline (Task 2): per-operation rows, grouped by vendor, on a shared date
    axis with a dashed TODAY line — ported from docs/design/2026-08-04-cockpit-mockup.html
    (`.axis`/`.tl`/`.vgroup`/`.vhead`/`.trk`/`.lab`/`.line`/`.pt`/`.today`/`.tip`). Replaces the
    earlier per-vendor SVG scatter (Task 6) — that chart plotted one dot per VENDOR, merging
    distinct operations onto a single point; this is the identity fix. ---- */
-.axis{position:relative;height:20px;margin:14px 0 2px 260px;border-bottom:1px solid var(--line)}
-.axis .yr{position:absolute;transform:translateX(-50%);font-size:10.5px;color:var(--muted);top:2px}
-.tl{max-height:340px;overflow:auto;padding-top:6px}
-.vgroup{margin-bottom:6px}
-.vhead{font-size:10.5px;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);
-  margin:8px 0 3px 0;font-weight:600}
-.trk{display:flex;align-items:center;height:30px;border-radius:6px}
-.trk:hover{background:var(--panel-2)}
-.trk .lab{width:260px;flex:none;font-family:var(--mono);font-size:12px;white-space:nowrap;overflow:hidden;
-  text-overflow:ellipsis;padding-right:12px;color:var(--ink)}
-.trk .lab .vend{color:var(--muted)}
-.trk .undated-note{color:var(--muted);font-size:12px}
+.axis{position:relative;height:20px;margin:var(--s-6) 0 var(--s-1) var(--tl-gutter);border-bottom:1px solid var(--line)}
+.axis .yr{position:absolute;transform:translateX(-50%);font-size:var(--t-tiny);color:var(--muted);top:2px}
+.tl{max-height:280px;overflow:auto;padding-top:var(--s-3)}
+.vgroup{margin-bottom:var(--s-3)}
+.vhead{font-size:var(--t-tiny);letter-spacing:.06em;text-transform:uppercase;color:var(--muted);
+  margin:var(--s-4) 0 var(--s-2) 0;font-weight:var(--w-semi)}
+.tlrow{display:flex;align-items:center;height:26px;border-radius:var(--r-sm)}
+.tlrow:hover{background:var(--panel-2)}
+.tlrow .lab{width:var(--tl-gutter);flex:none;font-family:var(--mono);font-size:var(--t-sm);white-space:nowrap;overflow:hidden;
+  text-overflow:ellipsis;padding-right:var(--s-5);color:var(--ink)}
+.tlrow .lab .vend{color:var(--muted)}
+.tlrow .undated-note{color:var(--muted);font-size:var(--t-sm)}
 .line{position:relative;flex:1;height:100%}
 .line::before{content:"";position:absolute;left:0;right:0;top:50%;height:1px;background:var(--line)}
 .pt{position:absolute;top:50%;width:12px;height:12px;border-radius:50%;transform:translate(-50%,-50%);
   border:2px solid var(--panel);box-shadow:0 0 0 1px color-mix(in oklab,var(--ink) 15%,transparent)}
 .pt.crit{background:var(--crit)} .pt.up{background:var(--accent-2)} .pt.soon{background:var(--high)}
-.pt .d{position:absolute;left:50%;top:14px;transform:translateX(-50%);font-size:10px;color:var(--muted);white-space:nowrap}
+.pt .d{position:absolute;left:50%;top:14px;transform:translateX(-50%);font-size:var(--t-micro);color:var(--muted);white-space:nowrap}
 .today{position:absolute;top:-2px;bottom:-2px;width:0;border-left:2px dashed var(--accent-2);z-index:2}
-.today .cap{position:absolute;top:-16px;left:50%;transform:translateX(-50%);font-size:9.5px;font-weight:700;
+.today .tlcap{border:1px solid color-mix(in oklab,var(--accent-2) 45%,var(--line));background:var(--panel);border-radius:var(--r-sm);padding:var(--s-1) var(--s-3);position:absolute;top:-16px;left:50%;transform:translateX(-50%);font-size:var(--t-micro);font-weight:var(--w-bold);
   letter-spacing:.06em;color:var(--accent-2);white-space:nowrap}
-.todaywrap{position:relative;margin-left:260px;height:0}
+.todaywrap{position:relative;margin-left:var(--tl-gutter);height:0}
 
 /* ---- Task 3: alt hero for non-timeline dimensions (apis/unknown vendor breakdown) — ported
    from docs/design/2026-08-04-cockpit-mockup.html's `.mini`/`.bar`. ---- */
-.mini{display:flex;gap:10px;flex-wrap:wrap;margin-top:12px}
-.bar{flex:1;min-width:180px;max-width:100%;overflow:hidden;background:var(--panel-2);border:1px solid var(--line);border-radius:10px;padding:12px 14px}
+.mini{display:flex;gap:var(--s-5);flex-wrap:wrap;margin-top:var(--s-5)}
+.bar{flex:1;min-width:180px;max-width:100%;overflow:hidden;background:var(--panel-2);border:1px solid var(--line);border-radius:var(--r-md);padding:var(--s-5) var(--s-6)}
 /* hostnames have no spaces, so normal wrapping can't break them — they clipped out of the card.
    overflow-wrap:anywhere lets long hosts (sellercentral.amazon.com) wrap inside the tile. */
-.bar .bn{font-size:19px;font-weight:700;line-height:1.2;overflow-wrap:anywhere;word-break:break-word}
-.bar .bl{font-size:11.5px;color:var(--muted);margin-top:2px}
-.bar .track{height:8px;border-radius:5px;background:var(--track);margin-top:8px;overflow:hidden}
-.bar .fill{height:100%;border-radius:5px}
+.bar .bn{font-size:var(--t-xl);font-weight:var(--w-bold);line-height:1.2;overflow-wrap:anywhere;word-break:break-word}
+.bar .bl{font-size:var(--t-tiny);color:var(--muted);margin-top:var(--s-1)}
+.bar .track{height:8px;border-radius:var(--r-xs);background:var(--track);margin-top:var(--s-4);overflow:hidden}
+.bar .fill{height:100%;border-radius:var(--r-xs)}
 
 /* tooltip: fixed to the viewport (not a descendant of any filtered/transformed ancestor), so
    :style left/top track the mouse regardless of where in the DOM it's mounted. */
 .tip{position:fixed;z-index:50;pointer-events:none;background:var(--panel);border:1px solid var(--line);
-  border-radius:8px;padding:8px 11px;font-size:12px;box-shadow:0 8px 24px rgba(0,0,0,.18);max-width:280px;
+  border-radius:var(--r-md);padding:var(--s-4) var(--s-5);font-size:var(--t-sm);box-shadow:0 8px 24px rgba(0,0,0,.18);max-width:280px;
   transition:opacity .1s}
-.tip b{display:block;font-size:12.5px;margin-bottom:2px}
+.tip b{display:block;font-size:var(--t-sm);margin-bottom:var(--s-1)}
 .tip .k{color:var(--muted)}
 .pill.up{color:var(--accent-2);background:color-mix(in oklab,var(--accent-2) 15%,transparent)}
 @media print{.themebtn,.tab,.tip{display:none}}
@@ -242,36 +261,176 @@ dialog .db{padding:16px 18px} dialog .x{margin-left:auto;background:none;border:
 /* --- provenance tiers: a per-row ORIGIN badge (a property, not a banner). Differentiated by
    border-STYLE + text, never hue alone, so a row's tier survives dark mode, greyscale and a
    cropped screenshot — the badge is the confidence, because it makes provenance always legible. */
-.orig { font: 700 10.5px/1 ui-monospace, monospace; letter-spacing:.06em; padding:2px 6px;
-        border-radius:4px; white-space:nowrap; border:1px solid var(--line); color:var(--muted); }
+.orig { font-family:var(--mono);font-size:var(--t-tiny);font-weight:var(--w-bold);line-height:1; letter-spacing:.06em; padding:var(--s-1) var(--s-3);
+        border-radius:var(--r-xs); white-space:nowrap; border:1px solid var(--line); color:var(--muted); }
 .orig[data-origin="certified"] { border:1px solid var(--line); color:var(--ink); }
 .orig[data-origin="shaped"]    { border:1px solid var(--accent-2); color:var(--accent-2); }
 /* Provenance badges. Deliberately DESCENDING in visual weight — gate-validated reads strongest,
    an unverified lead weakest — so the eye ranks the tiers the way the trust model does. */
-.orig[data-origin="sourced"] { background: var(--amber-bg, #fdf1dc); color: var(--amber-fg, #7a4b00); }
-.orig[data-origin="lead"]    { border: 1px dashed currentColor; background: var(--muted-bg, #eceff3);
-                               color: var(--muted-fg, #52606d); }
-.tri[data-tri="yes"]     { font-weight: 700; }
+.orig[data-origin="sourced"] { background: var(--amber-bg); color: var(--amber-fg); }
+.orig[data-origin="lead"]    { border: 1px dashed currentColor; background: var(--muted-bg);
+                               color: var(--muted-fg); }
+.tri[data-tri="yes"]     { font-weight:var(--w-bold); }
 .tri[data-tri="unknown"] { opacity: .7; font-style: italic; }
 td.orig { width:1%; }
-.tcount { font-size:11px; opacity:.65; }
-.op { color:var(--muted); font-size:12px; }
+.op { color:var(--muted); font-size:var(--t-sm); }
 /* the AI-tier lead-in: confident ("validated · absorb to keep"), NOT a warning */
-.tierlead { border-left:3px solid var(--accent-2); background:rgba(61,125,224,.09);
-            padding:10px 14px; border-radius:6px; margin:12px 0; font-size:13px; line-height:1.6; }
+.tierlead { border-left:3px solid var(--accent-2); background:color-mix(in oklab,var(--accent-2) 9%,transparent);
+            padding:var(--s-5) var(--s-6); border-radius:var(--r-sm); margin:var(--s-5) 0; font-size:var(--t-base); line-height:1.6; }
 /* plain-language tier key under the tabs — one row per tier, badge left, plain gloss right,
    so a non-specialist reads what "certified"/"shaped" mean without the jargon. */
-.tierlegend{display:flex;flex-direction:column;gap:8px;margin:10px 0 4px;padding:12px 14px;
-  background:var(--panel-2);border:1px solid var(--line);border-radius:8px}
-.tierlegend .tk{display:flex;gap:10px;align-items:baseline;font-size:12.5px;line-height:1.55;color:var(--muted)}
+.tierlegend{display:flex;flex-direction:column;gap:var(--s-4);margin:var(--s-5) 0 var(--s-2);padding:var(--s-5) var(--s-6);
+  background:var(--panel-2);border:1px solid var(--line);border-radius:var(--r-md)}
+.tierlegend .tk{display:flex;gap:var(--s-5);align-items:baseline;font-size:var(--t-sm);line-height:1.55;color:var(--muted)}
 .tierlegend .tk .orig{flex:none}
-.tierlegend .tk b{color:var(--ink);font-weight:600}
+.tierlegend .tk b{color:var(--ink);font-weight:var(--w-semi)}
 .tierlegend a{color:var(--accent-2)}
 /* the ONE bottom disclaimer — calm, ends on strength (verify) */
-.tierkey { font-size:13px; color:var(--muted); padding:16px 0; line-height:1.8;
-           border-top:1px solid var(--line); margin-top:10px; }
-.tierkey b { color:var(--ink); }
-.tierkey .orig { vertical-align:baseline; }
-.verifyline { margin-top:8px; font-size:12px; }
+.verifyline { margin-top:var(--s-4); font-size:var(--t-sm); }
 /* The coverage tree moved to its own bare-bones page (summary.html / summary.css). It no
    longer has a section in this stylesheet — one tree, one stylesheet. */
+
+/* the explainer, collapsed — identical every scan, so it earns a click rather than a screen */
+.helpbody{padding:var(--s-5) var(--s-6);font-size:var(--t-base);line-height:1.75;color:var(--muted)}
+.helpbody b{color:var(--ink)}
+/* The strip lives inside the sticky header, so an expanded body must never pin more than a
+   third of the viewport — otherwise opening it reproduces exactly the fault it was made to
+   fix, with content pushed below the fold by a fixed block. */
+/* numeric and identifier columns: tabular figures already come from body, this just stops
+   versions and dates wrapping and keeps them scannable down the column */
+td.num{white-space:nowrap} td.mono{font-family:var(--mono);font-size:var(--t-sm)}
+td.fix{color:var(--low)} td.op{color:var(--muted)}
+.undated{color:var(--muted);font-style:italic}
+
+/* ---- BOTTOM DRAWER: notices + the two reference texts, docked to the viewport.
+   The summary line is ALWAYS on screen. That is the point — a blind spot that scrolls away
+   is a blind spot the reader stops seeing, and principle 1 says naming it is the job. The
+   panel opens only when the reader asks; nothing in the app reopens it. ---- */
+.drawer{position:fixed;left:0;right:0;bottom:0;z-index:40;background:var(--panel);
+  border-top:1px solid var(--line);box-shadow:0 -6px 24px color-mix(in oklab,#000 22%,transparent)}
+.dbar{appearance:none;width:100%;display:flex;align-items:center;gap:var(--s-4);cursor:pointer;
+  background:none;border:0;color:var(--ink);font:inherit;font-size:var(--t-base);
+  padding:var(--s-4) clamp(var(--s-6),3vw,40px);text-align:left}
+.dbar:hover{background:var(--panel-2)}
+.dbar .sicon{flex:none;width:17px;height:17px;border-radius:50%;display:grid;place-items:center;
+  font-size:var(--t-micro);font-weight:var(--w-bold);color:var(--bg);background:var(--high)}
+.dbar .ssum{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.dbar .ssum.quiet{color:var(--muted)}
+.dbar .scount{flex:none;font-size:var(--t-tiny);color:var(--muted);border:1px solid var(--line);
+  border-radius:var(--r-pill);padding:var(--s-1) var(--s-4);background:var(--bg)}
+.dbar .dchev{margin-left:auto;flex:none;color:var(--muted);font-size:var(--t-micro);transition:transform .16s}
+.drawer[data-open="1"] .dchev{transform:rotate(180deg)}
+.dbody{border-top:1px solid var(--line);max-height:52vh;overflow:auto;
+  padding:0 clamp(var(--s-6),3vw,40px) var(--s-6)}
+.dtabs{display:flex;gap:var(--s-2);position:sticky;top:0;background:var(--panel);
+  padding:var(--s-4) 0 var(--s-3);border-bottom:1px solid var(--line);margin-bottom:var(--s-5)}
+.dtabs button{appearance:none;background:none;border:0;border-bottom:2px solid transparent;
+  color:var(--muted);font:inherit;font-size:var(--t-base);font-weight:var(--w-semi);
+  padding:var(--s-3) var(--s-5);cursor:pointer;display:flex;align-items:center;gap:var(--s-3)}
+.dtabs button[data-on="1"]{color:var(--ink);border-bottom-color:var(--accent)}
+.dtabs .dn{font-size:var(--t-micro);color:var(--bg);background:var(--high);border-radius:var(--r-pill);
+  padding:0 var(--s-3);font-weight:var(--w-bold)}
+.dpane .coverage{margin-top:var(--s-5)}
+
+/* ---- SPLIT WORKSPACE — list left, showcase right, even halves.
+   The showcase used to sit ABOVE the list and change height on every tab click, so the table
+   jumped and the click read as arbitrary. Side by side, the list holds its position and only
+   the panel swaps. ---- */
+/* --panelh is the single source of truth for both cards' height: viewport, less the measured
+   header, the tab row and the docked drawer. Set on .split so the two columns cannot drift
+   apart — they were sizing to their own content, so the list ran long while the showcase
+   stopped short. */
+.split{--panelh:max(320px,calc(100vh - var(--hdr,150px) - 190px));  /* fallback; mounted() measures the real value */
+  display:grid;grid-template-columns:1fr 1fr;gap:var(--s-6);align-items:start;margin-top:var(--s-4)}
+.splitlist{min-width:0}
+.splitlist .panels{height:var(--panelh);display:flex;flex-direction:column}
+.splitlist .panel.active{display:flex;flex-direction:column;min-height:0;flex:1}
+/* no longer sticky: at --panelh the card already fills the viewport, so there is nothing to
+   stick past — and the sticky offset was a measurement that could drift. */
+.splitshow{min-width:0;--tl-gutter:150px}
+.splitshow .hero{height:var(--panelh);display:flex;flex-direction:column}
+/* the whole showcase body scrolls, not just the timeline — vendor bars and host lists overflow
+   the same way and were being clipped. */
+.splitshow #hero-body{flex:1;min-height:0;overflow-y:auto;scrollbar-width:none;-ms-overflow-style:none}
+.splitshow #hero-body::-webkit-scrollbar{width:0;height:0}
+.splitshow .hero{margin:0}
+
+/* SCROLLBARS: the panes scroll, the bars never show. Two horizontal bars and a vertical one
+   were visible at once, framing the content in chrome that carried no information. Hidden in
+   every engine — Firefox `scrollbar-width`, WebKit/Blink pseudo-element — while the overflow
+   behaviour itself is untouched, so wheel, trackpad, keyboard and touch all still scroll. */
+/* `pre` keeps its bars: code is the one place horizontal scrolling is both expected and the
+   only way to reach the content. */
+
+/* the showcase is half the page now, so the timeline keeps its own label column (narrowed
+   on .splitshow above) rather than stacking labels above tracks. */
+.splitshow .tl{max-height:none;overflow:visible}
+.splitshow .tlrow .lab{font-size:var(--t-tiny)}
+.splitshow .pt .d{display:none}   /* the date lives in the hover tooltip here */
+
+/* VENDOR BARS — masonry-ish auto fill rather than one long stack. `auto-fill` lets two cards
+   share a row when the column is wide enough and collapse to one when it is not, instead of
+   the forced single column that made six vendors a scroll. */
+.splitshow .mini{display:grid;grid-template-columns:repeat(auto-fill,minmax(190px,1fr));
+  gap:var(--s-3);align-content:start}
+.splitshow .bar{min-width:0;width:auto}
+.splitshow .bar .bn{font-size:var(--t-md)}
+
+@container (max-width:1000px){
+  /* stacked: a shared viewport height would leave each card a sliver, so both size to content */
+  .split{grid-template-columns:1fr;--panelh:auto}
+  .splitshow{--tl-gutter:inherit}
+  .splitshow #hero-body{overflow:visible}
+  .tablescroll{max-height:70vh}
+}
+
+/* COLUMN WIDTHS. `table-layout:fixed` divides evenly unless told otherwise, which gave a repo
+   slug the same room as a call-site count. Proportions per view, since the same #panel table
+   serves every mode. */
+#panel[data-mode="actions"][data-plane="supply"] th:nth-child(1){width:17%}
+#panel[data-mode="actions"][data-plane="supply"] th:nth-child(2){width:27%}
+#panel[data-mode="actions"][data-plane="supply"] th:nth-child(3){width:13%}
+#panel[data-mode="actions"][data-plane="supply"] th:nth-child(4){width:13%}
+#panel[data-mode="actions"][data-plane="supply"] th:nth-child(5){width:14%}
+#panel[data-mode="actions"][data-plane="supply"] th:nth-child(6){width:16%}
+#panel[data-mode="actions"]:not([data-plane="supply"]) th:nth-child(1){width:16%}
+#panel[data-mode="actions"]:not([data-plane="supply"]) th:nth-child(2){width:16%}
+#panel[data-mode="actions"]:not([data-plane="supply"]) th:nth-child(3){width:22%}
+#panel[data-mode="actions"]:not([data-plane="supply"]) th:nth-child(4){width:15%}
+#panel[data-mode="actions"]:not([data-plane="supply"]) th:nth-child(5){width:12%}
+#panel[data-mode="actions"]:not([data-plane="supply"]) th:nth-child(6){width:19%}
+/* headerless modes (endpoints / catalog / private) size from the first row instead */
+#panel:not([data-mode="actions"]) td:nth-child(1){width:18%}
+#panel:not([data-mode="actions"]) td:nth-child(2){width:30%}
+#panel:not([data-mode="actions"]) td:nth-child(4){width:16%}
+#panel:not([data-mode="actions"]) td:nth-child(5){width:9%}
+
+/* the scan date, kept but quiet — see the template comment on why it survives the trim */
+.scanmeta{color:var(--muted);font-size:var(--t-sm);white-space:nowrap}
+
+/* ---- THE LIST IS A CARD, like the showcase beside it. `.panels` was built to sit UNDER the
+   sub-bar (border-top:0, only its bottom corners rounded) — correct when that bar was always
+   there, wrong now it shows only on Supply Chain, which left the list open-topped and square.
+   `:has()` lets the pair keep the joined look where the bar exists and be one card where it
+   does not. ---- */
+.splitlist:has(> #subbar) .panels{border-top:0;border-radius:0 0 var(--r-lg) var(--r-lg)}
+.splitlist:has(> #subbar) #subbar{border-radius:var(--r-lg) var(--r-lg) 0 0}
+
+/* only the rows scroll — header row and column headers stay */
+.tablescroll{flex:1;min-height:0;overflow-y:auto;
+  scrollbar-width:none;-ms-overflow-style:none;margin:0 calc(var(--s-5) * -1) calc(var(--s-5) * -1);
+  padding:0 var(--s-5) var(--s-5);border-radius:0 0 var(--r-lg) var(--r-lg)}
+.tablescroll::-webkit-scrollbar{width:0;height:0}
+.tablescroll thead th{top:0}
+
+/* tab pills span the row rather than clustering left */
+.mtab .t{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+@container (max-width:900px){.mtab{flex:1 1 auto}}
+
+/* ---- FOCUS — one visible treatment for everything interactive. Nine controls had none, so a
+   keyboard user could not tell where they were; the few that did disagreed on colour and
+   offset. :focus-visible, so a mouse click never draws a ring. ---- */
+.tab:focus-visible,.subtab:focus-visible,.themebtn:focus-visible,.dbar:focus-visible,
+.copy:focus-visible,.copy-loc:focus-visible,.copybtn:focus-visible,.viewbtn:focus-visible,
+.search:focus-visible,.dtabs button:focus-visible,details.grp>summary:focus-visible{
+  outline:2px solid var(--accent-2);outline-offset:2px}

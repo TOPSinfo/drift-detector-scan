@@ -2,13 +2,21 @@
   <div class="sticky">
     <div class="brand">
       <span class="mark" aria-hidden="true"></span>
-      <h1>Drift Detector</h1><span class="sub">DevSecOps Cockpit</span>
-      <span class="meta">{{ counts.reposScanned }} repos · {{ generated }}</span>
+      <h1>Drift Detector</h1>
+      <!-- the headline moved UP into the row the static SBOM/SCA/VEX/SARIF pills held. Those
+           pills were decoration: they never reflected state, never filtered anything, and were
+           identical on every scan. The one fact worth that space is what this scan found. -->
+      <p class="headline"><span class="dot">●</span>
+        <span class="big">{{ counts.fixes }} fixes needed</span> ·
+        {{ counts.reposAffected }} of {{ counts.reposScanned }} repos affected
+        <span class="ownstat" title="Who owns the remediation — cross-cutting across all three planes">{{ ownStats.devops }} DevOps
+          · {{ ownStats.developer }} Developer</span></p>
       <span class="spacer"></span>
-      <span class="caps" title="Supply-chain coverage in one pass">
-        <span class="cap hot">SBOM</span><span class="cap hot">SCA</span>
-        <span class="cap hot">VEX</span><span class="cap hot">SARIF</span>
-        <span class="cap">CVE · EOL · sunsets</span></span>
+      <!-- the scan DATE stays. "34 repos" is already in the headline, but the date is not
+           decoration: every "past due" figure on the page is computed against it, and the
+           timeline's TODAY line is anchored to it. A reader who cannot see it cannot tell a
+           report from this morning apart from one from last quarter. -->
+      <span class="scanmeta">scanned {{ generated }}</span>
       <select id="repo-filter" class="repopick" aria-label="Scope the report to one repo"
               :data-scoped="scope || null" v-model="scope">
         <option value="">All repos</option>
@@ -16,35 +24,29 @@
       </select>
       <button class="themebtn" id="theme" @click="cycleTheme">{{ themeLabel }}</button>
     </div>
-    <p class="headline"><span class="dot">●</span>
-      <span class="big">{{ counts.fixes }} fixes needed</span> ·
-      {{ counts.reposAffected }} of {{ counts.reposScanned }} repos affected
-      <span class="ownstat" title="Who owns the remediation — cross-cutting across all three planes">{{ ownStats.devops }} DevOps
-        · {{ ownStats.developer }} Developer</span></p>
-    <!-- TOP-LEVEL PLANES: Supply Chain / Vendor Drift / AI Frontier. Three cockpits in
-         ascending uniqueness, descending certainty — each owns its own tiles, hero and
-         content. Switching plane (switchPlane) resets the tile filter and content view. -->
-    <div class="planes" role="tablist" aria-label="Cockpit planes">
-      <button class="plane" v-for="pd in planeDefs" :key="pd.key" role="tab"
+    <!-- PLANE SWITCHER — one line. Three cards with blurbs cost the whole prime horizontal
+         band at the top of the page; the blurb is onboarding text a returning reader has
+         already absorbed, so it moves to the button's title. The band they were occupying now
+         carries the timeline, which actually needs the width. -->
+    <div class="planebar" role="tablist" aria-label="Cockpit planes">
+      <button class="pb" v-for="pd in planeDefs" :key="pd.key" role="tab"
               :data-plane="pd.key" :data-on="plane === pd.key ? '1' : '0'"
-              :aria-pressed="plane === pd.key" @click="switchPlane(pd.key)">
-        <span class="pl-top">
-          <span class="pl-name">{{ pd.label }}</span>
-          <span class="pl-tag" :data-plane="pd.key">{{ pd.tag }}</span>
-          <span class="pl-n">{{ pd.n }}</span>
-        </span>
-        <span class="pl-blurb">{{ pd.blurb }}</span>
+              :aria-pressed="plane === pd.key" :title="pd.blurb" @click="switchPlane(pd.key)">
+        <span class="pb-name">{{ pd.label }}</span>
+        <span class="pb-tag" :data-plane="pd.key">{{ pd.tag }}</span>
+        <span class="pb-n">{{ pd.n }}</span>
       </button>
     </div>
+  </div>
+
+
     <!-- PRIMARY TABS = the ACTIVE plane's metric tiles: counts bind to the SAME tileGroups/counts
          payload the old tile-grid read, just scoped to the current plane and rendered as a strip. -->
     <!-- Honesty line for the drift plane: when the resolution pass did not run, the
          unresolved tile's number means "nobody has looked", not "pending triage". Same
          sentence summary.html's tree carries, from the same payload flag. -->
-    <div class="note" v-if="resolutionNote">{{ resolutionNote }}</div>
     <div class="tabstrip" role="tablist">
       <div class="tgroup" v-for="g in tileGroups" :key="g.title">
-        <span class="tglbl">{{ g.title }}</span>
         <div class="trow">
           <button v-for="t in g.tiles" :key="t.key" class="mtab" role="tab"
                   :data-sev="t.sev || null" :data-zero="t.n === 0 ? '1' : null"
@@ -56,118 +58,6 @@
         </div>
       </div>
     </div>
-  </div>
-
-  <!-- HERO REGION (where the old cards lived). Task 2 fills #hero-body with the flagship,
-       always-on Retirement Timeline — one row per OPERATION, grouped by vendor, positioned on
-       a shared date axis with a dashed TODAY line. The non-timeline hero states (APIs/Unknown
-       bars, the generic per-dimension empty-state, dynamic herohead swapping by active tab)
-       are Task 3's job, layered on top of this. -->
-  <div class="hero">
-    <div class="herohead">
-      <h2>{{ heroTitle }}</h2>
-      <span class="why" v-if="heroWhy">{{ heroWhy }}</span>
-      <span class="sp"></span>
-      <span class="legend" v-if="heroMode === 'timeline' && timeline.dated.length">
-        <span><i class="i-crit"></i>past-due</span><span><i class="i-soon"></i>≤ 6 mo</span>
-        <span><i class="i-up"></i>upcoming</span>
-      </span>
-    </div>
-    <!-- HERO BODY: CONTEXTUAL to the active primary tab (Task 3) — exactly one of three
-         states, decided once by the `heroMode` computed so this is a plain v-if chain with
-         no re-derived branching. -->
-    <div id="hero-body">
-      <template v-if="heroMode === 'timeline'">
-        <template v-if="timeline.dated.length || timeline.undated.length">
-          <div class="axis" v-if="timeline.years.length">
-            <span class="yr" v-for="yr in timeline.years" :key="yr.year"
-                  :style="{left: yr.pct + '%'}">{{ yr.year }}</span>
-          </div>
-          <div class="todaywrap" v-if="timeline.todayPct !== null">
-            <div class="today" :style="{left: timeline.todayPct + '%'}">
-              <span class="cap">TODAY · {{ generated }}</span>
-            </div>
-          </div>
-          <div class="tl">
-            <!-- dated ops: one .trk row PER OPERATION (not per vendor) on the shared axis,
-                 grouped under a .vhead per vendor — timeline.byVendor. -->
-            <div class="vgroup" v-for="vg in timeline.byVendor" :key="vg.vendor">
-              <div class="vhead">{{ vg.vendor }} · {{ vg.items.length }} operation(s)</div>
-              <div class="trk" v-for="(pt, pi) in vg.items" :key="pi"
-                   @mouseenter="showTip(pt, $event)" @mousemove="moveTip($event)"
-                   @mouseleave="hideTip">
-                <div class="lab" :title="pt.vendor + ' ' + pt.unit">{{ pt.unit }}</div>   <!-- vendor is in the .vhead group header above -->
-
-                <div class="line">
-                  <span class="pt" :class="pt.kind" :style="{left: pt.pct + '%'}">
-                    <span class="d">{{ pt.date }}</span>
-                  </span>
-                </div>
-              </div>
-            </div>
-            <!-- undated ops: no announced cut-off, so no axis position to guess at — listed
-                 in their own labeled lane instead. timeline.undated — NEVER dropped (verify's
-                 check_timeline_lanes fails the build if this lane's binding disappears). -->
-            <div class="vgroup" v-if="timeline.undated.length">
-              <div class="vhead">Undated — no announced cut-off ({{ timeline.undated.length }})</div>
-              <div class="trk" v-for="(u, ui) in timeline.undated" :key="'u' + ui">
-                <div class="lab"><span class="vend">{{ u.vendor }}</span> {{ u.unit || '—' }}</div>
-                <div class="line"><span class="undated-note">{{ u.repo }} — date unknown</span></div>
-              </div>
-            </div>
-          </div>
-        </template>
-        <p class="empty" v-else>No vendor API sunsets to plot<template
-          v-if="scope"> for {{ repoLabelOf(scope) }}</template>.</p>
-      </template>
-      <template v-else-if="heroMode === 'vendors'">
-        <div class="mini" v-if="vendorBars.length">
-          <div class="bar" v-for="(b, bi) in vendorBars" :key="bi">
-            <div class="bn">{{ b.name }}</div>
-            <div class="bl">{{ b.sub }}</div>
-            <div class="track"><div class="fill" :style="{width: b.pct + '%', background: b.color}"></div></div>
-          </div>
-        </div>
-        <p class="empty" v-else>No {{ tab === 'unknown' ? 'untracked' : tab === 'excluded' ? 'excluded asset/library' : tab === 'apis' ? 'tracked' : 'detected' }}
-          endpoints found<template v-if="scope"> for {{ repoLabelOf(scope) }}</template>.</p>
-      </template>
-      <!-- Supply Chain plane intro: the familiar SCA/CVE story, pointing at the SBOM/SARIF tabs. -->
-      <template v-else-if="heroMode === 'supply'">
-        <div class="planehero">
-          <p>Everything a standard supply-chain scan flags — <b>{{ counts.critical }} critical</b>
-             advisor{{ counts.critical === 1 ? 'y' : 'ies' }} and <b>{{ counts.eol }} end-of-life</b>
-             component{{ counts.eol === 1 ? '' : 's' }} — with machine-readable <b>SBOM</b> and
-             <b>SARIF</b> exports for your pipeline in the tabs below. The findings your DevOps
-             tooling already speaks.</p>
-        </div>
-      </template>
-      <!-- AI Frontier plane intro: confident framing of the shaped tier (badge, not banner). -->
-      <template v-else-if="heroMode === 'ai'">
-        <div class="planehero">
-          <p v-if="hasShaped && shapedCount"><b>{{ shapedCount }} call-site{{ shapedCount === 1 ? '' : 's' }}</b> across
-             <b>{{ shapedRepos }} repo{{ shapedRepos === 1 ? '' : 's' }}</b> the deterministic scan
-             couldn't see on its own — an AI shaped them and the tool re-checked every one against
-             the code. Real locations; dates only when the reviewed catalog already has them.
-             Full list below — <b>“Absorb” to keep them.</b></p>
-          <p v-else-if="hasShaped">A shaping pass ran on this scan but attributed no new call-sites
-             under the gate. The frontier stays empty until a shape claims locs the certified
-             scan was blind to.</p>
-          <p v-else>The frontier for repos the deterministic scan can't read on its own. When an AI
-             shapes one and the tool re-checks it, the recovered call-sites land here — gate-validated,
-             dated from the reviewed catalog. <b>No shaping pass has run on this scan yet.</b></p>
-        </div>
-      </template>
-      <!-- honest empty-state (CLAUDE.md principle 1: "cannot see" != "clean") — a zero here
-           is only meaningful because the scan could READ these repos; an unaudited or
-           unscannable source would say so in Coverage below, not show a clean zero. -->
-      <template v-else>
-        <div class="empty">Nothing in this dimension for the current scan.
-          <b>Zero here is only meaningful because the scan could read these repos</b> — an
-          unaudited or unscannable source would say so, not show a clean zero.</div>
-      </template>
-    </div>
-  </div>
-
   <!-- Retirement Timeline hover tooltip: reactive `tip` state (showTip/moveTip/hideTip),
        rendered via {{ }}/:class/:style bindings only — no raw-HTML sink of any kind — so a
        scan-controlled vendor/operation/repo string cannot break out into markup. -->
@@ -178,10 +68,23 @@
     <br><span class="pill" :class="tip.pillClass">{{ tip.statusLabel }}</span>
   </div>
 
+
+
+  <!-- BOTTOM DRAWER — the one place every message lives: what this scan could not establish,
+       plus the two reference texts that are identical on every scan.
+       Docked to the viewport so the SUMMARY LINE is always on screen, which is what keeps
+       principle 1 honest: a blind spot stays glanceable at all times rather than scrolling
+       away. Opening is the reader's decision and nothing else's — `drawerOpen` is a plain ref,
+       because binding it to a computed reopened the panel on every tab click. -->
+  <!-- SPLIT WORKSPACE — list left, showcase right. Every tab has something to offer, and
+       stacked above the list that content changed HEIGHT on every click, so the table jumped
+       under the reader. Side by side, the list holds still and only the panel swaps. -->
+  <div class="split">
+    <div class="splitlist">
   <!-- SUB-TABS, scoped to the active plane. Supply Chain adds SBOM + SARIF (they live ONLY
        here, so they never clutter the other planes). Vendor Drift shows just its content view.
        AI Frontier has no sub-tabs — the shaped list IS its content — so the bar is hidden. -->
-  <div class="subbar" id="subbar" role="tablist" v-if="plane !== 'ai'">
+  <div class="subbar" id="subbar" role="tablist" v-if="plane === 'supply'">
     <button class="subtab" role="tab" :data-on="sub === 'summary' ? '1' : '0'"
             @click="sub = 'summary'">{{ summaryTabLabel }}</button>
     <template v-if="plane === 'supply'">
@@ -208,51 +111,62 @@
         until you keep them. <b>({{ shapedCount }})</b></span>
     </div>
   </div>
-
   <div id="main">
     <section v-show="plane !== 'ai' && sub === 'summary'" class="panel active">
-      <div class="subbar">
-        <button class="tab" :class="{active: sumView === 'prev'}"
-                @click="sumView = 'prev'">Preview</button>
-        <button class="tab" :class="{active: sumView === 'json'}"
-                @click="sumView = 'json'">JSON · drift.json</button>
-      </div>
       <div class="panels">
-      <div class="panel active" v-show="sumView === 'prev'">
-      <div class="toolbar">
+      <div class="panel active">
+      <!-- title and filter share one row: the filter had a row of its own, and the title
+           another, for two controls that belong to the same table. -->
+      <div class="tablehead">
+        <h3 v-if="plane !== 'supply'">{{ summaryTabLabel }}</h3>
         <input class="search" id="search" type="search" v-model="q"
                placeholder="Filter by repo, package or vendor…">
         <button v-if="mode === 'endpoints'" class="tab" @click="exportCsv"
                 title="Download every detected endpoint as CSV">⬇ Export endpoints</button>
+        <button class="tab" id="json-drift" @click="exportDrift"
+                title="Download drift.json — the certified record this page projects">⬇ drift.json</button>
       </div>
-      <table id="panel">
+      <!-- only the rows scroll. The title/filter row sits outside this box and the sticky
+           <thead> pins inside it, so column headers never leave while 548 rows move. -->
+      <div class="tablescroll">
+      <table id="panel" :data-mode="mode" :data-plane="plane">
+        <thead v-if="mode === 'actions'">
+          <!-- PER-PLANE COLUMNS. A CVE on a package and an API operation being retired are not
+               the same shape of fact: one is component/version/fix, the other is
+               vendor/operation/date. Rendering both through a generic "target" column threw
+               away the fields that make each actionable. -->
+          <tr v-if="plane === 'supply'">
+            <th>Repo</th><th>Component</th><th>Version</th><th>Fix</th>
+            <th>Advisories</th><th>Severity</th>
+          </tr>
+          <tr v-else>
+            <th>Repo</th><th>Vendor</th><th>Operation</th><th>Retires</th>
+            <th>Call-sites</th><th>Status</th>
+          </tr>
+        </thead>
         <tbody>
-          <tr v-if="mode === 'catalog' && rows.length">
-            <td colspan="5" class="intro">Vendors this code calls whose retirement list nobody
-              has checked. Zero findings for these is UNAUDITED, not clean.</td>
-          </tr>
-          <tr v-if="mode === 'private' && rows.length">
-            <td colspan="5" class="intro">Sub-dependencies the scan couldn't crawl — private or
-              unreachable.</td>
-          </tr>
-          <tr v-if="mode === 'endpoints' && (!tab || tab === 'detected') && rows.length">
-            <td colspan="5" class="intro"><b>{{ counts.detected }} endpoints detected</b> — every
-              outbound call the engine read, the complete integration inventory. "tracked" = its
-              retirement data is on file; "not yet tracked" = detected, catalog coverage coming (not
-              a failure).</td>
-          </tr>
           <template v-for="(row, idx) in rows" :key="mode + '-' + idx">
             <tr class="row" @click="onRowClick(idx)">
-              <template v-if="mode === 'actions'">
-                <td>{{ row.repoLabel || row.repo }}</td>
-                <td>{{ actionLabel(row) }}</td>
-                <td>{{ targetText(row) }}</td>
-                <td>{{ row.finding_count }}</td>
+              <template v-if="mode === 'actions' && plane === 'supply'">
+                <td :title="row.repoLabel || row.repo">{{ row.repoLabel || row.repo }}</td>
+                <td class="mono" :title="row.pkg || row.ref">{{ row.pkg || row.ref }}</td>
+                <td class="mono num">{{ row.current_version || '—' }}</td>
+                <td class="mono num fix">{{ row.fix_version || '—' }}</td>
+                <td class="num">{{ row.finding_count }}</td>
                 <td :class="'sev-' + row.worst">{{ row.worst }}</td>
               </template>
+              <template v-else-if="mode === 'actions'">
+                <td :title="row.repoLabel || row.repo">{{ row.repoLabel || row.repo }}</td>
+                <td :title="row.ref">{{ row.ref }}</td>
+                <td class="mono op" :title="row.unit || ''">{{ row.unit || '—' }}</td>
+                <td class="num"><template v-if="row.date">{{ row.date }}</template>
+                  <span v-else class="undated">no date</span></td>
+                <td class="num">{{ row.file_count || 0 }}</td>
+                <td><span class="pill" :class="dueClass(row)">{{ dueLabel(row) }}</span></td>
+              </template>
               <template v-else-if="mode === 'endpoints'">
-                <td>{{ row.repo }}</td>
-                <td>{{ row.domain }}</td>
+                <td :title="row.repo">{{ row.repo }}</td>
+                <td :title="row.domain">{{ row.domain }}</td>
                 <td>{{ kindOf(row.hostClass) }}<template v-if="row.classified"> · {{ row.vendor }}</template></td>
                 <td><span class="trk" :data-trk="trackState(row)">{{ trackLabel(row) }}</span></td>
                 <td>{{ row.file_count }}</td>
@@ -322,15 +236,8 @@
           </template>
         </tbody>
       </table>
-      <p id="empty" class="empty" v-show="rows.length === 0">Nothing found.</p>
       </div>
-      <div class="panel active" v-show="sumView === 'json'">
-        <p class="jsonhint">View / copy — the canonical <code>drift.json</code> every surface
-          projects from (read-only; the verified source of truth).</p>
-        <div class="jsonwrap">
-          <button class="copybtn" @click="copyJson('drift', driftJsonText)">{{ copyLabel('drift') }}</button>
-          <pre id="json-drift">{{ driftJsonText }}</pre>
-        </div>
+      <p id="empty" class="empty" v-show="rows.length === 0">Nothing found.</p>
       </div>
       </div>
     </section>
@@ -359,7 +266,7 @@
         </table>
       </template>
       <!-- honest empty-state when NO AI pass ran: the plane is always present, said plainly. -->
-      <div v-if="!hasShaped && !hasResearch && !leadRows.length" class="planehero">
+      <div v-if="!hasShaped && !hasResearch && !leadRows.length" class="empty">
         <p><b>No AI pass has run on this scan.</b> The AI Frontier fills in three ways: an AI
            <b>researches</b> a detected-but-untracked vendor's retirement docs (untracked → tracked),
            <b>shapes</b> a repo the deterministic scan couldn't read, or <b>cross-checks</b> a repo
@@ -490,7 +397,7 @@
           <div id="sarif-groups">
             <details class="grp" v-for="g in sarifGroups" :key="g.ruleId">
               <summary>{{ g.ruleId }}<span class="count">{{ g.count }}</span></summary>
-              <table class="big">
+              <table class="bigtable">
                 <thead><tr><th>Location</th><th>Message</th><th>Level</th></tr></thead>
                 <tbody>
                   <tr v-for="(r, ri) in g.rows" :key="ri">
@@ -516,8 +423,117 @@
       </div>
     </section>
   </div>
+    </div>
+    <aside class="splitshow">
+  <!-- HERO REGION (where the old cards lived). Task 2 fills #hero-body with the flagship,
+       always-on Retirement Timeline — one row per OPERATION, grouped by vendor, positioned on
+       a shared date axis with a dashed TODAY line. The non-timeline hero states (APIs/Unknown
+       bars, the generic per-dimension empty-state, dynamic herohead swapping by active tab)
+       are Task 3's job, layered on top of this. -->
+  <div class="hero">
+    <div class="herohead">
+      <h2>{{ heroTitle }}</h2>
+      <span class="why" v-if="heroWhy">{{ heroWhy }}</span>
+      <span class="sp"></span>
+      <span class="legend" v-if="heroMode === 'timeline' && timeline.dated.length">
+        <span><i class="i-crit"></i>past-due</span><span><i class="i-soon"></i>≤ 6 mo</span>
+        <span><i class="i-up"></i>upcoming</span>
+      </span>
+    </div>
+    <!-- HERO BODY: CONTEXTUAL to the active primary tab (Task 3) — exactly one of three
+         states, decided once by the `heroMode` computed so this is a plain v-if chain with
+         no re-derived branching. -->
+    <div id="hero-body">
+      <template v-if="heroMode === 'timeline'">
+        <template v-if="timeline.dated.length || timeline.undated.length">
+          <div class="axis" v-if="timeline.years.length">
+            <span class="yr" v-for="yr in timeline.years" :key="yr.year"
+                  :style="{left: yr.pct + '%'}">{{ yr.year }}</span>
+          </div>
+          <div class="todaywrap" v-if="timeline.todayPct !== null">
+            <div class="today" :style="{left: timeline.todayPct + '%'}">
+              <span class="tlcap">TODAY · {{ generated }}</span>
+            </div>
+          </div>
+          <div class="tl">
+            <!-- dated ops: one .trk row PER OPERATION (not per vendor) on the shared axis,
+                 grouped under a .vhead per vendor — timeline.byVendor. -->
+            <div class="vgroup" v-for="vg in timeline.byVendor" :key="vg.vendor">
+              <div class="vhead">{{ vg.vendor }} · {{ vg.items.length }} operation(s)</div>
+              <div class="tlrow" v-for="(pt, pi) in vg.items" :key="pi"
+                   @mouseenter="showTip(pt, $event)" @mousemove="moveTip($event)"
+                   @mouseleave="hideTip">
+                <div class="lab" :title="pt.vendor + ' ' + pt.unit">{{ pt.unit }}</div>   <!-- vendor is in the .vhead group header above -->
 
-  <footer class="pagefoot">
+                <div class="line">
+                  <span class="pt" :class="pt.kind" :style="{left: pt.pct + '%'}">
+                    <span class="d">{{ pt.date }}</span>
+                  </span>
+                </div>
+              </div>
+            </div>
+            <!-- undated ops: no announced cut-off, so no axis position to guess at — listed
+                 in their own labeled lane instead. timeline.undated — NEVER dropped (verify's
+                 check_timeline_lanes fails the build if this lane's binding disappears). -->
+            <div class="vgroup" v-if="timeline.undated.length">
+              <div class="vhead">Undated — no announced cut-off ({{ timeline.undated.length }})</div>
+              <div class="tlrow" v-for="(u, ui) in timeline.undated" :key="'u' + ui">
+                <div class="lab"><span class="vend">{{ u.vendor }}</span> {{ u.unit || '—' }}</div>
+                <div class="line"><span class="undated-note">{{ u.repo }} — date unknown</span></div>
+              </div>
+            </div>
+          </div>
+        </template>
+        <p class="empty" v-else>No vendor API sunsets to plot<template
+          v-if="scope"> for {{ repoLabelOf(scope) }}</template>.</p>
+      </template>
+      <template v-else-if="heroMode === 'vendors'">
+        <div class="mini" v-if="vendorBars.length">
+          <div class="bar" v-for="(b, bi) in vendorBars" :key="bi">
+            <div class="bn">{{ b.name }}</div>
+            <div class="bl">{{ b.sub }}</div>
+            <div class="track"><div class="fill" :style="{width: b.pct + '%', background: b.color}"></div></div>
+          </div>
+        </div>
+        <p class="empty" v-else>No {{ tab === 'unknown' ? 'untracked' : tab === 'excluded' ? 'excluded asset/library' : tab === 'apis' ? 'tracked' : 'detected' }}
+          endpoints found<template v-if="scope"> for {{ repoLabelOf(scope) }}</template>.</p>
+      </template>
+      <!-- AI Frontier plane intro: confident framing of the shaped tier (badge, not banner). -->
+      <!-- honest empty-state (CLAUDE.md principle 1: "cannot see" != "clean") — a zero here
+           is only meaningful because the scan could READ these repos; an unaudited or
+           unscannable source would say so in Coverage below, not show a clean zero. -->
+      <template v-else>
+        <div class="empty">Nothing in this dimension for the current scan.
+          <b>Zero here is only meaningful because the scan could read these repos</b> — an
+          unaudited or unscannable source would say so, not show a clean zero.</div>
+      </template>
+    </div>
+  </div>
+    </aside>
+  </div>
+  <div class="drawer" :data-open="drawerOpen ? '1' : '0'">
+    <button class="dbar" @click="drawerOpen = !drawerOpen"
+            :aria-expanded="drawerOpen" aria-controls="drawer-body">
+      <span class="sicon" v-if="noticeBits.length" aria-hidden="true">!</span>
+      <span class="ssum" v-if="noticeBits.length">{{ noticeBits.join(" · ") }}</span>
+      <span class="ssum quiet" v-else>No blind spots reported for this scan</span>
+      <span class="scount" v-if="noticeBits.length">{{ noticeBits.length }}</span>
+      <span class="dchev" aria-hidden="true">▲</span>
+    </button>
+    <div class="dbody" id="drawer-body" v-show="drawerOpen">
+      <div class="dtabs" role="tablist">
+        <button role="tab" :data-on="drawerTab === 'notices' ? '1' : '0'"
+                @click="drawerTab = 'notices'">This scan<span class="dn"
+                v-if="noticeBits.length">{{ noticeBits.length }}</span></button>
+        <button role="tab" :data-on="drawerTab === 'help' ? '1' : '0'"
+                @click="drawerTab = 'help'">How to read this report</button>
+        <button role="tab" :data-on="drawerTab === 'method' ? '1' : '0'"
+                @click="drawerTab = 'method'">Scan methodology</button>
+      </div>
+      <div class="dpane" v-show="drawerTab === 'notices'">
+        <div class="note" v-if="resolutionNote">{{ resolutionNote }}</div>
+
+        <div class="note" v-if="resolutionNote">{{ resolutionNote }}</div>
     <section id="coverage" class="coverage">
       <template v-if="coverageHasContent">
         <h2>Coverage</h2>
@@ -576,7 +592,12 @@
         </div>
       </details>
     </section>
-    <section class="tierkey">
+      </div>
+      <div class="dpane helpbody" v-show="drawerTab === 'help'">
+      <details class="grp">
+        <summary>How to read this report</summary>
+        <div class="helpbody">
+
       <b>How to read this report.</b> The three planes are three tiers of certainty.
       <span class="orig" data-origin="certified">CERTIFIED</span> — the <b>Supply Chain</b> and
       <b>Vendor Drift</b> planes — comes from the reviewed catalog: a detection rule plus a retirement
@@ -587,14 +608,17 @@
       <b>Tiles and totals count CERTIFIED only.</b>
       <div class="verifyline"><code>drift.json</code> is the certified record, and
         <code>drift-scan verify</code> checks every number on this page against it.</div>
-    </section>
-    <section id="methodology" class="coverage">
+        </div>
+      </details>
+    </div>
+      <div class="dpane" v-show="drawerTab === 'method'">
       <details class="grp" v-if="methodologyNotes.length">
         <summary>Scan methodology &amp; sources<span class="count">{{ methodologyNotes.length }}</span></summary>
         <div style="padding:10px 14px">
           <div class="note" v-for="(n, i) in methodologyNotes" :key="i">{{ n }}</div>
         </div>
       </details>
-    </section>
-  </footer>
+    </div>
+    </div>
+  </div>
 </div>
