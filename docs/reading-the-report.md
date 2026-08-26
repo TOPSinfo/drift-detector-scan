@@ -5,9 +5,11 @@ page explains all of them, in the order you meet them.
 
 ![The Cockpit — the interactive dashboard published on every run](screenshots/report-cockpit.png)
 
-*Every screenshot on this page is a real scan of seven **public** SDKs — eBay, Amazon
-SP-API, Walmart, Stripe, FedEx, Shopify and Twilio, pinned at the SHAs in `eval/corpus.yaml`.
-Real vendors, real dates, real call-sites, and no customer data.*
+*Every screenshot on this page is a real scan of an **invented** eighteen-repo fleet —
+`checkout-api`, `order-sync`, `legacy-storefront` and the rest are fictional, and so is the
+company. Everything else is real: the vendors, the retirement dates and the CVEs all come from
+the shipped catalog and from OSV, because a made-up vendor would not be detected at all. No
+customer data, and nothing hand-edited — the numbers are whatever the scanner produced.*
 
 There are two surfaces: the **Cockpit** (the interactive dashboard) and **drift.md** (the
 flat report, best for pasting into a ticket). They are the same data — the Cockpit is a
@@ -114,6 +116,8 @@ total. If it says 22 and lists 6, there are 22.
 ---
 
 ## Vendor coverage
+
+![The coverage lifecycle — which vendors nobody has checked yet, and how many call-sites sit behind them](screenshots/coverage.png)
 
 Separately from findings, each vendor carries a verdict about **our knowledge of it**:
 

@@ -111,8 +111,8 @@ packages, runtimes, and frameworks. Output: `inventory.json` (the map of what yo
   other scanner has.*
 
 <p align="center">
-  <img src="docs/screenshots/devops.png" alt="DevOps view — CVE and end-of-life findings grouped by rule" width="840">
-  <br><em>The <b>DevOps view</b> — package security holes (OSV CVEs) and end-of-life findings, grouped by rule, each with the exact upgrade.</em>
+  <img src="docs/screenshots/devops.png" alt="DevOps view — CVE and end-of-life findings, one row per package, ranked by severity" width="840">
+  <br><em>The <b>DevOps view</b> — package security holes (OSV CVEs) and end-of-life findings, one row per package, each with the exact upgrade.</em>
 </p>
 
 **③ one report** — everything becomes `drift.json`, the **single source of truth.** The
@@ -154,7 +154,7 @@ residue must shrink), so the tool learns without ever admitting an unverified fi
 
 <p align="center">
   <img src="docs/screenshots/vendors.png" alt="Integrations by vendor — which third-party APIs the code calls" width="840">
-  <br><em><b>Which third-party APIs your code calls</b>, by vendor — the layer no SBOM or CVE scanner has (across a set of public seller-integration SDKs).</em>
+  <br><em><b>Which third-party APIs your code calls</b>, by vendor — the layer no SBOM or CVE scanner has. <b>Fictional fleet; real vendors and real dates.</b></em>
 </p>
 
 ### The Cockpit
