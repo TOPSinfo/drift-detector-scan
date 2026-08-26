@@ -26,7 +26,10 @@ def test_valid_config_loads_and_derives_the_host(tmp_path):
     # a valid v1 config (v1 can't carry an assignee, so a WRITE mode on v1 is rejected — see
     # test_v1_create_mode_without_assignee_is_rejected; dry-run is the valid v1 shape).
     cfg = ops_config.load(_write(tmp_path, _GOOD))
-    assert cfg["fleet"] == ["https://git.x/g/a", "https://git.x/g/b"]
+    # (url, branch|None) pairs since 2026-08-26: a fleet entry may name the branch to scan,
+    # because a default branch is sometimes a README placeholder. A bare string entry — the
+    # form used here and in every config in the wild — carries None and behaves as before.
+    assert cfg["fleet"] == [("https://git.x/g/a", None), ("https://git.x/g/b", None)]
     assert cfg["host"] == "git.x"                              # derived from the fleet URLs
     assert cfg["delivery"] == {"mode": "dry-run", "dev_as_issues": True,
                                "devops_project": "root/ops", "devopsAssignee": None,

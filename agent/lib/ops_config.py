@@ -45,6 +45,7 @@ import yaml
 _MODES = {"dry-run", "live", "off", "create"}
 _TARGETS = {"issues", "mrs"}
 _TOP = {"version", "fleet", "delivery", "auth", "notify", "probe"}
+_FLEET_KEYS = {"url", "branch"}
 _DELIVERY_V1 = {"mode", "dev_as_issues", "devops_project"}
 _DELIVERY_V2 = {"mode", "devops", "developer"}
 # orthogonal to the v1/v2 split — allowed in either form, never counts toward the mix check
@@ -218,18 +219,39 @@ def load(path: str) -> dict:
     if not isinstance(fleet, list) or not fleet:
         raise ConfigError(f"{path}: `fleet` must be a non-empty list of https repo/group URLs")
     hosts = set()
-    for u in fleet:
+    entries: list = []
+    for item in fleet:
+        # Two accepted forms. The string form is every config that exists today and must keep
+        # parsing unchanged; the mapping form exists because a repo's default branch is sometimes
+        # a README placeholder while the code lives on another branch, and only the config can
+        # state which branch is real — inferring it from file counts or commit dates is a guess,
+        # and a wrong guess silently scans the wrong code.
+        if isinstance(item, dict):
+            unknown = set(item) - _FLEET_KEYS
+            if unknown:
+                raise ConfigError(f"{path}: fleet entry {item!r} has unknown key(s) "
+                                  f"{sorted(unknown)} (allowed: {sorted(_FLEET_KEYS)})")
+            u = item.get("url")
+            if not u:
+                raise ConfigError(f"{path}: fleet entry {item!r} needs a `url`")
+            branch = item.get("branch")
+            if branch is not None and (not isinstance(branch, str) or not branch.strip()):
+                raise ConfigError(f"{path}: fleet entry {u!r} has an empty `branch` — omit the "
+                                  f"key to use the remote's default branch")
+        else:
+            u, branch = item, None
         if not str(u).startswith("https://"):
             raise ConfigError(f"{path}: fleet entry {u!r} must be an https:// URL")
         h = _host_of(u)
         if not h:
             raise ConfigError(f"{path}: cannot parse a host from {u!r}")
         hosts.add(h)
+        entries.append((str(u), branch))
     if len(hosts) != 1:
         raise ConfigError(f"{path}: all fleet URLs must share one host, got {sorted(hosts)}")
 
     return {
-        "fleet": [str(u) for u in fleet],
+        "fleet": entries,
         "host": hosts.pop(),
         "delivery": _load_delivery(path, raw),
         "auth": _load_auth(path, raw),

@@ -114,7 +114,9 @@ def _cmd_run(args) -> int:
         except (OSError, ops_config.ConfigError) as exc:
             print(f"run: bad --config — {exc}", file=sys.stderr)
             return 2
-        roots = args.root or cfg["fleet"]                # flag overrides config
+        # cfg["fleet"] is [(url, branch|None)]; --root supplies bare paths/urls with no
+        # branch, normalised to the same shape so the two forms cannot diverge downstream.
+        roots = [(r, None) for r in args.root] if args.root else cfg["fleet"]
         # the fleet's shared host IS the permalink host — so call-site links resolve to the
         # SAME GitLab the repos were cloned from, configured in drift.yml, not a CI env var
         gitlab_hosts = frozenset({cfg["host"]})
@@ -778,7 +780,7 @@ def _cmd_probe(args) -> int:
         except (OSError, ops_config.ConfigError) as exc:
             print(f"probe: bad --config — {exc}", file=sys.stderr)
             return 2
-        roots = args.root or cfg["fleet"]
+        roots = [(r, None) for r in args.root] if args.root else cfg["fleet"]
         accept, host = cfg["probe"]["accept"], cfg["host"]
     if not roots:
         print("probe: no fleet — pass --root or a --config with a fleet", file=sys.stderr)
