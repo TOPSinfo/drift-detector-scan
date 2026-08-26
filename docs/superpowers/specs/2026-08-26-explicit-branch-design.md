@@ -1,7 +1,12 @@
 # Explicit branch selection, and the empty branch nobody could see
 
 **Date:** 2026-08-26
-**Status:** design approved, not implemented
+**Status:** **implemented** on `feat/explicit-branch` — plan
+`docs/superpowers/plans/2026-08-26-explicit-branch.md`. Two deviations taken during
+execution, both recorded in the commits: the group refusal moved to resolve time (a
+namespace is knowable only from `expand_group`), and "nothing readable" is tested as
+`modeled == 0 and unmodeled == 0` **and** empty coverage, because the file counts default
+to zero and their absence is not evidence of an empty repo.
 
 ## Problem
 

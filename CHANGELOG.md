@@ -58,6 +58,18 @@ All notable changes to the Drift Detector plugin. Dates are YYYY-MM-DD.
   Treat this as a knob that is safe to turn, not one that is known to pay — it has yet to be
   demonstrated on hardware with cores to spare.
 
+- **A fleet entry may name the branch to scan.** A repository's default branch is not always
+  where its code lives: several projects on a real fleet keep a README on `master` and develop on
+  `dev`, so the scan read a placeholder and reported the repo as clean. A `fleet` entry may now be
+  `{url: …, branch: develop}` instead of a bare URL; strings stay valid, so no existing config
+  changes. A branch that does not exist on the remote **fails that repository** rather than
+  falling back to the default — somebody asked for specific code and did not get it, and scanning
+  something else while reporting findings against it is the failure this tool exists to refuse. A
+  branch on a *group* URL is refused too: one branch name is not guaranteed to mean the same thing
+  across every repo under a namespace, and a per-repo fallback would produce a scan mixing branches
+  with nothing in the report saying which. `ref_is_default` stops being a hardcoded `true`, so a
+  scan of `develop` can no longer read as a scan of `main`.
+
 ### Fixed
 
 - **`catalogSummary` never reached `drift.json`.** The absorption counts existed in
@@ -98,6 +110,17 @@ All notable changes to the Drift Detector plugin. Dates are YYYY-MM-DD.
   first-wins, so the engine chose which same-key record survived and what a group's `example`
   showed. Both keys are now total. This is principle 3 ("same inputs → byte-identical output");
   it was found by diffing two full runs of one fleet, which nothing had done before `--jobs`.
+
+- **A repository the scanner could not read reported `KNOWN`.** A repo holding only a README —
+  no manifest, no source in any language the ruleset covers — collected no findings and no
+  reasons, and was published as `KNOWN`: "we looked, it is fine". A repo that *was* read and
+  genuinely contained no API calls was honestly `UNKNOWN`, so the repo we could not see scored
+  healthier than the one we could. Every check in `verdict` was guarded on having languages, and
+  an empty repo has none. It now carries `no-readable-source` and is `UNKNOWN`, and `verify`
+  refuses a document that says otherwise. **This will move counts** on any fleet containing such
+  repos — correctly, and for the first time visibly. A genuine docs or runbooks repo is now
+  permanently `UNKNOWN`; quieting that needs an acknowledged-empty attestation, with an approver
+  and an expiry like every other disposition here, which is deliberately not invented yet.
 
 ## v1.0.0 — 2026-08-21
 
