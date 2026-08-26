@@ -52,6 +52,7 @@ _SKIP_DIRS = {".git", "test", "tests", "spec", "__tests__", "vendor", "node_modu
 _MEANINGFUL_SHARE = 0.10
 
 NO_EGRESS_SIGNAL = "no-egress-signal"
+NO_READABLE_SOURCE = "no-readable-source"
 UNMODELED_LANGUAGE = "unmodeled-language"
 # The scan FOUND an API host and has no name for it — the vendor is absent from the
 # catalog. Distinct from every other blindness here: those mean "we could not see the
@@ -120,6 +121,21 @@ def verdict(attributed: int, residue: dict, coverage: dict,
     # happened to parse. Same bar as meaningful_languages, so one stray file in a large
     # readable repo does not cry wolf.
     total_files = modeled + unmodeled
+    # Nothing to read at all — no file the census recognised, modelled or not. Distinct from
+    # every other reason here: those describe what we found (or failed to attribute) in code we
+    # DID read. This one says the repo never offered any. It is the state a README-only default
+    # branch produces, and until now it produced no reason at all and therefore KNOWN — the
+    # scanner reporting "we looked, it's fine" about a repo it could not look at, which is
+    # principle 1 exactly. Returns immediately: every check below reasons about content, and
+    # there is none, so any further reason would be describing an absence twice.
+    # `not coverage` is load-bearing, not belt-and-braces: `modeled`/`unmodeled` default to 0,
+    # so a caller that passes only `coverage` (several tests, and any future one) would otherwise
+    # be told its repo is unreadable purely because it did not pass the counts. Absence of the
+    # counts is not evidence of an empty repo. Signal coverage is derived FROM the census, so a
+    # non-empty `coverage` means files were read by definition — the two conditions together are
+    # the only honest test for "there was nothing to read".
+    if not coverage and total_files == 0:
+        return "UNKNOWN", [NO_READABLE_SOURCE]
     if unmodeled and (not coverage or
                       (total_files and unmodeled / total_files >= _MEANINGFUL_SHARE)):
         reasons.append(UNMODELED_LANGUAGE)

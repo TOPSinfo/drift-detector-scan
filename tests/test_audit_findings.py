@@ -44,11 +44,25 @@ def test_a_repo_of_unmodeled_languages_cannot_report_known(tmp_path):
     assert sh["verdict"] == "UNKNOWN" and shapes.UNMODELED_LANGUAGE in sh["reasons"]
 
 
-def test_a_genuinely_empty_repo_is_still_known(tmp_path):
-    """The fix must not turn 'nothing to miss' into a false alarm."""
+def test_a_repo_with_nothing_readable_reports_unknown(tmp_path):
+    """DECISION REVERSED 2026-08-26. This test previously asserted the opposite — a README-only
+    repo was KNOWN, on the reasoning that "the fix must not turn 'nothing to miss' into a false
+    alarm". That reasoning holds for a genuine docs repo and fails for the case that turned up on
+    a real fleet: many projects keep a README on their default branch and their code on `dev`, so
+    an empty scan means WE READ THE WRONG BRANCH, not that there is nothing to miss.
+
+    The scanner cannot tell those two apart from content — which is exactly why it must not
+    assert the flattering one. KNOWN over a repo we could not read is principle 1 inverted, and
+    it is how a blind scan reaches a reader looking like a clean one.
+
+    Accepted cost, recorded here so nobody rediscovers it as a bug: a genuine docs or runbooks
+    repo is now permanently UNKNOWN. Quieting that needs an acknowledged-empty attestation, with
+    an approver and an expiry like every other disposition in this codebase; it is deliberately
+    not invented here. See docs/superpowers/specs/2026-08-26-explicit-branch-design.md."""
     (tmp_path / "README.md").write_text("# docs")
     sh = shapes.build(str(tmp_path), "docs", [], {"pathLiterals": [], "sinks": []}, _KINDS)
-    assert sh["verdict"] == "KNOWN" and sh["reasons"] == []
+    assert sh["verdict"] == "UNKNOWN"
+    assert sh["reasons"] == [shapes.NO_READABLE_SOURCE]
 
 
 def test_orphan_operation_markers_become_residue_not_nothing(tmp_path):

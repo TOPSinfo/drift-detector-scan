@@ -104,6 +104,11 @@ def scan_folder(root, state_dir, now, *, engine=None, run=None, git=None, progre
                 jobs=1) -> dict:
     # `root` may be a single path or a list of roots; discovery is recursive.
     roots = [root] if isinstance(root, (str, os.PathLike)) else list(root)
+    # A root is either a bare path/url or a (path_or_url, branch|None) pair since a fleet entry
+    # could name a branch. `roots` is passed on whole — resolve_sources needs the branch — but
+    # anything that wants a PATH takes it from here, because os.path.realpath(tuple) raises and
+    # a log line would otherwise print the tuple repr.
+    root_paths = [r[0] if isinstance(r, (tuple, list)) else r for r in roots]
 
     def _p(msg):                            # informative phase log (optional)
         if progress:
@@ -135,13 +140,16 @@ def scan_folder(root, state_dir, now, *, engine=None, run=None, git=None, progre
     overlay_sig = catalog_overlay.overlay_signature()
     rules_sig = hashlib.sha256(f"{ruleset_sig}|{overlay_sig}".encode("utf-8")).hexdigest()[:12]
 
-    _p("resolving sources under " + ", ".join(str(r) for r in roots) + " …")
+    _p("resolving sources under " + ", ".join(str(r) for r in root_paths) + " …")
     # A checkout, a plain folder, or a git/GitLab URL (cloned into <state>/sources/) all
     # resolve to scannable projects here; anything that resolves to nothing is an error
     # carried through, never a silent drop.
     resolved = source_resolver.resolve_sources(roots, state_dir)
     discovered = [(abs_, ident) for abs_, ident, _kind in resolved["projects"]]
     source_kind = {abs_: kind for abs_, _ident, kind in resolved["projects"]}
+    # abs_dir -> the branch the config asked for; absent when none was named. Carries the
+    # fact to git_meta so `ref_is_default` states something true instead of a constant.
+    source_branch = resolved.get("branches") or {}
     unscannable = resolved["errors"]
     n = len(discovered)
     _p(f"  {n} project(s) resolved" +
@@ -204,7 +212,8 @@ def scan_folder(root, state_dir, now, *, engine=None, run=None, git=None, progre
            ("  (uncached: duplicate repo name across roots)" if name in ambiguous else ""))
         record, note = scan_repo(abs_, name, i + 1, vendors, rules_path,
                                  engine=engine, run=run, git=git,
-                                 idiom_instances=idiom_instances)
+                                 idiom_instances=idiom_instances,
+                                 configured_branch=source_branch.get(abs_))
         record["sourceKind"] = source_kind.get(abs_, "local-git")
         record["shape"] = _shape_of(abs_, name, record, rule_kinds, attestations)
         if cacheable:
@@ -251,7 +260,7 @@ def scan_folder(root, state_dir, now, *, engine=None, run=None, git=None, progre
     coverage["rootsUnscannable"] = unscannable
     _rollup_coverage(coverage, repos, discovered_count=n)
     prior = ir_store.load_ir(state_dir)                # BEFORE save_ir overwrites it
-    root_count = len({os.path.realpath(r) for r in roots})   # distinct, not raw
+    root_count = len({os.path.realpath(r) for r in root_paths})   # distinct, not raw
     doc = {"generated": now,
            "scope": {"rootCount": root_count, "reposScanned": coverage["reposScanned"]},
            "repos": repos, "coverage": coverage}

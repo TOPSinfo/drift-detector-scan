@@ -12,8 +12,9 @@ from agent.lib import lockfile, private_sources, sdk_clients
 
 
 def scan_repo(repo_abs, repo_name, repo_id, vendors, rules_path, *,
-              engine, run, git=_default_git, idiom_instances=None):
-    meta = git_meta(repo_abs, run=git)
+              engine, run, git=_default_git, idiom_instances=None,
+              configured_branch=None):
+    meta = git_meta(repo_abs, run=git, configured_branch=configured_branch)
     meta.update({"id": repo_id, "path": repo_name, "provenance": {"engine": "ast-grep"}})
 
     records, unparsed = extract_manifest_records(repo_abs, repo_name)

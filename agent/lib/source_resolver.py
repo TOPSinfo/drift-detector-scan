@@ -54,12 +54,15 @@ def _has_code(path: str) -> bool:
     return any(next(p.rglob(g), None) is not None for g in _CODE_GLOBS)
 
 
-def _default_clone(url: str, dest: str) -> tuple[bool, str]:
+def _default_clone(url: str, dest: str, *, branch: str | None = None) -> tuple[bool, str]:
     """Clone (or update) `url` into `dest` using the machine's own git auth.
 
     A GITLAB_TOKEN / DRIFT_GIT_TOKEN in the environment is used via a transient in-memory
     credential helper so it authenticates the clone without ever landing in .git/config
     (the stored remote stays tokenless) or in the tool's state.
+
+    `branch` names the ref to scan. Absent, git picks the remote's default HEAD — today's
+    behaviour, unchanged.
     """
     dest_p = Path(dest)
     env = os.environ.copy()
@@ -71,16 +74,35 @@ def _default_clone(url: str, dest: str) -> tuple[bool, str]:
                       'echo "password=$DRIFT_CLONE_TOKEN"; }; f']
     try:
         if (dest_p / ".git").exists():
-            r = subprocess.run(["git", *cred, "-C", dest, "fetch", "--depth", "1", "origin"],
-                               capture_output=True, text=True, timeout=300, env=env)
+            # The refspec is load-bearing. A bare `fetch origin` resolves FETCH_HEAD to the
+            # remote's DEFAULT branch, so an already-cloned repo would ignore its configured
+            # branch on every run after the first — and nothing in the artifacts would show it,
+            # because the scan would look like a perfectly ordinary successful scan.
+            fetch = ["git", *cred, "-C", dest, "fetch", "--depth", "1", "origin"]
+            if branch:
+                fetch.append(branch)
+            r = subprocess.run(fetch, capture_output=True, text=True, timeout=300, env=env)
             if r.returncode != 0:
+                if branch:
+                    # Do NOT keep the existing clone: it sits on some other branch, and scanning
+                    # it would report the wrong code under the right repo's name.
+                    return False, (f"branch {branch!r} could not be fetched: "
+                                   f"{r.stderr.strip()[:120]}")
                 return True, f"kept existing clone (fetch failed: {r.stderr.strip()[:120]})"
             subprocess.run(["git", "-C", dest, "reset", "--hard", "FETCH_HEAD"],
                            capture_output=True, text=True, timeout=60, env=env)
             return True, "updated"
         dest_p.parent.mkdir(parents=True, exist_ok=True)
-        r = subprocess.run(["git", *cred, "clone", "--depth", "1", str(url), dest],
-                           capture_output=True, text=True, timeout=300, env=env)
+        cmd = ["git", *cred, "clone", "--depth", "1"]
+        if branch:
+            # --single-branch: without it a shallow clone still writes remote-tracking refs for
+            # every other branch, which is transfer paid for nothing on a fleet this size.
+            cmd += ["--branch", branch, "--single-branch"]
+        cmd += [str(url), dest]
+        r = subprocess.run(cmd, capture_output=True, text=True, timeout=300, env=env)
+        if r.returncode != 0 and branch:
+            return False, (f"branch {branch!r} not found on the remote: "
+                           f"{(r.stderr or r.stdout).strip()[:160]}")
         return r.returncode == 0, (r.stderr or r.stdout).strip()[:200]
     except (subprocess.TimeoutExpired, OSError) as exc:
         return False, str(exc)[:200]
@@ -89,7 +111,9 @@ def _default_clone(url: str, dest: str) -> tuple[bool, str]:
 def resolve_sources(roots: list, state_dir: str, *, clone=None, expand_group=None) -> dict:
     """Resolve every root to scannable projects. Returns:
 
-        {"projects": [(abs_dir, identity, kind)], "errors": [{"root", "reason"}]}
+        {"projects": [(abs_dir, identity, kind)],
+         "branches": {abs_dir: branch},          # only for roots that NAMED one
+         "errors": [{"root", "reason"}]}
 
     kind ∈ {remote, local-git, local-plain} — carried into the report so a reader knows a
     plain-folder result has no history behind it, rather than assuming a full scan.
@@ -101,9 +125,15 @@ def resolve_sources(roots: list, state_dir: str, *, clone=None, expand_group=Non
     sources_root = Path(state_dir) / "sources"
     projects: list = []
     errors: list = []
+    # abs_dir -> the branch the config ASKED for. Kept beside `projects` rather than widened into
+    # its tuples: that shape is documented as (abs_dir, identity, kind) and unpacked positionally
+    # in inventory_scan and in existing tests, so widening it would break every one of them
+    # silently. Absent for a root that named no branch, which is how git_meta tells "asked for
+    # this ref" apart from "the remote happened to default to it".
+    branches: dict = {}
     cloned_ids: set = set()
 
-    def _clone_url(url: str) -> None:
+    def _clone_url(url: str, branch: str | None = None) -> None:
         """Clone one repo URL into <state>/sources and add its projects (or an error)."""
         # Dedupe by canonical git identity BEFORE cloning: a fleet may list a group AND a
         # member of it, so the same repo arrives twice — once expanded as `…/repo.git`, once
@@ -115,35 +145,59 @@ def resolve_sources(roots: list, state_dir: str, *, clone=None, expand_group=Non
                 return
             cloned_ids.add(iden)
         dest = sources_root / slug(url)
-        ok, msg = clone(url, str(dest))
+        ok, msg = clone(url, str(dest), branch=branch)
         if not ok:
             errors.append({"root": url, "reason": f"could not clone {url!r}: {msg} — this "
                            "reuses your machine's git auth; can you `git clone` it in a "
                            "terminal?"})
             return
-        _add_local(str(dest), url, from_url=True)
+        _add_local(str(dest), url, from_url=True, branch=branch)
 
-    def _add_local(local: str, label: str, *, from_url: bool) -> None:
+    def _add_local(local: str, label: str, *, from_url: bool,
+                   branch: str | None = None) -> None:
         repos = discover_repos([local])          # git checkouts under the resolved dir
         if repos:
             kind = "remote" if from_url else "local-git"
             for abs_, identity in repos:
                 projects.append((abs_, identity, kind))
+                if branch:
+                    branches[abs_] = branch
         elif _has_code(local):
             ident = slug(label) if from_url else Path(local).resolve().name
-            projects.append((str(Path(local).resolve()), ident,
-                             "remote" if from_url else "local-plain"))
+            abs_ = str(Path(local).resolve())
+            projects.append((abs_, ident, "remote" if from_url else "local-plain"))
+            if branch:
+                branches[abs_] = branch
         else:
             errors.append({"root": label, "reason": (diagnose_root(local)
                            or f"{label!r} resolved to a folder with no scannable code")})
 
     for root in roots:
-        s = str(root)
+        # roots are (url_or_path, branch|None) since the config gained a branch. A bare string is
+        # still accepted — several callers and every existing test pass one — and means "no
+        # branch configured", which is exactly what it meant before.
+        if isinstance(root, (tuple, list)):
+            raw_root = root[0]
+            branch = root[1] if len(root) > 1 else None
+        else:
+            raw_root, branch = root, None
+        s = str(raw_root)
         if is_url(s):
             # A GitLab GROUP url expands to its member repos; a project url (or non-GitLab
             # host) comes back None and is cloned directly.
             group = expand_group(s) if gitlab.is_group_url(s) else None
             if group is not None:
+                # A namespace is only knowable HERE — expand_group returning a list IS the test,
+                # which is why this cannot live in load(). One branch name cannot be assumed to
+                # mean the same thing across every repo under a group, and a per-repo fallback
+                # would produce a scan mixing branches with nothing in the report to say which.
+                if branch:
+                    errors.append({"root": s, "reason": (
+                        f"{s!r} expands to a group of {len(group)} project(s), so `branch: "
+                        f"{branch}` cannot be applied — one branch name is not guaranteed to mean "
+                        f"the same thing in every repo under it. List the repos individually "
+                        f"with their own branches.")})
+                    continue
                 active = [p for p in group if not p["archived"]]
                 if not active:
                     skipped = f" ({len(group)} archived, skipped)" if group else ""
@@ -153,13 +207,13 @@ def resolve_sources(roots: list, state_dir: str, *, clone=None, expand_group=Non
                 for proj in active:
                     _clone_url(proj["url"])
             else:
-                _clone_url(s)
+                _clone_url(s, branch)
         else:
             p = Path(s)
             if not p.exists() or p.is_file():
                 errors.append({"root": s, "reason": diagnose_root(s)})
                 continue
-            _add_local(s, s, from_url=False)
+            _add_local(s, s, from_url=False, branch=branch)
 
     # dedupe by absolute dir, deterministic order
     seen: set = set()
@@ -169,4 +223,4 @@ def resolve_sources(roots: list, state_dir: str, *, clone=None, expand_group=Non
             continue
         seen.add(abs_)
         uniq.append((abs_, ident, kind))
-    return {"projects": uniq, "errors": errors}
+    return {"projects": uniq, "branches": branches, "errors": errors}
