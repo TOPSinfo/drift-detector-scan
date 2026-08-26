@@ -4,7 +4,7 @@ from __future__ import annotations
 import hashlib
 import os
 
-from agent.lib import catalog_overlay, engine as engine_mod, ir_store, scan_util
+from agent.lib import catalog_overlay, engine as engine_mod, ir_store, pool, scan_util
 from agent.lib.vendors import load_vendors
 from agent.lib.vendor_rules import write_ruleset, rule_kinds_by_language
 from agent.lib import shapes
@@ -100,7 +100,8 @@ def _rollup_coverage(coverage: dict, repos: list, *, discovered_count: int) -> N
     coverage["shapes"] = [r["shape"] for r in repos if r.get("shape")]
 
 
-def scan_folder(root, state_dir, now, *, engine=None, run=None, git=None, progress=None) -> dict:
+def scan_folder(root, state_dir, now, *, engine=None, run=None, git=None, progress=None,
+                jobs=1) -> dict:
     # `root` may be a single path or a list of roots; discovery is recursive.
     roots = [root] if isinstance(root, (str, os.PathLike)) else list(root)
 
@@ -151,31 +152,76 @@ def scan_folder(root, state_dir, now, *, engine=None, run=None, git=None, progre
     rule_kinds = rule_kinds_by_language(vendors)
     attestations = shapes.load_attestations(state_dir)
     coverage = {"reposScanned": 0, "reposErrored": [], "manifestsUnparsed": []}
-    for i, (abs_, name) in enumerate(discovered):
-        coverage["reposScanned"] += 1
-        tag = f"[{i + 1:>2}/{n}] {name}"
+    # Repo identities collide ACROSS roots. `discover_repos` guarantees collision-free
+    # identities only within ONE call, and `resolve_sources` calls it once per root — so two
+    # roots that each contain a `web/` both yield the identity `"web"`. `ir_store._repo_path`
+    # keys the per-repo cache on sha256(identity)@head_sha@rules_sig, so two DISTINCT
+    # checkouts sitting at the same commit share one cache file: the second is served the
+    # first's record and is reported using another repo's results. Serially that is
+    # deterministically wrong; under --jobs > 1 the hit/miss decision becomes a RACE, so the
+    # same inputs can produce a different drift.json — the one thing --jobs promises it
+    # cannot do.
+    #
+    # The cache is therefore BYPASSED for a colliding identity: never loaded, never saved,
+    # always scanned fresh. That is deterministic at every --jobs value and repairs the
+    # pre-existing serial mis-attribution too. Cost is one un-cached scan per colliding repo,
+    # paid only by a fleet that actually has duplicate names; every unique identity keeps its
+    # incrementality untouched. (Making identity globally unique is the proper root fix, but
+    # it changes every cache key and every rendered repo label — deliberately out of scope.)
+    _seen: dict = {}
+    for _abs, _ident in discovered:
+        _seen[_ident] = _seen.get(_ident, 0) + 1
+    ambiguous = {ident for ident, count in _seen.items() if count > 1}
+
+    def _scan_one(indexed):
+        # The ERROR line is logged HERE, beside the repo's other progress lines, and the
+        # exception is then re-raised for the pool to capture. Emitting it from the fold
+        # instead made every error batch to the END of the log even at --jobs 1, so on a
+        # 25-minute serial scan an error no longer sat next to the repo that produced it.
+        # Only the LOGGING lives here: `coverage["reposErrored"]` is still appended by the
+        # fold, in input order, so the artifacts stay byte-identical at any --jobs value.
+        # At --jobs > 1 these lines interleave with other workers' — the progress log is the
+        # one surface the identity guarantee explicitly does not cover.
         try:
-            sha = scan_util.git_meta(abs_, run=git)["head_sha"]
-            cached = ir_store.load_repo_cache(state_dir, name, sha, rules_sig) if sha else None
-            if cached is not None:
-                _p(f"{tag}  cached (HEAD unchanged)")
-                cached = {**cached, "id": i + 1}
-                cached["shape"] = _shape_of(abs_, name, cached, rule_kinds, attestations)
-                repos.append(cached)
-                continue
-            _p(f"{tag}  scan: git · manifests · AST endpoints")
-            record, note = scan_repo(abs_, name, i + 1, vendors, rules_path,
-                                     engine=engine, run=run, git=git,
-                                     idiom_instances=idiom_instances)
-            record["sourceKind"] = source_kind.get(abs_, "local-git")
-            record["shape"] = _shape_of(abs_, name, record, rule_kinds, attestations)
-            repos.append(record)
-            if sha:
-                ir_store.save_repo_cache(state_dir, name, sha, record, rules_sig)
-            coverage["manifestsUnparsed"] += [{"repo": name, **u} for u in note["unparsed"]]
-        except Exception as exc:            # no single repo aborts the scan
-            _p(f"{tag}  ⚠ error: {exc}")
+            return _scan_one_inner(indexed)
+        except Exception as exc:                # noqa: BLE001 — re-raised; the pool records it
+            i, (_abs, name) = indexed
+            _p(f"[{i + 1:>2}/{n}] {name}  ⚠ error: {exc}")
+            raise
+
+    def _scan_one_inner(indexed):
+        i, (abs_, name) = indexed
+        tag = f"[{i + 1:>2}/{n}] {name}"
+        sha = scan_util.git_meta(abs_, run=git)["head_sha"]
+        cacheable = bool(sha) and name not in ambiguous
+        cached = ir_store.load_repo_cache(state_dir, name, sha, rules_sig) if cacheable else None
+        if cached is not None:
+            _p(f"{tag}  cached (HEAD unchanged)")
+            cached = {**cached, "id": i + 1}
+            cached["shape"] = _shape_of(abs_, name, cached, rule_kinds, attestations)
+            return {"record": cached, "unparsed": []}
+        _p(f"{tag}  scan: git · manifests · AST endpoints" +
+           ("  (uncached: duplicate repo name across roots)" if name in ambiguous else ""))
+        record, note = scan_repo(abs_, name, i + 1, vendors, rules_path,
+                                 engine=engine, run=run, git=git,
+                                 idiom_instances=idiom_instances)
+        record["sourceKind"] = source_kind.get(abs_, "local-git")
+        record["shape"] = _shape_of(abs_, name, record, rule_kinds, attestations)
+        if cacheable:
+            ir_store.save_repo_cache(state_dir, name, sha, record, rules_sig)
+        return {"record": record, "unparsed": note["unparsed"]}
+
+    # The fold below runs in INPUT order, never completion order: `repos`, `reposErrored` and
+    # `manifestsUnparsed` are all order-sensitive, and the whole --jobs guarantee is that a
+    # parallel run cannot be distinguished from a serial one by its artifacts.
+    outcomes = pool.ordered_map(_scan_one, list(enumerate(discovered)), jobs=jobs)
+    for (i, (abs_, name)), (out, exc) in zip(enumerate(discovered), outcomes, strict=True):
+        coverage["reposScanned"] += 1
+        if exc is not None:                 # no single repo aborts the scan (logged in _scan_one)
             coverage["reposErrored"].append({"repo": name, "reason": str(exc)})
+            continue
+        repos.append(out["record"])
+        coverage["manifestsUnparsed"] += [{"repo": name, **u} for u in out["unparsed"]]
 
     # SDK profiles: for a wrapper whose vendor+version live behind constants (the
     # `sdk-only-no-callsite` blind spot), inject synthetic endpoints read from its OWN source

@@ -1,7 +1,11 @@
 # Opt-in parallel fleet scan (`--jobs N`)
 
 **Date:** 2026-08-25
-**Status:** design approved, not implemented
+**Status:** the scheduling half (`pool.ordered_map`, call sites 1 and 2, the `--jobs` flag,
+the identity test) is **implemented** on `perf/parallel-scan` — plan
+`docs/superpowers/plans/2026-08-25-opt-in-parallel-scan.md`. **Call site 3, the OSV
+batch+detail rewrite, is not** — it changes what is asked of the API rather than when, so it
+was split onto its own branch with its own equivalence test (test 5 below).
 
 ## Problem
 
@@ -49,6 +53,40 @@ This is deliberate. The alternative — buffering each repo's line and flushing 
 would make the log *look* sequential while the work was not, which is a worse lie than an
 honestly interleaved log. The artifacts are what the tool's claims rest on; the log is
 progress feedback.
+
+### The other limit: resource exhaustion
+
+`ast-grep` is itself internally parallel, so `--jobs N` runs N of those inside the machine's
+own core count — oversubscribed. On a loaded machine that can push a single repo's scan past
+`agent/lib/engine.py`'s fixed 600s timeout, which the pool records as a `reposErrored` entry
+exactly like a real scan failure; the same repo would pass cleanly at `--jobs 1`. `--jobs` is
+therefore capped to `os.cpu_count()` (with a notice on stderr if the requested value had to be
+reduced), but the cap only bounds how many workers *this run* starts — it does not eliminate
+contention with whatever else is running on the box. The byte-identical guarantee above holds
+absent this kind of resource exhaustion, not unconditionally.
+
+## Measured, after implementation
+
+The guarantee holds on real data: a 53-repo fleet at `--jobs 1` and `--jobs 4`, audit network
+pinned off via `audit --offline`, produced byte-identical `inventory.json`, `audit.json`,
+`drift.json` and `drift.md` (verified at 414f18a).
+
+The premise of the Problem section did not fare as well. Two paired runs on a 4-core box:
+
+| run | `--jobs 1` | `--jobs 4` | |
+|---|---|---|---|
+| 1 | 733.98s | 642.87s | parallel 12% faster |
+| 2 | 596.61s | 629.79s | parallel 6% slower |
+
+The serial baseline alone moved 23% between the two runs, which is larger than the effect being
+measured. `ast-grep` is internally parallel already, so four workers on four cores mostly contend
+with the engine. **No speedup is demonstrated on this hardware.** The flag is safe — that part is
+proved — but "let a local run go faster" remains an open claim, and the honest next step is a
+timed series on a many-core machine rather than another pair of runs here.
+
+Getting to that comparison also surfaced a defect the design never anticipated: the scanner was
+not byte-reproducible with itself, at any `--jobs` value, and had not been. See the three
+`endpoints.py` commits on the branch.
 
 ## Design
 

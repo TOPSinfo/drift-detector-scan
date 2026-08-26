@@ -53,6 +53,16 @@ def _tag_own_infra(endpoints: list) -> None:
 _STRING_LIT = re.compile(r"""['"]([^'"]*)['"]""")
 
 
+def _match_key(m: dict) -> tuple:
+    """A TOTAL ordering over engine matches. The engine's emission order is not stable
+    run-to-run, and several loops below are first-wins (`seen_known`, and `groups` keeping the
+    first `example` it is given), so ANY loop that walks `matches` raw lets the engine decide
+    what a record says. Canonicalising the stream once, here, is what makes that impossible —
+    rather than remembering to sort at each of the seven walks."""
+    return (str(m.get("path", "")), int(m.get("line", 0) or 0), str(m.get("kind", "")),
+            str(m.get("checkId", "")), str(m.get("vendor", "")), str(m.get("text", "")))
+
+
 def _string_literal_of(text: str) -> str:
     """The first quoted string in a matched line — the path a path-constant rule caught."""
     m = _STRING_LIT.search(text or "")
@@ -105,6 +115,11 @@ def _relpath(path: str, repo_root: str) -> str:
 def scan_endpoints(matches: list, repo_root: str, vendors: list, *, max_files: int = 20,
                    idioms: list | None = None, repo_id: str | None = None,
                    sdk_vendors: set | None = None) -> dict:
+    # Canonical order FIRST, before anything reads it. Six of the seven walks below iterate
+    # `matches` raw and several of them create records first-wins, so an unstable stream reached
+    # the output through whichever one got there first. Proved on a real repo: one endpoint's
+    # `example` alternated between two of its 42 call-sites across runs.
+    matches = sorted(matches, key=_match_key)
     by_tk = {v.techKey: v for v in vendors}
     by_name = {v.vendor: v for v in vendors}
     line_cache: dict = {}
@@ -198,8 +213,14 @@ def scan_endpoints(matches: list, repo_root: str, vendors: list, *, max_files: i
     # then path+line so PROCESSING order never inherits the engine's match order — which is
     # NOT stable run-to-run. seen_known is first-wins; an unstable walk order would let the
     # engine pick which same-key record survives (a principle-3 violation, not just cosmetic).
+    # ...and the matched TEXT last, which makes the key TOTAL. Two rules routinely match the same
+    # line (two string literals in one statement), so (url, path, line) alone ties — and a stable
+    # sort resolves a tie by leaving the engine's arrival order in place, which is precisely the
+    # order this key exists to discard. A real fleet caught it: one repo, three consecutive scans
+    # at the default --jobs 1, three different documents.
     for m in sorted(matches, key=lambda x: (0 if x.get("kind") == "url" else 1,
-                                            str(x.get("path", "")), int(x.get("line", 0) or 0))):
+                                            str(x.get("path", "")), int(x.get("line", 0) or 0),
+                                            str(x.get("text", "")))):
         rel = _relpath(m.get("path", ""), repo_root)
         lineno = int(m.get("line", 0) or 0)
         # Prefer the engine's full matched text: a heredoc/multi-line literal carries
@@ -511,8 +532,12 @@ def scan_endpoints(matches: list, repo_root: str, vendors: list, *, max_files: i
         r.get("vendor") or "", r.get("domain") or "", str(r.get("version") or ""),
         r.get("apiPath") or "", str(r.get("operation") or ""), r.get("example") or ""))
     _tag_own_infra(endpoints)
+    # The whole record after the loc, for the same reason the walk key carries the text: two path
+    # constants on ONE line share a loc, and sorting on the loc alone left which came first to the
+    # engine. Every value is stringified so the key stays total if a field is ever not a string.
     for lst in (residue_paths, residue_sinks, residue_ops, residue_pc):
-        lst.sort(key=lambda x: _loc_key(x["loc"]))
+        lst.sort(key=lambda x: (_loc_key(x["loc"]),
+                                sorted((k, str(v)) for k, v in x.items())))
     return {"endpoints": endpoints,
             "residue": {"pathLiterals": residue_paths, "sinks": residue_sinks,
                         "operations": residue_ops, "pathConstants": residue_pc}}

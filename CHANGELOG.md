@@ -35,6 +35,29 @@ All notable changes to the Drift Detector plugin. Dates are YYYY-MM-DD.
   present every existing attestation as freshly earned. A vendor seen for the first time counts
   as *detected*, never as *newly attested* — nobody did that work this period.
 
+- **An opt-in `--jobs N` on `run` and `inventory-scan`.** A 53-repo fleet scan takes 15–25
+  minutes, and the per-repo AST sweep and the fleet `git pull` are both waiting on a subprocess or
+  a socket. `--jobs N` runs them concurrently. It is a **pure scheduling knob**: serial and
+  parallel runs produce byte-identical `drift.json`, `audit.json` and `drift.md`, asserted by a
+  test rather than argued, so there is no "parallel mode" whose output anyone has to reason about
+  separately. The default is `1` and takes a *literal* serial path — a plain loop, no executor
+  constructed — with no environment variable and no auto-detection, so CI cannot change behaviour
+  because someone forgot to pin a value. Two honest exceptions: the **progress log** interleaves by
+  completion order under `--jobs > 1` (buffering it would make the log *look* sequential while the
+  work was not — a worse lie than an interleaved one), and because `ast-grep` is itself internally
+  parallel, oversubscribing can push a repo past the engine's 600s timeout, so the value is capped
+  to the machine's CPU count with a notice on stderr saying why. The byte-identity guarantee holds
+  absent that kind of resource exhaustion, not unconditionally.
+
+  **The guarantee is measured, and so is the disappointment.** On a real 53-repo fleet with the
+  audit's network pinned off, `--jobs 1` and `--jobs 4` produce byte-identical `inventory.json`,
+  `audit.json`, `drift.json` and `drift.md`. The speedup does not survive the same scrutiny: two
+  paired runs on a 4-core box gave 734s vs 643s (12% faster) and then 597s vs 630s (6% *slower*),
+  while the serial baseline alone moved 23% between runs. `ast-grep` is already internally
+  parallel, so on a machine with few cores `--jobs` mostly competes with the engine for them.
+  Treat this as a knob that is safe to turn, not one that is known to pay — it has yet to be
+  demonstrated on hardware with cores to spare.
+
 ### Fixed
 
 - **`catalogSummary` never reached `drift.json`.** The absorption counts existed in
@@ -45,6 +68,36 @@ All notable changes to the Drift Detector plugin. Dates are YYYY-MM-DD.
   read the deprecation page of a library we wrote ourselves. `due_for_refresh` skipped only
   `CURRENT` and `BLOCKED`; it now skips the two dispositions too, and they return on their own
   when the expiry lapses them.
+
+- **A run in which every repository errored printed `✓ scan+audit: 🔴 0 · 🟠 0` and exited 0.**
+  `coverage.reposErrored` was recorded by the scan and then reached nothing a caller sees — not the
+  banner, not the exit code — and `reposScanned` counts errored repos too, so "could not read a
+  single repository" rendered identically to "read everything, found nothing". `run` now prints a
+  ⚠ line naming the errored repos with their reasons, and when *every* discovered repo errored it
+  follows the "scanned 0 repositories" precedent: an explicit `NOT a clean result` and exit 4.
+  stderr and the exit code only — the artifacts are untouched.
+- **Two repositories with the same directory name under different roots shared one cache entry.**
+  `discover_repos` guarantees collision-free identities only within one call and each root is a
+  separate call, so two roots each holding a `web/` both yield the identity `web`; sitting at the
+  same commit, the second was served the first's cached record and reported using another repo's
+  results. The cache is now bypassed entirely for a colliding identity — never loaded, never saved,
+  always scanned fresh. (Making identity globally unique is the proper fix and would move every
+  cache key and rendered repo label; it is deliberately left alone.)
+- **The per-repo cache was written by truncate-then-write**, so a concurrent reader could see a
+  half-written file and report a perfectly scannable repo as errored. It is now `mkstemp` +
+  `os.replace`, matching `absorb_trail.forget`.
+
+- **The scanner was not byte-reproducible, and had not been for some time.** The same repository
+  scanned three times in a row — no concurrency, default settings — produced three different
+  `inventory.json` files: identical in size and in the set of records, differing only in which of
+  two entries sharing one `file:line` came first. `agent/lib/endpoints.py` canonicalises for the
+  engine's unstable match order in two places, and both keys were incomplete — the processing walk
+  sorted on `(url-first, path, line)` and the residue lists on the location alone. Two rules
+  routinely match one line, so both keys tied, and a stable sort resolves a tie by keeping the
+  arrival order the key exists to discard. Worse than cosmetic on the walk: `seen_known` is
+  first-wins, so the engine chose which same-key record survived and what a group's `example`
+  showed. Both keys are now total. This is principle 3 ("same inputs → byte-identical output");
+  it was found by diffing two full runs of one fleet, which nothing had done before `--jobs`.
 
 ## v1.0.0 — 2026-08-21
 

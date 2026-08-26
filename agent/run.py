@@ -19,6 +19,7 @@ from agent.lib.summary_render import render_summary
 from agent.lib.findings_state import apply_lifecycle
 from agent.lib import coverage_state
 from agent.lib.repo_discovery import discover_repos
+from agent.lib import pool
 from agent.lib.http_util import default_http
 from agent.lib import ir_store
 from agent.lib.inventory_diff import diff_inventories
@@ -39,13 +40,13 @@ def _default_pull(repo_path):
                    capture_output=True, timeout=120)
 
 
-def _pull_repos(roots, pull_run):
+def _pull_repos(roots, pull_run, *, jobs=1):
     runner = pull_run or _default_pull
-    for abs_path, _identity in discover_repos(roots):
-        try:
-            runner(abs_path)
-        except Exception:
-            pass          # best-effort; a repo that won't fast-forward is scanned as-is
+    paths = [abs_path for abs_path, _identity in discover_repos(roots)]
+    # Errors are captured by the pool and deliberately ignored here, exactly as the previous
+    # bare `except Exception: pass` did — best-effort; a repo that won't fast-forward is
+    # scanned as-is rather than failing the run.
+    pool.ordered_map(runner, paths, jobs=jobs)
 
 
 def _apply_resolution(verdicts, now) -> dict:
@@ -64,11 +65,11 @@ def _apply_resolution(verdicts, now) -> dict:
 
 def run_pipeline(roots, state_dir, now, *, pull=False,
                  engine=None, run=None, git=None, http=None, progress=None,
-                 pull_run=None, gitlab_hosts=frozenset(), resolve=None) -> dict:
+                 pull_run=None, gitlab_hosts=frozenset(), resolve=None, jobs=1) -> dict:
     roots = [roots] if isinstance(roots, (str, os.PathLike)) else list(roots)
     os.makedirs(state_dir, exist_ok=True)
     if pull:
-        _pull_repos(roots, pull_run)
+        _pull_repos(roots, pull_run, jobs=jobs)
 
     # Captured BEFORE scan 1 — the state dir's last CERTIFIED run (or None on a first-ever scan),
     # exactly what scan 1 itself diffs against internally. A re-scan (below) must diff against
@@ -77,7 +78,8 @@ def run_pipeline(roots, state_dir, now, *, pull=False,
     # because THIS run scanned twice — an artifact of the run, not real change between runs.
     prior_ir = ir_store.load_ir(state_dir)
 
-    scan = scan_folder(roots, state_dir, now, engine=engine, run=run, git=git, progress=progress)
+    scan = scan_folder(roots, state_dir, now, engine=engine, run=run, git=git, progress=progress,
+                       jobs=jobs)
     doc, diff = scan["doc"], scan["diff"]
 
     # No-queue resolution (docs/superpowers/specs/2026-08-13-no-queue-design.md): the AI never
@@ -102,7 +104,7 @@ def run_pipeline(roots, state_dir, now, *, pull=False,
             # never a stale drift.json left over from some earlier run, never a traceback.
             try:
                 rescan = scan_folder(roots, state_dir, now, engine=engine, run=run, git=git,
-                                     progress=progress)
+                                     progress=progress, jobs=jobs)
             except Exception as exc:   # noqa: BLE001 — any re-scan failure degrades, never blocks
                 resolve_result = {"status": "degraded", "detail": str(exc),
                                   "written": resolve_result["written"],
@@ -170,6 +172,13 @@ def run_pipeline(roots, state_dir, now, *, pull=False,
             "coverage": audit.get("coverage", {}),
             # from the SCAN, not the audit — why any root yielded no repo
             "rootsUnscannable": (doc.get("coverage", {}) or {}).get("rootsUnscannable", []),
+            # ...and which individual repos blew up mid-sweep, plus how many were discovered at
+            # all. The scan has always recorded these; nothing a caller sees could read them, so
+            # a run in which every repo errored still printed a green banner and exited 0.
+            # `reposScanned` counts errored repos too, which is why it cannot answer this.
+            "reposErrored": (doc.get("coverage", {}) or {}).get("reposErrored", []),
+            "reposDiscovered": (((doc.get("coverage", {}) or {}).get("repos", {}) or {})
+                                .get("discovered", 0)),
             # None when --resolve wasn't passed; otherwise {"status": "applied"|"rejected"|"error"
             # |"degraded", ...} — see _apply_resolution (applied/rejected/error) and the re-scan
             # try/except above ("degraded": the gate passed and the overlay write landed, but the

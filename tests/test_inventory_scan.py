@@ -214,3 +214,38 @@ def test_private_source_that_is_a_fleet_member_is_marked_covered_not_unreachable
     ps = next(p for p in coverage["privateSources"] if p["repo"] == "marketplacehub")
     assert ps["repositories"] == ["https://git.x/akshit/catchapi.git"]   # only the blind one
     assert ps["covered"] == ["https://git.x/example-org/amazonspapi.git"]     # the fleet member
+
+
+def test_scan_folder_error_line_is_adjacent_to_its_repo_at_jobs_one(tmp_path):
+    """At --jobs 1 an error must be logged NEXT TO the repo it belongs to.
+
+    Making the fold (rather than the worker) emit the ERROR line kept error output
+    deterministic under --jobs > 1, but it also batched every error to the END of the log at
+    --jobs 1 — so on a 25-minute serial scan an error no longer sat beside the repo that
+    produced it, and the branch's "jobs=1 is today's code exactly" claim was false.
+    `test_scan_folder_progress_callback` uses any(), which is why nothing caught it.
+    """
+    root = tmp_path / "repos"
+    for name in ("aaa", "bbb", "ccc"):
+        _git_init(root / name, {"composer.json": '{"require": {"php": "^8.2"}}'})
+
+    def exploding_run(args):
+        if args[-1].endswith("bbb"):
+            raise RuntimeError("engine exploded")
+        return json.dumps([])
+
+    msgs = []
+    out = scan_folder(str(root), str(tmp_path / "state"), "2026-08-25",
+                      engine="semgrep", run=exploding_run, progress=msgs.append, jobs=1)
+
+    err_idx = [i for i, m in enumerate(msgs) if "⚠ error" in m]
+    assert len(err_idx) == 1, msgs
+    own_idx = [i for i, m in enumerate(msgs) if "bbb" in m and "scan:" in m]
+    assert len(own_idx) == 1, msgs
+    assert err_idx[0] == own_idx[0] + 1, (
+        "the error line must follow bbb's own progress line immediately, not trail every "
+        f"other repo's: {msgs}")
+    # ...and it must still be a `ccc` line that comes after, i.e. the error did not move to the end
+    assert any("ccc" in m for m in msgs[err_idx[0] + 1:]), msgs
+    # the fold still records it, in input order, exactly once
+    assert [e["repo"] for e in out["doc"]["coverage"]["reposErrored"]] == ["bbb"]

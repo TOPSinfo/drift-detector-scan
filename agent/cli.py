@@ -17,6 +17,34 @@ from agent import inventory_scan as inventory_scan_mod
 from agent.lib import scan_util
 
 
+def _capped_jobs(requested: int, command: str = "run") -> int:
+    """Clamp a --jobs value to the CPU count, printing a one-line notice to stderr when it
+    had to reduce what the user asked for. `requested <= 1` passes through untouched — the
+    cap is a ceiling on concurrency, never a floor, and never a new default.
+
+    `command` names the subcommand in that notice: the prefix used to be the literal string
+    "run", so `inventory-scan --jobs 999` printed a message about a command the user had not
+    typed.
+
+    Why cap at all: `ast-grep` (the scan engine) is itself internally parallel, so `--jobs N`
+    runs N of those inside the machine's own core count — oversubscribed. On a loaded machine
+    that can push a single repo's scan past `agent/lib/engine.py`'s fixed 600s timeout, which
+    the pool records as a `reposErrored` entry exactly like a real scan failure; the same repo
+    would pass cleanly at `--jobs 1`. Capping to `os.cpu_count()` bounds that, though it does
+    not eliminate contention with whatever else is running on the box.
+    """
+    if requested <= 1:
+        return requested
+    cap = os.cpu_count() or 1
+    if requested > cap:
+        print(f"{command}: --jobs {requested} capped to {cap} (this machine's CPU count) — "
+              f"ast-grep is itself internally parallel, so more workers than cores "
+              f"oversubscribes the CPU and can push a repo past the engine's 600s timeout",
+              file=sys.stderr)
+        return cap
+    return requested
+
+
 def _cmd_inventory_scan(args) -> int:
     progress = None
     if getattr(args, "progress", False):
@@ -28,7 +56,10 @@ def _cmd_inventory_scan(args) -> int:
 
     t0 = time.perf_counter()
     try:
-        out = inventory_scan_mod.scan_folder(args.root, args.state, args.now, progress=progress)
+        out = inventory_scan_mod.scan_folder(args.root, args.state, args.now,
+                                             progress=progress,
+                                             jobs=_capped_jobs(getattr(args, "jobs", 1),
+                                                               "inventory-scan"))
     except RuntimeError as exc:
         print(f"inventory-scan failed: {exc}", file=sys.stderr)
         return 2
@@ -90,6 +121,10 @@ def _cmd_run(args) -> int:
     if not roots:
         print("run: no repos to scan — pass --root or a --config with a fleet", file=sys.stderr)
         return 2
+    if getattr(args, "jobs", 1) < 1:
+        print("run: --jobs must be 1 or greater", file=sys.stderr)
+        return 2
+    jobs = _capped_jobs(getattr(args, "jobs", 1), "run")
     resolve_verdicts = None
     if getattr(args, "resolve", None):
         try:
@@ -124,7 +159,8 @@ def _cmd_run(args) -> int:
     try:
         out = run_pipeline(roots, args.state, args.now,
                            pull=getattr(args, "pull", False), progress=progress,
-                           gitlab_hosts=gitlab_hosts, resolve=resolve_verdicts)
+                           gitlab_hosts=gitlab_hosts, resolve=resolve_verdicts,
+                           jobs=jobs)
     except RuntimeError as exc:
         print(f"run failed: {exc}", file=sys.stderr)
         return 2
@@ -138,6 +174,31 @@ def _cmd_run(args) -> int:
         print("  Nothing was audited. Point at a git checkout (or a folder containing one).",
               file=sys.stderr)
         return 4                           # 'found nothing to scan' is 'couldn't verify'
+
+    # A repo that blew up mid-sweep is not a repo that came back clean. The scan has always
+    # recorded these in coverage.reposErrored; until now nothing a caller sees read them — not
+    # the banner, not the exit code — and `reposScanned` counts them, so a run in which EVERY
+    # repo errored printed `✓ scan+audit: 🔴 0 · 🟠 0` and exited 0. That is the same
+    # "cannot see == clean" collapse as the zero-repos case above, and --jobs makes it newly
+    # reachable: oversubscribing ast-grep can push a repo past the engine's 600s timeout, which
+    # lands in exactly this list. stderr and the exit code ONLY — the artifacts are untouched,
+    # because their byte-identity across --jobs values is a proven guarantee of this branch.
+    errored = out.get("reposErrored") or []
+    if errored:
+        names = [e.get("repo", "?") for e in errored]
+        head, rest = names[:8], max(0, len(names) - 8)
+        print(f"⚠ {len(errored)} repo(s) errored and were NOT read: "
+              f"{', '.join(head)}{f' (+{rest} more)' if rest else ''} — their findings are "
+              f"MISSING, not absent.", file=sys.stderr)
+        for e in errored[:8]:
+            print(f"    {e.get('repo', '?')}: {e.get('reason', '')}", file=sys.stderr)
+        discovered = out.get("reposDiscovered") or 0
+        if discovered and len(errored) >= discovered:
+            print(f"✗ all {discovered} discovered repositories errored — this is NOT a clean "
+                  f"result.", file=sys.stderr)
+            print("  Nothing was actually read. Fix the cause above and re-run; if this "
+                  "started with --jobs, try a lower value or --jobs 1.", file=sys.stderr)
+            return 4                       # 'read nothing' is 'couldn't verify', same as above
 
     # A root that failed to resolve is surfaced even when OTHERS scanned fine — a typo'd
     # or unreachable root buried in a good run must not disappear.
@@ -1582,6 +1643,14 @@ def main(argv: list[str]) -> int:
     pr.add_argument("--now", required=True)
     pr.add_argument("--pull", action="store_true")
     pr.add_argument("--progress", action="store_true")
+    pr.add_argument("--jobs", type=int, default=1,
+                    help="repos to scan concurrently (default 1 = serial, which is what CI "
+                         "runs; a larger value is capped to this machine's CPU count, with a "
+                         "notice on stderr if it was reduced). Results are reassembled in "
+                         "discovery order, so any --jobs value produces identical artifacts — "
+                         "absent resource exhaustion: ast-grep is itself internally parallel, "
+                         "so heavy oversubscription can push a slow repo past the engine's "
+                         "600s timeout and it gets counted errored, which serial would not.")
     pr.add_argument("--fail-on-deprecated", action="store_true",
                     help="exit 3 if any un-muted DEPRECATED finding (CI gate)")
     pr.add_argument("--resolve",
@@ -1790,6 +1859,10 @@ def main(argv: list[str]) -> int:
         pis.add_argument(a, required=True)
     pis.add_argument("--progress", action="store_true",
                      help="emit an informative per-phase log to stderr")
+    pis.add_argument("--jobs", type=int, default=1,
+                     help="repos to scan concurrently (default 1 = serial; a larger value is "
+                          "capped to this machine's CPU count, with a notice on stderr if it "
+                          "was reduced)")
     pis.set_defaults(func=_cmd_inventory_scan)
 
     args = p.parse_args(argv)

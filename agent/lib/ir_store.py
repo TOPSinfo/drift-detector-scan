@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
+import tempfile
 from pathlib import Path
 
 # Per-repo cache schema. BUMP when the record shape changes so pre-upgrade caches are
@@ -31,7 +33,22 @@ def _repo_path(state_dir: str, path: str, head_sha: str, rules_sig: str = "") ->
 
 def _write(p: Path, doc: dict) -> None:
     p.parent.mkdir(parents=True, exist_ok=True)
-    p.write_text(json.dumps(doc, ensure_ascii=False, indent=2, sort_keys=True), encoding="utf-8")
+    # Write to a temp file in the SAME directory, then os.replace() it over the destination,
+    # instead of truncating the real path with Path.write_text() in place. os.replace is only
+    # atomic within a filesystem, hence same-directory: a reader landing mid-write of the old
+    # in-place truncate could load a half-written file. That reader is not hypothetical here —
+    # _repo_path keys the cache on identity@sha, not on a repo's directory, so two distinct
+    # discovered repos can share one cache path; under --jobs > 1 one worker's write can race
+    # another worker's read of that same path, and a torn read raised json.JSONDecodeError,
+    # which the pool captured and reported as the repo being unscannable.
+    fd, tmp_path = tempfile.mkstemp(dir=p.parent, prefix=p.name + ".")
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as fh:
+            fh.write(json.dumps(doc, ensure_ascii=False, indent=2, sort_keys=True))
+        os.replace(tmp_path, p)
+    except OSError:
+        os.unlink(tmp_path)
+        raise
 
 
 def _read(p: Path):
