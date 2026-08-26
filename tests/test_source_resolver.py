@@ -90,7 +90,7 @@ def test_a_second_resolve_updates_the_existing_clone_not_re_clones(tmp_path):
 # --------------------------------------------------------------------- errors, never silent
 def test_a_failing_clone_is_an_error_not_a_silent_drop(tmp_path):
     out = sr.resolve_sources(["https://no.such.host.invalid/x/y.git"], str(tmp_path / "s"),
-                             clone=lambda url, dest: (False, "host not found"),
+                             clone=lambda url, dest, branch=None: (False, "host not found"),
                              expand_group=lambda url: None)
     assert out["projects"] == []
     assert out["errors"] and "could not clone" in out["errors"][0]["reason"]
@@ -247,7 +247,7 @@ def test_group_and_explicit_member_resolve_once_not_twice(tmp_path):
     and drift.md rendered two identical findings rows. Dedupe by canonical git identity."""
     import pathlib
 
-    def fake_clone(url, dest):
+    def fake_clone(url, dest, branch=None):
         _make_repo(pathlib.Path(dest))
         return (True, "")
 
