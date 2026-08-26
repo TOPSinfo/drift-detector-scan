@@ -13,6 +13,8 @@ but its `if coverage and …` guard skips the empty case entirely.
 The PM-reported symptom is a default branch holding only a README, but the defect is wider: any
 unreadable repo, for any reason, currently renders as a clean zero.
 """
+import pytest
+
 from agent.lib import shapes
 
 
@@ -66,3 +68,71 @@ def test_omitting_the_file_counts_does_not_make_a_readable_repo_unreadable():
     v, reasons = shapes.verdict(12, {}, cov)          # no modeled/unmodeled passed, as callers do
     assert shapes.NO_READABLE_SOURCE not in reasons
     assert v == "KNOWN", f"a readable repo was called unreadable on a defaulted count: {reasons}"
+
+
+# --- the same rule, asserted where a stale or hand-edited document gets caught ---------------
+#
+# It lives in two places on purpose. shapes.verdict is where the verdict is COMPUTED; verify is
+# where a drift.json that disagrees with the contract is refused. Every published surface is a
+# projection of that document, and a projection claiming a blind repo is fine is the one error a
+# reader has no way to detect for themselves.
+
+def _payload(verdict, reasons, languages):
+    return {"shapes": [
+        {"repo": "readme-only", "languages": languages,
+         "verdict": verdict, "reasons": reasons}]}
+
+
+def test_verify_refuses_a_document_calling_an_unreadable_repo_known():
+    from agent.lib import verify
+    with pytest.raises(verify.Violation) as exc:
+        verify.check_unreadable_not_known(_payload("KNOWN", [], {}))
+    assert "readme-only" in str(exc.value)
+
+
+def test_verify_accepts_the_corrected_shape():
+    from agent.lib import verify
+    verify.check_unreadable_not_known(_payload("UNKNOWN", ["no-readable-source"], {}))
+
+
+def test_verify_leaves_a_readable_known_repo_alone():
+    """The invariant must key on 'no readable source', not on KNOWN."""
+    from agent.lib import verify
+    verify.check_unreadable_not_known(_payload("KNOWN", [], {"php": 4}))
+
+
+def test_the_invariant_is_registered_and_not_merely_defined():
+    """A check nobody runs is a comment. verify_payload is the one runner; assert membership
+    there rather than trusting that it was wired up."""
+    import inspect
+
+    from agent.lib import verify
+    src = inspect.getsource(verify.verify_payload)
+    assert "check_unreadable_not_known" in src, (
+        "the invariant exists but verify_payload never calls it, so `drift-scan verify` would "
+        "pass a document it was written to refuse")
+
+
+def test_the_invariant_reads_the_key_the_real_builder_emits():
+    """ANTI-HOLLOW GUARD. The first cut of this check read `payload["coverage"]["shapes"]`, which
+    no document has — the shapes list is top-level. It could never have fired in production, and
+    the unit tests above passed anyway because their fixture copied the same wrong path.
+
+    So the binding is asserted against a payload built by the real builder, not a dict written by
+    the same hand that wrote the check."""
+    from agent.lib import verify
+    from agent.lib.dashboard_render import build_payload
+
+    # The real pipeline shape: inventory_scan rolls each repo's `shape` into
+    # coverage["shapes"], and build_payload lifts that to a TOP-LEVEL payload["shapes"].
+    # Both hops are what the invariant depends on, so both are exercised here.
+    shape = {"repo": "readme-only", "languages": {}, "verdict": "KNOWN", "reasons": []}
+    inv = {"generated": "2026-08-26",
+           "repos": [{"id": 1, "path": "readme-only", "endpoints": [], "sdks": [],
+                      "shape": shape}],
+           "coverage": {"shapes": [shape]}}
+    payload = build_payload(inv, {"generated": "2026-08-26", "actions": []})
+    assert payload.get("shapes"), (
+        "build_payload emits no top-level `shapes` — the invariant's key path is wrong again")
+    with pytest.raises(verify.Violation):
+        verify.check_unreadable_not_known(payload)

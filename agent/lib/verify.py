@@ -1108,6 +1108,29 @@ def check_summary_headline(html: str, payload: dict) -> None:
                             f"— the headline has drifted from the data it claims to summarize")
 
 
+def check_unreadable_not_known(payload: dict) -> None:
+    """A repo with no readable source may not carry verdict KNOWN.
+
+    Computed in `shapes.verdict`; asserted here because every published surface is a projection
+    of this document, and a projection saying a blind repo is fine is the one error a reader
+    cannot detect for themselves — there is nothing on the page to be suspicious of.
+
+    `languages` empty means the census recognised no file at all: not a language we ship no rules
+    for (that is `unmodeled-language`), but nothing to read. On a real fleet that is usually a
+    default branch holding a README while the code lives on another branch, so KNOWN there is the
+    scanner vouching for code it never opened.
+    """
+    # `payload["shapes"]` — top level, NOT under `coverage`. The first cut of this check read
+    # `coverage.shapes`, which does not exist, so it could never fire on a real document; its
+    # test passed only because the fixture copied the same mistake. The binding is now asserted
+    # against a payload from build_payload rather than a hand-written dict.
+    for sh in (payload.get("shapes") or []):
+        if not (sh.get("languages") or {}) and sh.get("verdict") == "KNOWN":
+            raise Violation("unreadable-known",
+                            f"{sh.get('repo')!r} has no readable source yet reports KNOWN — "
+                            f"'could not look' must never render as 'looked and it is fine'")
+
+
 def verify_payload(payload: dict, findings: list) -> list:
     """Run every payload invariant. Returns the violations rather than raising, so
     `drift verify` can report all of them in one pass instead of one per run."""
@@ -1117,7 +1140,8 @@ def verify_payload(payload: dict, findings: list) -> list:
                      (check_row_labels_distinct, (payload,)),
                      (check_host_classes, (payload,)),
                      (check_ai_firewall, (payload,)),
-                     (check_number_formats, (payload,))):
+                     (check_number_formats, (payload,)),
+                     (check_unreadable_not_known, (payload,))):
         try:
             fn(*args)
         except Violation as v:
