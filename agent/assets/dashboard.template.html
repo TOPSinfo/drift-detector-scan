@@ -498,10 +498,45 @@
         <p class="empty" v-else>No {{ tab === 'unknown' ? 'untracked' : tab === 'excluded' ? 'excluded asset/library' : tab === 'apis' ? 'tracked' : 'detected' }}
           endpoints found<template v-if="scope"> for {{ repoLabelOf(scope) }}</template>.</p>
       </template>
-      <!-- AI Frontier plane intro: confident framing of the shaped tier (badge, not banner). -->
+      <!-- Supply Chain plane intro. heroMode returns "supply" for this plane but the template
+           had no branch for it, so it fell through to the AI empty-state below: a plane listing
+           dozens of CVE rows was captioned "Nothing in this dimension for the current scan".
+           That is precisely the failure the heroMode comment above says the fallback exists to
+           avoid — "rather than lying with a 'nothing found' empty-state over a tab that plainly
+           has rows in the table below" — and it is principle 1 inverted: rendering "we found
+           nothing" over findings is worse than rendering nothing at all. The zero case still
+           gets the honest empty-state, because a real zero here IS meaningful. -->
+      <template v-else-if="heroMode === 'supply'">
+        <div class="intro" v-if="supplyFixes || counts.critical || counts.eol">
+          {{ supplyFixes }} package upgrade(s) to make — {{ counts.critical }} critical,
+          {{ counts.eol }} end-of-life. Every row names the version you have and the version
+          that fixes it. The SBOM and SARIF tabs are these same findings in the formats your
+          pipeline already consumes — not a second scan, and not a second source of truth.
+        </div>
+        <div class="empty" v-else>Nothing in this dimension for the current scan.
+          <b>Zero here is only meaningful because the scan could read these repos</b> — an
+          unaudited or unscannable source would say so, not show a clean zero.</div>
+      </template>
+      <!-- AI Frontier plane intro: confident framing of the shaped tier (badge, not banner).
+           Branched explicitly for the same reason the Supply Chain branch above exists: this
+           plane shared the catch-all, so once it HAD rows it would have captioned them
+           "Nothing in this dimension for the current scan" exactly as Supply Chain did. The
+           defect was invisible only because a scan with no AI pass leaves this plane at zero. -->
+      <template v-else-if="heroMode === 'ai'">
+        <div class="intro" v-if="shapedCount || researchedCount || leadsCount">
+          {{ shapedCount }} call-site(s) an AI found in code the tool could not read on its own,
+          each re-checked on the spot; {{ researchedCount }} vendor(s) researched,
+          {{ needsHumanCount }} still needing a human. Nothing here is catalogued yet — these
+          stay in this plane until somebody keeps them.
+        </div>
+        <div class="empty" v-else>Nothing in this dimension for the current scan.
+          <b>Zero here is only meaningful because the scan could read these repos</b> — an
+          unaudited or unscannable source would say so, not show a clean zero.</div>
+      </template>
       <!-- honest empty-state (CLAUDE.md principle 1: "cannot see" != "clean") — a zero here
            is only meaningful because the scan could READ these repos; an unaudited or
-           unscannable source would say so in Coverage below, not show a clean zero. -->
+           unscannable source would say so in Coverage below, not show a clean zero. This is now
+           reached ONLY by heroMode "empty", i.e. a dimension that genuinely has no rows. -->
       <template v-else>
         <div class="empty">Nothing in this dimension for the current scan.
           <b>Zero here is only meaningful because the scan could read these repos</b> — an
