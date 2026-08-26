@@ -60,10 +60,10 @@ changes:
 
 ```yaml
 fleet:
-  - https://git.topsdemo.in/team/repo-a          # unchanged — the remote's default branch
-  - url: https://git.topsdemo.in/team/repo-b     # new form
+  - https://git.example.com/team/repo-a          # unchanged — the remote's default branch
+  - url: https://git.example.com/team/repo-b     # new form
     branch: develop
-  - https://git.topsdemo.in/channelwiz           # a group — a `branch` here fails the ROOT (see below)
+  - https://git.example.com/a-group           # a group — a `branch` here fails the ROOT (see below)
 ```
 
 Validation lives in `agent/lib/ops_config.py`, beside the existing rules that already refuse
