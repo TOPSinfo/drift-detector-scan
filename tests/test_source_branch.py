@@ -144,3 +144,55 @@ def test_no_branch_keeps_todays_argv_exactly(tmp_path, monkeypatch):
     source_resolver._default_clone("https://git.example.com/t/r", str(tmp_path / "dest"))
     argv = calls[-1]
     assert "--branch" not in argv and "--single-branch" not in argv
+
+
+def test_a_branch_deduped_away_by_an_earlier_clone_is_an_error_not_a_shrug(tmp_path):
+    """A fleet may list a GROUP and, separately, one of its members with a branch. `_clone_url`
+    dedupes by git identity and first-wins, so if the group line comes first the member's branch
+    was silently discarded and the default branch scanned — no error, nothing in the report.
+
+    That is the same silent-wrong-branch failure the branch feature exists to remove, arriving
+    through the config's line ORDER. Refuse the ambiguity instead: the config says two different
+    things about one repository and the tool cannot know which was meant.
+    """
+    seen = []
+
+    def clone(url, dest, *, branch=None):
+        seen.append((url, branch))
+        return False, "n/a"
+
+    def expand(u):
+        if u.endswith("/agroup"):
+            return [{"url": "https://git.x/agroup/repo-b.git", "path": "repo-b",
+                     "archived": False}]
+        return None
+
+    out = source_resolver.resolve_sources(
+        [("https://git.x/agroup", None), ("https://git.x/agroup/repo-b.git", "dev")],
+        str(tmp_path), clone=clone, expand_group=expand)
+
+    assert out["errors"], "the conflicting entry vanished without a word"
+    reason = " ".join(e["reason"] for e in out["errors"])
+    assert "dev" in reason and "branch" in reason, reason
+
+
+def test_the_same_repo_twice_with_no_branch_still_dedupes_quietly(tmp_path):
+    """The ordinary case — a fleet listing a group and a member — must stay silent. Only a
+    CONFLICTING branch is an error."""
+    seen = []
+
+    def clone(url, dest, *, branch=None):
+        seen.append(url)
+        return False, "n/a"
+
+    def expand(u):
+        if u.endswith("/agroup"):
+            return [{"url": "https://git.x/agroup/repo-b.git", "path": "repo-b",
+                     "archived": False}]
+        return None
+
+    out = source_resolver.resolve_sources(
+        [("https://git.x/agroup", None), ("https://git.x/agroup/repo-b.git", None)],
+        str(tmp_path), clone=clone, expand_group=expand)
+    assert len(seen) == 1, "the dedupe itself must still work"
+    assert not [e for e in out["errors"] if "branch" in e["reason"]]

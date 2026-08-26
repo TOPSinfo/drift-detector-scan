@@ -131,7 +131,10 @@ def resolve_sources(roots: list, state_dir: str, *, clone=None, expand_group=Non
     # silently. Absent for a root that named no branch, which is how git_meta tells "asked for
     # this ref" apart from "the remote happened to default to it".
     branches: dict = {}
-    cloned_ids: set = set()
+    # identity -> the branch it was cloned on (None = the remote's default). A dict,
+    # not a set, so a later entry naming a DIFFERENT branch can be caught rather than
+    # silently dropped by the dedupe.
+    cloned_ids: dict = {}
 
     def _clone_url(url: str, branch: str | None = None) -> None:
         """Clone one repo URL into <state>/sources and add its projects (or an error)."""
@@ -142,8 +145,24 @@ def resolve_sources(roots: list, state_dir: str, *, clone=None, expand_group=Non
         iden = scope_edges.identity(url)
         if iden:
             if iden in cloned_ids:
+                # Already cloned via another entry — usually a fleet listing a group AND one of
+                # its members, which is fine and stays silent. But if THIS entry names a branch
+                # the earlier one did not, first-wins would discard it and scan the default
+                # branch with nothing to show for it: the config asked for `dev`, the report says
+                # nothing, and the repo reads as scanned. That is the silent-wrong-branch failure
+                # the branch feature exists to remove, arriving through the config's line order.
+                # The config says two different things about one repository; refuse rather than
+                # pick, exactly as a branch on a group URL is refused.
+                if branch and cloned_ids[iden] != branch:
+                    errors.append({"root": url, "reason": (
+                        f"{url!r} was already resolved by an earlier fleet entry"
+                        + (f" on branch {cloned_ids[iden]!r}" if cloned_ids[iden]
+                           else " on its default branch")
+                        + f", so `branch: {branch}` here would be silently ignored. Give the "
+                          f"repository ONE entry, or list it before the group that also covers "
+                          f"it.")})
                 return
-            cloned_ids.add(iden)
+            cloned_ids[iden] = branch
         dest = sources_root / slug(url)
         ok, msg = clone(url, str(dest), branch=branch)
         if not ok:
