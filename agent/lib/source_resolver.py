@@ -111,7 +111,9 @@ def _default_clone(url: str, dest: str, *, branch: str | None = None) -> tuple[b
 def resolve_sources(roots: list, state_dir: str, *, clone=None, expand_group=None) -> dict:
     """Resolve every root to scannable projects. Returns:
 
-        {"projects": [(abs_dir, identity, kind)], "errors": [{"root", "reason"}]}
+        {"projects": [(abs_dir, identity, kind)],
+         "branches": {abs_dir: branch},          # only for roots that NAMED one
+         "errors": [{"root", "reason"}]}
 
     kind ∈ {remote, local-git, local-plain} — carried into the report so a reader knows a
     plain-folder result has no history behind it, rather than assuming a full scan.
@@ -123,6 +125,12 @@ def resolve_sources(roots: list, state_dir: str, *, clone=None, expand_group=Non
     sources_root = Path(state_dir) / "sources"
     projects: list = []
     errors: list = []
+    # abs_dir -> the branch the config ASKED for. Kept beside `projects` rather than widened into
+    # its tuples: that shape is documented as (abs_dir, identity, kind) and unpacked positionally
+    # in inventory_scan and in existing tests, so widening it would break every one of them
+    # silently. Absent for a root that named no branch, which is how git_meta tells "asked for
+    # this ref" apart from "the remote happened to default to it".
+    branches: dict = {}
     cloned_ids: set = set()
 
     def _clone_url(url: str, branch: str | None = None) -> None:
@@ -143,18 +151,23 @@ def resolve_sources(roots: list, state_dir: str, *, clone=None, expand_group=Non
                            "reuses your machine's git auth; can you `git clone` it in a "
                            "terminal?"})
             return
-        _add_local(str(dest), url, from_url=True)
+        _add_local(str(dest), url, from_url=True, branch=branch)
 
-    def _add_local(local: str, label: str, *, from_url: bool) -> None:
+    def _add_local(local: str, label: str, *, from_url: bool,
+                   branch: str | None = None) -> None:
         repos = discover_repos([local])          # git checkouts under the resolved dir
         if repos:
             kind = "remote" if from_url else "local-git"
             for abs_, identity in repos:
                 projects.append((abs_, identity, kind))
+                if branch:
+                    branches[abs_] = branch
         elif _has_code(local):
             ident = slug(label) if from_url else Path(local).resolve().name
-            projects.append((str(Path(local).resolve()), ident,
-                             "remote" if from_url else "local-plain"))
+            abs_ = str(Path(local).resolve())
+            projects.append((abs_, ident, "remote" if from_url else "local-plain"))
+            if branch:
+                branches[abs_] = branch
         else:
             errors.append({"root": label, "reason": (diagnose_root(local)
                            or f"{label!r} resolved to a folder with no scannable code")})
@@ -200,7 +213,7 @@ def resolve_sources(roots: list, state_dir: str, *, clone=None, expand_group=Non
             if not p.exists() or p.is_file():
                 errors.append({"root": s, "reason": diagnose_root(s)})
                 continue
-            _add_local(s, s, from_url=False)
+            _add_local(s, s, from_url=False, branch=branch)
 
     # dedupe by absolute dir, deterministic order
     seen: set = set()
@@ -210,4 +223,4 @@ def resolve_sources(roots: list, state_dir: str, *, clone=None, expand_group=Non
             continue
         seen.add(abs_)
         uniq.append((abs_, ident, kind))
-    return {"projects": uniq, "errors": errors}
+    return {"projects": uniq, "branches": branches, "errors": errors}

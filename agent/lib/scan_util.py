@@ -41,7 +41,8 @@ def normalize_remote(raw) -> str | None:
     return f"https://{host}/{path}"
 
 
-def git_meta(repo_abs: str, *, run=_default_git) -> dict:
+def git_meta(repo_abs: str, *, run=_default_git,
+             configured_branch: str | None = None) -> dict:
     def g(*a):
         return run(["-C", repo_abs, *a]) or ""
     return {
@@ -49,7 +50,13 @@ def git_meta(repo_abs: str, *, run=_default_git) -> dict:
         "remote_url": normalize_remote(g("remote", "get-url", "origin")),
         "ref": g("rev-parse", "--abbrev-ref", "HEAD"),
         "last_activity_at": g("log", "-1", "--format=%cI"),
-        "ref_is_default": True,          # best-effort locally (v1 simplification)
+        # False exactly when the deployment NAMED a branch. Previously hardcoded True
+        # ("best-effort locally, v1 simplification"); once a branch can be configured
+        # that constant is a false statement in a published artifact, and it is the only
+        # thing that makes an override falsifiable from the report rather than from the
+        # config file. The checked-out ref alone cannot answer this: it cannot tell you
+        # whether someone asked for that branch or the remote merely defaulted to it.
+        "ref_is_default": configured_branch is None,
     }
 
 
