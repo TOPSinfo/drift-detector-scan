@@ -1518,6 +1518,39 @@ def _cmd_deliver(args) -> int:
     return 0
 
 
+def _cmd_chat_summary(args) -> int:
+    """Render the closing block for a CLI scan — the LAST thing a run emits.
+
+    Modelled on _cmd_notify: a missing report is a skip, not an error, because the scan failing
+    upstream has already been reported and a second complaint here says nothing new.
+    """
+    import json as _json
+    import os as _os
+    from agent.lib import chat_summary, digest
+
+    try:
+        with open(_os.path.join(args.state, "drift.json"), encoding="utf-8") as fh:
+            payload = _json.load(fh)
+    except OSError as exc:
+        print(f"chat-summary: no report to summarise — skipping ({exc})", file=sys.stderr)
+        return 0
+
+    # The AI plane's lead COUNT is read here and injected, never inside digest/chat_summary:
+    # those stay pure functions of the payload, and the certified plane stays uncoupled from the
+    # probabilistic one. `None` (no leads.json) means no pass ran; `0` means it ran and found
+    # nothing, and the block says something different for each.
+    leads = None
+    try:
+        with open(_os.path.join(args.state, "leads.json"), encoding="utf-8") as fh:
+            blob = _json.load(fh)
+        leads = len(blob if isinstance(blob, list) else (blob.get("leads") or []))
+    except (OSError, ValueError):
+        pass
+
+    print(chat_summary.render(digest.summary_facts(payload, leads=leads)))
+    return 0
+
+
 def _cmd_notify(args) -> int:
     """Push a one-line scan summary to a Google Chat space (or any {text} webhook). Opt-in:
     no webhook (--webhook / $DRIFT_CHAT_WEBHOOK) → no-op, exit 0."""
@@ -1679,6 +1712,10 @@ def main(argv: list[str]) -> int:
                      help="deprecated, no effect — the Developer stream is always filed as "
                           "issues; accepted so older invocations keep working")
     pdl.set_defaults(func=_cmd_deliver)
+
+    pcs = sub.add_parser("chat-summary")   # the closing block a CLI scan ends with
+    pcs.add_argument("--state", required=True)
+    pcs.set_defaults(func=_cmd_chat_summary)
 
     pn = sub.add_parser("notify")         # push a one-line summary to a Google Chat webhook
     pn.add_argument("--state", required=True)

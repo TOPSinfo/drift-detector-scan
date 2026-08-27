@@ -29,6 +29,9 @@ def _urgent(actions: list) -> dict | None:
     a = min(dated, key=lambda x: x["date"])
     return {"ref": (a.get("ref") or "") + (f" {a['unit']}" if a.get("unit") else ""),
             "date": a["date"],
+            # An EOL runtime does not "retire", it reaches end-of-life. The kind travels with the
+            # fact so the renderer can name it correctly rather than guessing from the ref.
+            "kind": a.get("kind"),
             "sites": a.get("file_count") or a.get("finding_count") or 0}
 
 
