@@ -70,6 +70,18 @@ All notable changes to the Drift Detector plugin. Dates are YYYY-MM-DD.
   with nothing in the report saying which. `ref_is_default` stops being a hardcoded `true`, so a
   scan of `develop` can no longer read as a scan of `main`.
 
+- **CVE lookups are batched instead of one request per package.** A fleet audit made one
+  `POST /v1/query` per unique package — 642 sequential requests on a real fleet, minutes of wall
+  clock, and the shape that trips rate limits. That last part made it a correctness problem as
+  well as a speed one: a rate-limited run emits `⚠ DEGRADED` and reports fewer findings without
+  being wrong on its face. It now sends `POST /v1/querybatch` in chunks and then fetches each
+  **unique** advisory once — the same CVE recurs across repos and packages, so the advisory set is
+  far smaller than the occurrence count, and that collapse is where the saving comes from rather
+  than concurrency. Findings are unchanged: a test asserts the batch and per-package routes
+  normalise to identical dicts, including an advisory that lists the same package name under two
+  ecosystems. Pagination is followed per query, because OSV pages once a queryset passes 3,000
+  vulnerabilities and stopping at the first page would report real findings as absent.
+
 ### Fixed
 
 - **`catalogSummary` never reached `drift.json`.** The absorption counts existed in

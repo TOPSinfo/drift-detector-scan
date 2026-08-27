@@ -4,7 +4,10 @@
 **Status:** the scheduling half (`pool.ordered_map`, call sites 1 and 2, the `--jobs` flag,
 the identity test) is **implemented** on `perf/parallel-scan` — plan
 `docs/superpowers/plans/2026-08-25-opt-in-parallel-scan.md`. **Call site 3, the OSV
-batch+detail rewrite, is not** — it changes what is asked of the API rather than when, so it
+batch+detail rewrite, is now implemented too** (branch `perf/osv-batch-lookup`, plan
+`docs/superpowers/plans/2026-08-26-osv-batch-lookup.md`) — though not as this document
+described it: `query_all` had no production caller, so the batching went into
+`audit_inventory`'s own loop instead. It was NOT — it changes what is asked of the API rather than when, so it
 was split onto its own branch with its own equivalence test (test 5 below).
 
 ## Problem

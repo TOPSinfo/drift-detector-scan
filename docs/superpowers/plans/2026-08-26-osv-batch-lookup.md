@@ -1,5 +1,11 @@
 # OSV Batch Lookup Implementation Plan
 
+> **Status: implemented** on `perf/osv-batch-lookup`. Two deviations taken during
+> execution, both recorded in the commits: `_osv_keys` was extracted so the pre-pass and
+> the findings loop share ONE key derivation (the plan deferred this and it is the very
+> failure mode the self-review named), and an injected `osv_query` now selects the
+> per-package path so existing callers do not silently reach the network.
+>
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this
 > plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
