@@ -38,15 +38,23 @@ every run, and verifiable.
 - **No change to `drift.md`.** It stays the complete, verified report. It becomes a *link* rather
   than the thing pasted, so it stops competing with the summary for attention.
 - **No change to what is scanned, found, or concluded.** This is a presentation change only.
-- **The AI plane's leads output is out of scope.** It prints separately today and continues to.
-  Folding it in is a second decision and bundling it would hide that choice.
+- **The AI plane's leads output is not reduced, reordered or folded in.** It prints in full,
+  exactly as today. The closing block comes AFTER it and names its result in one line, so a reader
+  knows the pass ran — but nothing about the leads themselves changes. They are a different tier,
+  explicitly not certified findings, and summarising them into a rendered block would blur the
+  distinction the three-plane design exists to keep.
 - **No new CLI flags for tuning the block.** One shape, or it is not standardised.
 
 ## Design
 
 ### 1 · `drift-scan chat-summary --state <dir>`
 
-Emits the entire chat deliverable to stdout as Markdown. A pure function of `<state>/drift.json`
+**This is a CLOSING note, and it is always the last thing emitted** — after the deterministic
+report and after the AI plane's leads. That ordering is the fix, and it is a separate point from
+brevity: the old output did not end, it trailed off into offers, so a reader could not tell whether
+more was coming. A run that visibly finishes is worth as much as a run that reads short.
+
+Emits the closing block to stdout as Markdown. A pure function of `<state>/drift.json`
 — every figure it needs is already in the payload:
 
 | Block | Source |
@@ -57,6 +65,7 @@ Emits the entire chat deliverable to stdout as Markdown. A pure function of `<st
 | "Do first" | `actions[]`, top 3 |
 | UNAUDITED vendors | `catalog[]`, verdict not `CURRENT` |
 | UNKNOWN repos | `shapes[]`, verdict `UNKNOWN` |
+| AI pass result | the leads blob written by the AI plane — count only, never content |
 
 Nothing is recomputed and nothing is read from anywhere else, so the block cannot disagree with the
 report it summarises.
@@ -77,9 +86,15 @@ What this scan could NOT see
   • 1 vendor UNAUDITED — 0 findings there is not evidence of health
   • 3 repos UNKNOWN — /drift-absorb <folder> teaches the scanner what it missed
 
-Report: drift.md · summary.html · dashboard.html · drift.json
+AI pass: 7 leads raised (above) — leads, not findings; nothing entered drift.json
+
+Scan complete. Reports: drift.md · summary.html · dashboard.html · drift.json
 Weekly scheduling, cleanup and blind-spot absorption are available — just ask.
 ```
+
+The last two lines are the point of the whole change: **"Scan complete"** tells the reader the run
+ended, and the reports line tells them where it landed. The AI line accounts for the pass without
+re-stating it — the leads are already above, in full.
 
 Around twenty lines, against five blocks today.
 
@@ -95,7 +110,8 @@ without demanding a decision from someone who came to read results.
 
 ### 3 · The command file shrinks
 
-`Deliver the report` becomes three steps: **verify → paste `chat-summary` → stop.**
+`Deliver the report` becomes three steps: **verify → paste `drift.md` and run the AI plane as
+today → paste `chat-summary` LAST → stop.**
 
 The contract must be explicit, because the current file's structure is what invited the tail:
 
@@ -137,7 +153,7 @@ Written test-first; each guard proved against its bug.
 
 ## Open question, deliberately deferred
 
-Whether the AI plane's leads should fold into the same block. They are a different tier —
-probabilistic, explicitly *not* certified findings — and mixing them into a rendered summary risks
-exactly the blurring the three-plane design exists to prevent. Left separate until someone decides
-that on its own merits.
+Whether the closing block should also render when a scan FAILS — "this is where it ended" is
+arguably more valuable on a bad run than a good one, and today a failed scan ends in whatever the
+error text happened to be. It needs its own thinking about what an honest failure summary contains,
+so it is not bundled here.
