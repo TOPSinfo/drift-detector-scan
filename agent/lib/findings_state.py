@@ -94,7 +94,15 @@ def apply_lifecycle(audit: dict, state_dir: str, now: str) -> dict:
 
     active = [f for f in findings if not f.get("suppressed")]
     new_fps = {f["fingerprint"] for f in new}
+    # What this delta is a delta AGAINST. Without it a first scan and a week in which everything
+    # changed produce identical numbers: a real fleet's first run reported 349 new / 0 resolved,
+    # which reads as a catastrophe and was simply the first measurement. Derived from the state's
+    # own `last_seen` rather than stored separately, so it works on state files written before
+    # this existed and there is no second place recording the same fact.
+    compared = max((e.get("last_seen") for e in prior.values() if e.get("last_seen")),
+                   default=None)
     audit["delta"] = {
+        "comparedAgainst": compared,
         "new": new,
         "resolved": resolved,
         "persisting": [f for f in active if f["fingerprint"] not in new_fps],
