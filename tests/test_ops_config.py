@@ -148,10 +148,12 @@ def test_unknown_auth_key_is_an_error(tmp_path):
 
 def test_notify_gchat_is_an_env_name_and_defaults_off(tmp_path):
     cfg = ops_config.load(_write(tmp_path, "fleet: [https://git.x/g/a]\n"))
-    assert cfg["notify"] == {"gchat": None}
+    # `email` joined this dict on 2026-08-27; both channels default OFF, and a config with no
+    # notify block at all keeps working — that is every config in the wild today.
+    assert cfg["notify"] == {"gchat": None, "email": None}
     cfg2 = ops_config.load(_write(tmp_path,
         "fleet: [https://git.x/g/a]\nnotify:\n  gchat: GCHAT_WEBHOOK\n"))
-    assert cfg2["notify"] == {"gchat": "GCHAT_WEBHOOK"}
+    assert cfg2["notify"] == {"gchat": "GCHAT_WEBHOOK", "email": None}
 
 
 def test_unknown_notify_key_is_an_error(tmp_path):

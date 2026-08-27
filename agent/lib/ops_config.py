@@ -52,7 +52,8 @@ _DELIVERY_V2 = {"mode", "devops", "developer"}
 _DELIVERY_COMMON = {"shape_stream", "freshness_stream", "resolve_stream", "granularity"}
 _DELIVERY = _DELIVERY_V1 | _DELIVERY_V2 | _DELIVERY_COMMON
 _AUTH = {"clone", "persist", "deliver"}
-_NOTIFY = {"gchat"}
+_NOTIFY = {"gchat", "email"}
+_EMAIL = {"to", "from", "smtp"}
 _STREAM = {"target", "project", "assignee", "fallbackAssignee"}
 _GRANULARITIES = {"comprehensive", "per-vendor", "per-problem"}
 
@@ -81,7 +82,11 @@ def _env_name(where: str, val) -> str:
                           f"secret ({s[:8]}…). Put the token in that env var and name the var "
                           f"here, e.g. GITLAB_TOKEN.")
     if not _ENV_NAME.match(s):
-        raise ConfigError(f"{where}: {s!r} is not a valid environment-variable name")
+        # Truncated like the branch above, and for the same reason: whatever was pasted here is
+        # not a valid name, and the most likely thing it IS is a credential. A refusal that
+        # echoes it in full puts it in the CI log of every failed pipeline.
+        raise ConfigError(f"{where}: {s[:12]!r}… is not a valid environment-variable NAME — "
+                          f"put the value in that env var and name the var here")
     return s
 
 
@@ -118,7 +123,47 @@ def _load_notify(path: str, raw: dict) -> dict:
     if unknown:
         raise ConfigError(f"{path}: unknown notify key(s) {sorted(unknown)} (allowed: {sorted(_NOTIFY)})")
     gchat = block.get("gchat")
-    return {"gchat": _env_name(f"{path}: notify.gchat", gchat) if gchat else None}
+    return {"gchat": _env_name(f"{path}: notify.gchat", gchat) if gchat else None,
+            "email": _load_email(path, block.get("email"))}
+
+
+def _load_email(path: str, block) -> dict | None:
+    """notify.email — recipients in the config, the credential named as an env var.
+
+    Recipients are not secrets the way an SMTP password is: they belong in review, in the MR,
+    versioned beside the fleet they describe. `smtp` keeps the notify.gchat pattern of naming a
+    variable, so the URL (which carries the password) never enters git.
+
+    Every refusal here happens at config load, which CI already runs as `config-preflight` — so a
+    typo fails before the scan, not at 17:30 on a Sunday when the mail silently goes nowhere.
+    """
+    if block is None:
+        return None
+    if not isinstance(block, dict):
+        raise ConfigError(f"{path}: `notify.email` must be a mapping")
+    unknown = set(block) - _EMAIL
+    if unknown:
+        raise ConfigError(f"{path}: unknown notify.email key(s) {sorted(unknown)} "
+                          f"(allowed: {sorted(_EMAIL)})")
+    to = block.get("to")
+    if to is None:
+        raise ConfigError(f"{path}: `notify.email` needs `to` — a list of recipient addresses")
+    if not isinstance(to, list) or not to:
+        raise ConfigError(f"{path}: `notify.email.to` is empty — a configured mail with no "
+                          f"recipient delivers to nobody and reports success")
+    for addr in to:
+        if not isinstance(addr, str) or "@" not in addr or "." not in addr.split("@")[-1]:
+            raise ConfigError(f"{path}: `notify.email.to` contains {addr!r}, which is not an "
+                              f"email address")
+    sender = block.get("from")
+    if not sender:
+        raise ConfigError(f"{path}: `notify.email` needs `from` — the sender address")
+    smtp = block.get("smtp")
+    if not smtp:
+        raise ConfigError(f"{path}: `notify.email` needs `smtp` — the NAME of the env var "
+                          f"holding the SMTP URL")
+    return {"to": [str(a) for a in to], "from": str(sender),
+            "smtp": _env_name(f"{path}: notify.email.smtp", smtp)}
 
 
 def _load_probe(path: str, raw: dict) -> dict:
