@@ -68,24 +68,36 @@ def _source_url(vuln: dict) -> str:
     return f"https://osv.dev/vulnerability/{vuln.get('id', '')}"
 
 
+def _normalise(vuln: dict, osv_eco: str | None = None, name: str | None = None) -> dict:
+    """One raw OSV record -> the six keys the audit consumes.
+
+    The ONLY place this shape is built. `query_package` and the batch path both go through here,
+    so the two lookup routes cannot drift apart in what they claim about a vulnerability — a
+    divergence would show up as findings that differ by which code path fetched them, which is
+    the hardest kind of bug to see in a report.
+    """
+    return {
+        "id": vuln.get("id", ""),
+        "cve": _cve(vuln),
+        "severity": _severity_label(vuln),
+        "summary": (vuln.get("summary") or (vuln.get("details") or "")[:160]).strip(),
+        "fixed": _fixed_version(vuln, osv_eco, name),
+        "url": _source_url(vuln),
+    }
+
+
 def query_package(eco: str, name: str, version: str | None, *, http=default_http) -> list:
-    """Return a list of normalized vuln dicts for one package version (empty if none/unsupported)."""
+    """Return a list of normalized vuln dicts for one package version (empty if none/unsupported).
+
+    Kept alongside the batch path rather than replaced by it: it is the equivalence ORACLE the
+    batch path is tested against, and the right route for a caller holding a single key.
+    """
     osv_eco = osv_ecosystem(eco)
     if not osv_eco or not version:
         return []
     resp = http(OSV_QUERY_URL, method="POST",
                 body={"package": {"ecosystem": osv_eco, "name": name}, "version": version})
-    out = []
-    for v in resp.get("vulns") or []:
-        out.append({
-            "id": v.get("id", ""),
-            "cve": _cve(v),
-            "severity": _severity_label(v),
-            "summary": (v.get("summary") or (v.get("details") or "")[:160]).strip(),
-            "fixed": _fixed_version(v, osv_eco, name),
-            "url": _source_url(v),
-        })
-    return out
+    return [_normalise(v, osv_eco, name) for v in resp.get("vulns") or []]
 
 
 def query_all(packages, *, http=default_http) -> dict:
