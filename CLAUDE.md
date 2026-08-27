@@ -62,31 +62,30 @@ page) → wire freshness (`agent/lib/catalog_sources.py`) if the vendor has a ma
 source. Computed-lifecycle vendors (Shopify) live in `agent/lib/version_lifecycle.py`. Each
 mechanism was chosen to fit that vendor's real source shape — don't force one pattern.
 
-## The Rust port (banked — do NOT start without a trigger)
+## The Rust rewrite happened, and it is not in this repository
 
-A rewrite to Rust is the verified end state, not current work. Rust is the *only* language
-that links ast-grep natively (`ast_grep_config::from_yaml_string` → `RuleCollection` →
-`CombinedScan`, PHP + all 8 languages built in, the same crates the CLI uses) — Go has no
-binding (it would shell out, like Python does now) and the Node/napi route puts PHP on a
-0.0.x grammar. But the crate API is **officially unstable**; a port pins `ast-grep-* =
-"=<version>"` exactly (mirroring `DRIFT_AST_GREP_VERSION` in `bin/drift-scan`) and treats
-bumps as ruleset-re-verification events.
+**Do not start a Rust port here.** This section used to describe one as "banked — do NOT start
+without a trigger", held behind a three-part trigger. That framework is **superseded, not
+satisfied**: no trigger fired. What replaced it was a different decision — rebuild the product
+clean under the strata design, in its own repository (**Almanac**, renamed from Drift Detector on
+2026-08-19). Anyone who read the old section came away believing the opposite of what is
+happening.
 
-**Do not rewrite until a trigger fires** (revisit quarterly): (1) a client needs a single
-no-network binary and `uvx`/PyInstaller packaging won't do; (2) it's sold as a product, not
-run as a service; (3) the *pipeline* modules go a full quarter without structural change
-(catalogs/rules churning is fine — YAML ports for free). Trigger 3 + (1 or 2) = start.
-There is **no performance case** — the scan time is already inside a Rust binary. Estimated
-cost: 4–8+ weeks over ~6.3k prod + 5.7k test LOC.
+**This repository is the shipping Python scanner and stays that way.** It is feature-complete for
+its job and in maintenance: fixes, catalog growth, and the occasional correctness change. The
+rewrite does not block work here and work here does not block the rewrite — they share no code by
+design, which is what makes "rebuilt, not ported" true in the filesystem rather than only in prose.
 
-**When triggered:** harden `drift-eval` with a byte-diff mode FIRST (score-identity permits
-formatting drift); port engine-first as a standalone `drift-engine` crate injected via the
-existing `run=` seam (hybrid path — proves the crates in-production while Python
-orchestrates); renderers + `verify` last. **Port landmines to carry across, not
-transliterate:** the `verify.py` lookbehind `(?<!\\)\|` (Rust `regex`/Go RE2 lack
-lookbehind — rewrite it); float notation (`check_number_formats` guards this — Python
-`1e+16` vs Go `10000000000000000`); Go map-order & `SetEscapeHTML(false)` if Go ever
-resurfaces; and the tests' *comments* (each pins a real shipped bug — keep the prose).
+Two engineering facts from the old section are worth keeping, because they are about *this* code
+and would otherwise be lost:
+
+- **The engine is pinned deliberately.** `bin/drift-scan` fixes `AST_GREP_VERSION` and verifies a
+  sha256, so two machines get the same scanner. Treat a bump as a ruleset re-verification event,
+  not a dependency update.
+- **Two portability landmines live in this tree** and are guarded, not incidental: `verify.py`'s
+  lookbehind `(?<!\\)\|` (Rust's `regex` and Go's RE2 have no lookbehind), and float notation,
+  which `check_number_formats` exists to police — Python emits `1e+16` where Go emits
+  `10000000000000000`. Both guards should survive any future edit that touches them.
 
 ## Branding
 

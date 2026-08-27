@@ -177,7 +177,7 @@ Cockpit, and a 🤖 **Open in Claude** link that pre-loads the finding for whoev
 
 <p align="center">
   <img src="docs/screenshots/cockpit.png" alt="The three-plane cockpit — Supply Chain, Vendor Drift, and AI Frontier over the vendor-API retirement timeline" width="840">
-  <br><em>The <b>three-plane cockpit</b> — <b>Supply Chain</b> (CVE/EOL + SBOM/SARIF), <b>Vendor Drift</b> (the certified <b>Retirement Timeline</b>, past-due left of today), and the <b>AI Frontier</b> (shaped, gate-validated).</em>
+  <br><em>The <b>three-plane cockpit</b> — <b>Supply Chain</b> (CVE/EOL + SBOM/SARIF), <b>Vendor Drift</b> (the certified <b>Retirement Timeline</b>, past-due left of today), and the <b>AI Frontier</b> (shaped, gate-validated) — zero here because no AI pass was run on the demo fleet, not because the plane is empty by design.</em>
 </p>
 
 ---
