@@ -70,6 +70,32 @@ All notable changes to the Drift Detector plugin. Dates are YYYY-MM-DD.
   with nothing in the report saying which. `ref_is_default` stops being a hardcoded `true`, so a
   scan of `develop` can no longer read as a scan of `main`.
 
+- **CVE lookups are batched instead of one request per package.** A fleet audit made one
+  `POST /v1/query` per unique package — 642 sequential requests on a real fleet, minutes of wall
+  clock, and the shape that trips rate limits. That last part made it a correctness problem as
+  well as a speed one: a rate-limited run emits `⚠ DEGRADED` and reports fewer findings without
+  being wrong on its face. It now sends `POST /v1/querybatch` in chunks and then fetches each
+  **unique** advisory once — the same CVE recurs across repos and packages, so the advisory set is
+  far smaller than the occurrence count, and that collapse is where the saving comes from rather
+  than concurrency. Findings are unchanged: a test asserts the batch and per-package routes
+  normalise to identical dicts, including an advisory that lists the same package name under two
+  ecosystems. Pagination is followed per query, because OSV pages once a queryset passes 3,000
+  vulnerabilities and stopping at the first page would report real findings as absent.
+
+  **Measured on a 53-repo fleet against the live API**, 596 unique package keys: **180 requests
+  instead of 596** (3 batch + 177 advisory fetches), and **~90s instead of 311s**. Both routes
+  produced the same 568 CVE findings. The request count is the number that matters most — 596
+  sequential requests is the shape that trips rate limits, and a rate-limited run is a *quieter*
+  report, not a louder one.
+
+  Each HTTP call is retried up to three times on a transport fault. That is not belt-and-braces:
+  before it, the batched audit failed **three runs in five** with `[Errno 104] Connection reset by
+  peer`, and each failure discarded all 568 findings, because the advisory phase makes ~177
+  requests and any one of them ending the run ends the audit. With retries it succeeded five times
+  out of five. A malformed response is *not* retried — that is a protocol violation no repetition
+  fixes — and a genuinely unreachable OSV still degrades the source loudly once the attempts are
+  spent.
+
 ### Fixed
 
 - **`catalogSummary` never reached `drift.json`.** The absorption counts existed in

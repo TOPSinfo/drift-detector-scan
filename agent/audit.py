@@ -157,10 +157,39 @@ def _lifecycle_findings(repo: dict, now: str) -> list:
     return out
 
 
+_UNSET = object()      # lets `osv_batch=None` MEAN "no batching", distinct from "not specified"
+
+
+def _osv_keys(repo: dict):
+    """Yield ((eco, pkg, ver), versionSource) for every package in `repo` OSV can be asked about.
+
+    ONE derivation, walked twice: once by the pre-pass to build the batch, once by the findings
+    loop to read the answers. If those two ever disagreed the loop would ask for a key the batch
+    never fetched and fall back to a per-package call — quietly restoring the 642 sequential
+    requests this change removes, with nothing in the output to show it.
+    """
+    for s in repo.get("sdks", []):
+        eco, pkg = s.get("eco"), s.get("pkg")
+        resolved = s.get("resolved")                 # exact version from a lockfile, if any
+        ver = resolved or floor(s.get("ver"))        # else the declared manifest floor
+        if osv_ecosystem(eco) is None or ver is None:
+            continue
+        yield (eco, pkg, ver), ("lockfile" if resolved else "manifest")
+
+
 def audit_inventory(doc: dict, now: str, *, http=None,
-                    osv_query=None, eol_check=None, sunsets=None) -> dict:
+                    osv_query=None, osv_batch=_UNSET, eol_check=None, sunsets=None) -> dict:
     http = http or default_http
+    # Injecting a per-package `osv_query` and saying nothing about `osv_batch` SELECTS the
+    # per-package path. The seam means "this is how I want packages looked up", and a caller who
+    # injected it to stay offline would otherwise find the batch path reaching the network behind
+    # their back — every existing caller here is a test doing exactly that. Passing `osv_batch`
+    # explicitly always wins, in either direction: `None` forces the one-at-a-time path (the
+    # equivalence oracle), a callable forces batching even alongside an injected `osv_query`.
+    _query_was_injected = osv_query is not None
     osv_query = osv_query or osv.query_package     # resolve at call time (monkeypatch-friendly)
+    if osv_batch is _UNSET:
+        osv_batch = None if _query_was_injected else osv.query_batch
     eol_check = eol_check or eol.check
     sun_index = vendor_sunsets.by_vendor(sunsets if sunsets is not None else vendor_sunsets.load_sunsets())
     repos = doc.get("repos", [])
@@ -174,18 +203,37 @@ def audit_inventory(doc: dict, now: str, *, http=None,
     eol_cache: dict = {}
     osv_down = eol_down = False
 
+    # --- OSV pre-pass: ONE batched lookup for the whole fleet ---------------------------------
+    # The findings loop below reads osv_cache exactly as it always did; this only fills it in
+    # advance. Collected here rather than inside the loop because a batch needs every key before
+    # the first request — which is the whole reason this is a pre-pass and not a swapped call.
+    if osv_batch is not None:
+        wanted = []
+        for r in repos:
+            for key, _vsource in _osv_keys(r):
+                if key not in osv_cache:
+                    osv_cache[key] = None            # placeholder: dedupes the collection pass
+                    wanted.append(key)
+        if wanted:
+            try:
+                osv_cache.update(osv_batch(wanted, http=http))
+            except Exception as exc:      # same degradation the per-package path already has
+                osv_down = True
+                coverage["osvErrors"] += 1
+                coverage["notes"].append(f"OSV unreachable — package audit skipped ({exc}).")
+            finally:
+                # A placeholder the batch did not answer must NOT survive as an empty list: that
+                # would read as "looked, found nothing" for a package nobody looked at.
+                for k in wanted:
+                    if osv_cache.get(k) is None:
+                        osv_cache.pop(k, None)
+
     for r in repos:
         path = r.get("path")
         seen_cve: set = set()          # dedupe a vuln within one repo (same pkg in 2 manifests)
         # --- packages -> OSV ---
-        for s in r.get("sdks", []):
-            eco, pkg = s.get("eco"), s.get("pkg")
-            resolved = s.get("resolved")                 # exact version from a lockfile, if any
-            ver = resolved or floor(s.get("ver"))        # else the declared manifest floor
-            vsource = "lockfile" if resolved else "manifest"
-            if osv_ecosystem(eco) is None or ver is None:
-                continue
-            key = (eco, pkg, ver)
+        for key, vsource in _osv_keys(r):
+            eco, pkg, ver = key
             if key not in osv_cache:
                 if osv_down:
                     continue

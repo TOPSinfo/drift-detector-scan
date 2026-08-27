@@ -34,18 +34,6 @@ def test_query_package_skips_unsupported_ecosystem_and_missing_version():
     assert osv.query_package("npm", "axios", None, http=_fake_http) == []
 
 
-def test_query_all_dedupes_by_key():
-    calls = {"n": 0}
-
-    def counting(url, *, method="GET", body=None, timeout=20):
-        calls["n"] += 1
-        return {"vulns": []}
-
-    pkgs = [("npm", "react", "19.0.0"), ("npm", "react", "19.0.0"), ("npm", "react-dom", "19.0.0")]
-    result = osv.query_all(pkgs, http=counting)
-    assert calls["n"] == 2                          # react queried once despite two occurrences
-    assert set(result.keys()) == {("npm", "react", "19.0.0"), ("npm", "react-dom", "19.0.0")}
-
 
 def test_severity_from_cvss_vector_when_no_ghsa_label():
     # PyPI/Packagist-style advisory: CVSS vector only, no database_specific.severity
@@ -76,3 +64,25 @@ def test_fixed_version_ignores_other_packages_in_advisory():
 
     v = osv.query_package("npm", "target", "0.21.1", http=http)[0]
     assert v["fixed"] == "1.7.4"             # not "99.0" from the unrelated PyPI package
+
+
+def test_normalise_is_the_single_shape_authority():
+    """Both lookup paths must produce the same dict from the same raw record, so the shape lives
+    in one function. Called directly here so a future divergence between the per-package and the
+    batch path fails at the seam rather than in a fleet diff."""
+    raw = {
+        "id": "GHSA-abc", "aliases": ["CVE-2020-1234"],
+        "summary": "Server-side request forgery",
+        "database_specific": {"severity": "HIGH"},
+        "affected": [{"package": {"ecosystem": "npm", "name": "axios"},
+                      "ranges": [{"events": [{"introduced": "0"}, {"fixed": "0.21.2"}]}]}],
+        "references": [{"url": "https://example.test/advisory"}],
+    }
+    assert osv._normalise(raw, "npm", "axios") == {
+        "id": "GHSA-abc",
+        "cve": "CVE-2020-1234",
+        "severity": "HIGH",
+        "summary": "Server-side request forgery",
+        "fixed": "0.21.2",
+        "url": "https://example.test/advisory",
+    }
