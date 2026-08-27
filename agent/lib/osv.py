@@ -108,14 +108,6 @@ def query_package(eco: str, name: str, version: str | None, *, http=default_http
     return [_normalise(v, osv_eco, name) for v in resp.get("vulns") or []]
 
 
-def query_all(packages, *, http=default_http) -> dict:
-    """Dedupe (eco,name,version) across all repos and query each once. Returns {key: [vuln]}."""
-    cache: dict = {}
-    for eco, name, version in packages:
-        key = (eco, name, version)
-        if key not in cache:
-            cache[key] = query_package(eco, name, version, http=http)
-    return cache
 
 
 def _batch_ids(keys, *, http=default_http, chunk: int = BATCH_CHUNK) -> dict:

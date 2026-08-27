@@ -34,18 +34,6 @@ def test_query_package_skips_unsupported_ecosystem_and_missing_version():
     assert osv.query_package("npm", "axios", None, http=_fake_http) == []
 
 
-def test_query_all_dedupes_by_key():
-    calls = {"n": 0}
-
-    def counting(url, *, method="GET", body=None, timeout=20):
-        calls["n"] += 1
-        return {"vulns": []}
-
-    pkgs = [("npm", "react", "19.0.0"), ("npm", "react", "19.0.0"), ("npm", "react-dom", "19.0.0")]
-    result = osv.query_all(pkgs, http=counting)
-    assert calls["n"] == 2                          # react queried once despite two occurrences
-    assert set(result.keys()) == {("npm", "react", "19.0.0"), ("npm", "react-dom", "19.0.0")}
-
 
 def test_severity_from_cvss_vector_when_no_ghsa_label():
     # PyPI/Packagist-style advisory: CVSS vector only, no database_specific.severity
