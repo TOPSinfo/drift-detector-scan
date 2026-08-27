@@ -115,3 +115,82 @@ def test_the_smtp_url_is_never_returned_or_echoed():
     msg = mail.build("s", "t", "<p>h</p>", sender="d@e.test", to=["a@e.test"])
     assert mail.send("smtps://user:hunter2@smtp.example.test:465", msg,
                      transport=lambda *a, **k: fake) is None
+
+
+# ── the command, and the one place it deliberately differs from notify ────────────────────────
+
+def _cfg(tmp_path, block="""notify:
+  email:
+    to: [ops@example.com]
+    from: drift@example.com
+    smtp: DRIFT_TEST_SMTP
+"""):
+    p = tmp_path / "drift.yml"
+    p.write_text("version: 1\nfleet:\n  - https://git.x/g/a\n" + block
+                 + "delivery:\n  mode: dry-run\n  dev_as_issues: true\n  devops_project: root/ops\n")
+    return str(p)
+
+
+def _state(tmp_path, payload=None):
+    import json
+    d = tmp_path / "state"
+    d.mkdir(exist_ok=True)
+    (d / "drift.json").write_text(json.dumps(payload if payload is not None else _PAYLOAD))
+    return str(d)
+
+
+def _run(argv):
+    from agent.cli import main
+    return main(argv)
+
+
+def test_no_email_configured_is_a_silent_no_op(tmp_path):
+    """Opt-in, exactly like gchat. Not configured is not a failure."""
+    assert _run(["email-summary", "--state", _state(tmp_path),
+                 "--config", _cfg(tmp_path, "")]) == 0
+
+
+def test_no_report_is_a_skip_not_an_error(tmp_path):
+    """The scan failed upstream and has already said so. A second red here says nothing new."""
+    (tmp_path / "empty").mkdir()
+    assert _run(["email-summary", "--state", str(tmp_path / "empty"),
+                 "--config", _cfg(tmp_path)]) == 0
+
+
+def test_dry_run_sends_nothing_and_never_prints_the_url(tmp_path, monkeypatch, capsys):
+    monkeypatch.setenv("DRIFT_TEST_SMTP", "smtps://user:hunter2@smtp.example.test:465")
+    rc = _run(["email-summary", "--state", _state(tmp_path), "--config", _cfg(tmp_path),
+               "--dry-run"])
+    out = capsys.readouterr()
+    assert rc == 0
+    assert "ops@example.com" in out.out
+    assert "hunter2" not in out.out + out.err, "the SMTP credential was printed"
+
+
+def test_a_transport_failure_exits_NON_ZERO(tmp_path, monkeypatch):
+    """THE DELIBERATE DIVERGENCE from _cmd_notify, which returns 0 on every failure because 'a
+    chat outage must not fail the pipeline'. That is right for chat and wrong here.
+
+    This mail is sent on EVERY completed scan, which makes its ABSENCE informative: no mail means
+    no scan. A silent delivery failure destroys that signal and leaves recipients unable to tell
+    'nothing to report' from 'delivery broke a month ago'.
+
+    It is safe to go red because this is an independent job: by the time it runs the scan has
+    succeeded, drift.json is committed and the artifacts are published. Only the notify job is red,
+    and somebody finds out.
+
+    If you are here to 'make this consistent with notify', read the above first."""
+    monkeypatch.setenv("DRIFT_TEST_SMTP", "smtps://u:p@smtp.example.test:465")
+
+    def boom(*a, **k):
+        raise OSError("connection refused")
+
+    monkeypatch.setattr(mail, "send", boom)
+    rc = _run(["email-summary", "--state", _state(tmp_path), "--config", _cfg(tmp_path)])
+    assert rc != 0, "a failed delivery reported success — the mail's absence now means nothing"
+
+
+def test_a_missing_env_var_also_exits_non_zero(tmp_path, monkeypatch):
+    """Configured but unset is a deployment error, not an opt-out."""
+    monkeypatch.delenv("DRIFT_TEST_SMTP", raising=False)
+    assert _run(["email-summary", "--state", _state(tmp_path), "--config", _cfg(tmp_path)]) != 0

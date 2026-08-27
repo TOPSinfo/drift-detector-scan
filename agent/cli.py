@@ -1518,6 +1518,61 @@ def _cmd_deliver(args) -> int:
     return 0
 
 
+def _cmd_email_summary(args) -> int:
+    """Email the scan summary. An INDEPENDENT job: the scan has already succeeded by the time
+    this runs, so this command may fail loudly without costing anyone their report.
+
+    It deliberately does NOT copy _cmd_notify's swallow-everything behaviour. That is right for
+    chat — "a chat outage must not fail the pipeline" — and wrong here: this mail is sent on every
+    completed scan, which makes its ABSENCE informative. No mail means no scan. A silent delivery
+    failure destroys that signal and leaves recipients unable to tell "nothing to report" from
+    "delivery broke a month ago".
+
+    Two things are still silent, and both are honest: no `notify.email` (opt-in, like gchat), and
+    no drift.json (the scan failed upstream and already said so).
+    """
+    import json as _json
+    import os as _os
+    from agent.lib import digest, mail, ops_config
+
+    try:
+        cfg = ops_config.load(args.config)["notify"]["email"]
+    except (OSError, ops_config.ConfigError) as exc:
+        print(f"email-summary: config unreadable — {exc}", file=sys.stderr)
+        return 2
+    if not cfg:
+        print("email-summary: no notify.email configured — skipping")
+        return 0
+
+    try:
+        with open(_os.path.join(args.state, "drift.json"), encoding="utf-8") as fh:
+            payload = _json.load(fh)
+    except OSError as exc:
+        print(f"email-summary: no report to send — skipping ({exc})", file=sys.stderr)
+        return 0
+
+    facts = digest.summary_facts(payload)
+    subject, text, html = mail.summary_mail(facts, report_url=args.report_url,
+                                            run_url=args.run_url)
+    if args.dry_run:
+        # Recipients and subject only. The URL carries the password and is never printed.
+        print(f"email-summary (dry run): to {', '.join(cfg['to'])}\n  subject: {subject}")
+        return 0
+
+    url = _os.environ.get(cfg["smtp"])
+    if not url:
+        # Configured but unset is a DEPLOYMENT error, not an opt-out — the config asked for mail.
+        print(f"email-summary: ${cfg['smtp']} is not set", file=sys.stderr)
+        return 2
+    try:
+        mail.send(url, mail.build(subject, text, html, sender=cfg["from"], to=cfg["to"]))
+    except Exception as exc:                    # noqa: BLE001 — see the docstring
+        print(f"email-summary: delivery failed — {exc}", file=sys.stderr)
+        return 2
+    print(f"email-summary: sent to {len(cfg['to'])} recipient(s) ✓")
+    return 0
+
+
 def _cmd_chat_summary(args) -> int:
     """Render the closing block for a CLI scan — the LAST thing a run emits.
 
@@ -1712,6 +1767,14 @@ def main(argv: list[str]) -> int:
                      help="deprecated, no effect — the Developer stream is always filed as "
                           "issues; accepted so older invocations keep working")
     pdl.set_defaults(func=_cmd_deliver)
+
+    pes = sub.add_parser("email-summary")  # deliver the summary by mail, from its own CI job
+    pes.add_argument("--state", required=True)
+    pes.add_argument("--config", required=True, help="drift.yml — recipients + the SMTP env var")
+    pes.add_argument("--report-url")
+    pes.add_argument("--run-url")
+    pes.add_argument("--dry-run", action="store_true", help="print recipients + subject, send nothing")
+    pes.set_defaults(func=_cmd_email_summary)
 
     pcs = sub.add_parser("chat-summary")   # the closing block a CLI scan ends with
     pcs.add_argument("--state", required=True)
