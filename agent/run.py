@@ -42,6 +42,17 @@ def _default_pull(repo_path):
 
 def _pull_repos(roots, pull_run, *, jobs=1):
     runner = pull_run or _default_pull
+    # `_cmd_run` normalises roots to (url_or_path, branch|None) pairs so the --root and --config
+    # forms cannot diverge downstream. discover_repos walks the FILESYSTEM and does
+    # `Path(r).resolve()`, so it needs the location alone — a pair raises TypeError and took
+    # every `run --config <yml> --pull` down before a repo was scanned, which is the exact
+    # command the scheduled fleet job runs.
+    #
+    # The branch is deliberately dropped rather than honoured here. Fetching a remote at a given
+    # branch is `resolve_sources`' job on the scan path, which clones into the state dir and
+    # already handles branch selection; `--pull` only fast-forwards trees that are ALREADY local.
+    # A URL names no such tree, so it finds nothing and contributes nothing — as it did before
+    # the pair shape existed.
     paths = [abs_path for abs_path, _identity in discover_repos(roots)]
     # Errors are captured by the pool and deliberately ignored here, exactly as the previous
     # bare `except Exception: pass` did — best-effort; a repo that won't fast-forward is

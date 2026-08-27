@@ -4,7 +4,8 @@ from __future__ import annotations
 import hashlib
 import os
 
-from agent.lib import catalog_overlay, engine as engine_mod, ir_store, pool, scan_util
+from agent.lib import (catalog_overlay, engine as engine_mod, ir_store, pool, repo_discovery,
+                       scan_util)
 from agent.lib.vendors import load_vendors
 from agent.lib.vendor_rules import write_ruleset, rule_kinds_by_language
 from agent.lib import shapes
@@ -108,7 +109,7 @@ def scan_folder(root, state_dir, now, *, engine=None, run=None, git=None, progre
     # could name a branch. `roots` is passed on whole — resolve_sources needs the branch — but
     # anything that wants a PATH takes it from here, because os.path.realpath(tuple) raises and
     # a log line would otherwise print the tuple repr.
-    root_paths = [r[0] if isinstance(r, (tuple, list)) else r for r in roots]
+    root_paths = repo_discovery.locations(roots)
 
     def _p(msg):                            # informative phase log (optional)
         if progress:

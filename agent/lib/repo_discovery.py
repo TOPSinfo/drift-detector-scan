@@ -82,6 +82,18 @@ def diagnose_root(root) -> str | None:
     return None
 
 
+def locations(roots) -> list:
+    """The location half of each root, whether it arrived bare or as a (location, branch) pair.
+
+    `_cmd_run` normalises roots to (location, branch|None) so the --root and --config forms cannot
+    diverge downstream, and three places then need the location alone. Two of them unwrapped it
+    themselves and the third — `run._pull_repos` — forgot, so every `run --config <yml> --pull`
+    (the scheduled fleet job's exact command) died on `Path(pair)` before a repo was scanned.
+    One derivation, so a fourth caller cannot repeat it.
+    """
+    return [r[0] if isinstance(r, (tuple, list)) else r for r in roots]
+
+
 def discover_repos(roots: list) -> list:
     """Find all git repos recursively beneath each of `roots`.
 
@@ -89,7 +101,9 @@ def discover_repos(roots: list) -> list:
     resolved absolute repo path. Identity is order-independent and
     collision-free — see the module docstring for the scheme.
     """
-    resolved_roots = [Path(r).resolve() for r in roots]
+    # Accepts either shape: a root is canonically a (location, branch) pair internally, and
+    # this walks the filesystem, which needs the location alone.
+    resolved_roots = [Path(r).resolve() for r in locations(roots)]
 
     # Map each distinct repo (by resolved abs path) to the root/walk-path it was
     # discovered under. Iterate roots in a deterministic order so the fallback
