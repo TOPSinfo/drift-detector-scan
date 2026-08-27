@@ -378,6 +378,7 @@
       "type": "array"
     },
     "delta": {
+      "description": "Findings movement since the PREVIOUS scan. `comparedAgainst` is the date of that scan, or null when no baseline existed \u2014 a first run reports every finding as `new`, and rendering that as a week's change reads as a catastrophe rather than a first measurement. Same rule as catalogDelta. The rest of the shape (new/resolved/persisting/mutedCount) is deliberately not pinned here; it never was.",
       "type": [
         "object",
         "null"
