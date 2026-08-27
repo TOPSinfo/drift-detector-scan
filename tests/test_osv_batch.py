@@ -138,3 +138,67 @@ def test_no_askable_keys_makes_no_request_at_all():
     out = osv._batch_ids([("rubygems", "x", "1.0")], http=http)
     assert calls == []
     assert out == {("rubygems", "x", "1.0"): []}
+
+
+# --- phase 2: the detail fetch ----------------------------------------------------------------
+
+def test_detail_is_fetched_once_per_unique_vuln_across_the_whole_fleet():
+    """The same CVE recurs across repos and packages. Fetching it once per OCCURRENCE would
+    replace 642 query calls with more detail calls than we started with — the collapse, not the
+    concurrency, is where the saving comes from."""
+    keys = [("npm", "a", "1.0"), ("npm", "b", "1.0"), ("npm", "c", "1.0")]
+    detail_calls = []
+
+    def http(url, *, method="GET", body=None, timeout=20):
+        if url.endswith("/querybatch"):
+            return _resp(["GHSA-shared"], ["GHSA-shared"], ["GHSA-shared", "GHSA-only-c"])
+        detail_calls.append(url)
+        vid = url.rsplit("/", 1)[-1]
+        return {"id": vid, "summary": f"summary for {vid}", "references": []}
+
+    out = osv.query_batch(keys, http=http)
+    assert len(detail_calls) == 2, f"expected 2 unique details, got {detail_calls}"
+    assert [v["id"] for v in out[("npm", "a", "1.0")]] == ["GHSA-shared"]
+    assert [v["id"] for v in out[("npm", "c", "1.0")]] == ["GHSA-shared", "GHSA-only-c"]
+
+
+def test_a_detail_fetch_that_fails_raises_rather_than_dropping_the_vulnerability():
+    """A vuln whose detail cannot be read is NOT a vuln that does not exist. Dropping it renders a
+    vulnerable package as clean — the collapse principle 1 refuses. audit_inventory already knows
+    how to degrade the whole OSV source and say so."""
+    keys = [("npm", "a", "1.0")]
+
+    def http(url, *, method="GET", body=None, timeout=20):
+        if url.endswith("/querybatch"):
+            return _resp(["GHSA-x"])
+        raise OSError("connection reset")
+
+    with pytest.raises(OSError):
+        osv.query_batch(keys, http=http)
+
+
+def test_batch_result_preserves_osv_order_within_a_key():
+    """Findings are built by walking this list; a reordering would change drift.json for the same
+    inputs, which the determinism principle forbids."""
+    keys = [("npm", "a", "1.0")]
+
+    def http(url, *, method="GET", body=None, timeout=20):
+        if url.endswith("/querybatch"):
+            return _resp(["GHSA-3", "GHSA-1", "GHSA-2"])
+        vid = url.rsplit("/", 1)[-1]
+        return {"id": vid, "summary": vid, "references": []}
+
+    assert [v["id"] for v in osv.query_batch(keys, http=http)[("npm", "a", "1.0")]] == \
+           ["GHSA-3", "GHSA-1", "GHSA-2"]
+
+
+def test_a_key_with_no_vulns_is_present_and_empty():
+    """audit_inventory primes its cache from this mapping; a missing key would read as 'never
+    looked' and send that package back down the one-at-a-time path."""
+    keys = [("npm", "clean", "9.9.9")]
+
+    def http(url, *, method="GET", body=None, timeout=20):
+        return _resp([])
+
+    out = osv.query_batch(keys, http=http)
+    assert out == {("npm", "clean", "9.9.9"): []}

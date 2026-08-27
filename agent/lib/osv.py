@@ -7,7 +7,7 @@ from __future__ import annotations
 
 from agent.lib.http_util import default_http
 from agent.lib.purl import osv_ecosystem
-from agent.lib import cvss
+from agent.lib import cvss, pool
 
 OSV_QUERY_URL = "https://api.osv.dev/v1/query"
 OSV_QUERYBATCH_URL = "https://api.osv.dev/v1/querybatch"
@@ -153,4 +153,34 @@ def _batch_ids(keys, *, http=default_http, chunk: int = BATCH_CHUNK) -> dict:
                     nxt_q.append({**q, "page_token": token})
                     nxt_owners.append(owner)
             pending, owners = nxt_q, nxt_owners
+    return out
+
+
+def query_batch(keys, *, http=default_http, jobs=1) -> dict:
+    """{(eco, name, version): [normalised vuln, ...]} — the same mapping the per-package path
+    builds, in two phases instead of one request per package.
+
+    Phase 1 asks `querybatch` which vuln IDs each key has. Phase 2 fetches each UNIQUE id once:
+    the same CVE recurs across repos and packages, so on a real fleet the id set is far smaller
+    than the occurrence count. That collapse, not the concurrency, is where the saving comes
+    from — `jobs` only overlaps the waiting.
+
+    A detail fetch that fails PROPAGATES. A vulnerability whose record cannot be read is not a
+    vulnerability that does not exist, and `audit_inventory` already knows how to degrade the OSV
+    source loudly; silently omitting it would render a vulnerable package as clean.
+    """
+    ids_by_key = _batch_ids(keys, http=http, chunk=BATCH_CHUNK)
+    # sorted() so the detail fetches happen in a deterministic order regardless of how the ids
+    # arrived — the scan's byte-identical-output guarantee reaches this far.
+    unique = sorted({vid for ids in ids_by_key.values() for vid in ids if vid})
+    outcomes = pool.ordered_map(lambda vid: http(OSV_VULN_URL + vid), unique, jobs=jobs)
+    raw: dict = {}
+    for vid, (rec, exc) in zip(unique, outcomes, strict=True):
+        if exc is not None:
+            raise exc
+        raw[vid] = rec or {}
+    out: dict = {}
+    for key, ids in ids_by_key.items():
+        eco = osv_ecosystem(key[0])
+        out[key] = [_normalise(raw[vid], eco, key[1]) for vid in ids if vid]
     return out
