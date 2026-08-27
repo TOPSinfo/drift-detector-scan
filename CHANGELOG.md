@@ -96,6 +96,30 @@ All notable changes to the Drift Detector plugin. Dates are YYYY-MM-DD.
   fixes — and a genuinely unreachable OSV still degrades the source loudly once the attempts are
   spent.
 
+- **A scan now ends where the answer ends.** `drift-scan chat-summary` renders the closing block
+  a CLI run finishes with — headline, movement since the last scan, the most urgent retirement,
+  what to do first, what the scan could **not** see, and where every report lives. Roughly fifteen
+  lines, emitted last and verbatim. **This changes the plugin's primary output for every user**,
+  and deliberately: the command file used to specify the report *followed by five more blocks* —
+  a link list, honesty surfaces, a scheduling pitch with crontab mechanics, and a cleanup offer,
+  three of which asked the reader to decide something. Someone who came for a result was handed a
+  setup interview, and the output never visibly ended, so there was no way to tell whether more
+  was coming. Scheduling and cleanup still exist and are still discoverable — one fixed footer
+  line says so, and their mechanics moved to the management-modes section where somebody asking
+  will find them. The block is a pure function of `drift.json`, like every other surface here, so
+  it reads the same on every run and under every model. The AI plane's leads are untouched: they
+  print in full, above, and the block accounts for the pass in one line without restating it.
+- **A summary can be emailed when a scan completes** (`drift-scan email-summary`, `notify.email`).
+  Everything this tool publishes is pull — somebody has to go and look, and nobody reliably does.
+  Recipients live in `drift.yml` because they are not secrets the way the SMTP password is; the
+  credential stays an env-var name, as `notify.gchat` established. Sent from its own CI job, so no
+  SMTP credential enters the scan path. It is `multipart/alternative` — HTML alone breaks in the
+  places an operations mail actually gets read — and TLS is not optional: a `smtp://` URL whose
+  STARTTLS fails raises rather than falling back to cleartext, because the body names client
+  repositories. Unlike the chat notifier, **a failed delivery exits non-zero**: the mail goes on
+  every completed scan, so its absence means no scan, and a silent failure would destroy that
+  signal.
+
 ### Fixed
 
 - **`catalogSummary` never reached `drift.json`.** The absorption counts existed in
@@ -147,6 +171,18 @@ All notable changes to the Drift Detector plugin. Dates are YYYY-MM-DD.
   repos — correctly, and for the first time visibly. A genuine docs or runbooks repo is now
   permanently `UNKNOWN`; quieting that needs an acknowledged-empty attestation, with an approver
   and an expiry like every other disposition here, which is deliberately not invented yet.
+
+- **A config error could print a pasted credential into the CI log.** `_env_name` truncates a
+  rejected value when it matches a known secret prefix, but its other refusal echoed the value in
+  full. An SMTP URL matches no prefix and sits under the length cap, so
+  `smtps://user:PASSWORD@host` would have appeared verbatim in the output of every failed
+  `config-preflight`. Both messages now truncate. Found while writing a test that asserted the
+  refusal must not echo what it was rejecting.
+- **The findings delta could not tell a first scan from a catastrophic week.** It reported `new`
+  and `resolved` with nothing saying what it compared against, so a fleet's first run — where
+  every finding is new — rendered identically to a week in which everything changed. On a real
+  fleet that was 349 `new`. `delta.comparedAgainst` now names the previous scan, or is null when
+  there was none, matching what `catalogDelta` has always carried.
 
 ## v1.0.0 — 2026-08-21
 
