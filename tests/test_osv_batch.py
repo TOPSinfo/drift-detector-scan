@@ -202,3 +202,76 @@ def test_a_key_with_no_vulns_is_present_and_empty():
 
     out = osv.query_batch(keys, http=http)
     assert out == {("npm", "clean", "9.9.9"): []}
+
+
+# --- transient network faults ------------------------------------------------------------------
+#
+# Measured on the real fleet: the batched audit failed 3 runs in 5, every time with
+# `Errno 104 Connection reset by peer`, losing all 568 CVE findings. The detail phase makes ~177
+# requests and any ONE of them failing discarded the entire result. The same egress fault is
+# already documented in the fleet's .gitlab-ci.yml, where plain `--retry` proved insufficient
+# because it does not cover connection-level resets.
+#
+# Retrying does not weaken principle 1: "could not read it THIS attempt" and "could not read it"
+# are different claims, and only the second should degrade the source.
+
+def test_a_transient_reset_is_retried_rather_than_losing_every_finding():
+    calls = {"n": 0}
+
+    def http(url, *, method="GET", body=None, timeout=20):
+        if url.endswith("/querybatch"):
+            return _resp(["GHSA-x"])
+        calls["n"] += 1
+        if calls["n"] == 1:
+            raise OSError(104, "Connection reset by peer")
+        return {"id": "GHSA-x", "summary": "s", "references": []}
+
+    out = osv.query_batch([("npm", "a", "1.0")], http=http)
+    assert [v["id"] for v in out[("npm", "a", "1.0")]] == ["GHSA-x"]
+    assert calls["n"] == 2, "the reset should have been retried exactly once"
+
+
+def test_a_persistent_failure_still_raises_after_the_retries_are_spent():
+    """An OSV that is genuinely unreachable must still degrade the source loudly. Retrying for
+    ever would turn 'cannot see' into 'still trying', which is worse than either."""
+    calls = {"n": 0}
+
+    def http(url, *, method="GET", body=None, timeout=20):
+        if url.endswith("/querybatch"):
+            return _resp(["GHSA-x"])
+        calls["n"] += 1
+        raise OSError(104, "Connection reset by peer")
+
+    with pytest.raises(OSError):
+        osv.query_batch([("npm", "a", "1.0")], http=http)
+    assert calls["n"] == osv.HTTP_ATTEMPTS, (
+        f"expected exactly {osv.HTTP_ATTEMPTS} attempts, got {calls['n']}")
+
+
+def test_a_malformed_response_is_not_retried():
+    """A short `results` array is a protocol violation, not a transient fault. Retrying it would
+    hammer OSV for a fault no repetition can fix, and hide a real bug behind a delay."""
+    calls = {"n": 0}
+
+    def http(url, *, method="GET", body=None, timeout=20):
+        calls["n"] += 1
+        return _resp()                      # zero results for one query
+
+    with pytest.raises(ValueError):
+        osv._batch_ids([("npm", "a", "1.0")], http=http)
+    assert calls["n"] == 1, "a protocol violation must not be retried"
+
+
+def test_the_batch_request_itself_is_retried_too():
+    """The querybatch POST rides the same flaky egress as the detail fetches."""
+    calls = {"n": 0}
+
+    def http(url, *, method="GET", body=None, timeout=20):
+        calls["n"] += 1
+        if calls["n"] == 1:
+            raise OSError(104, "Connection reset by peer")
+        return _resp([])
+
+    out = osv._batch_ids([("npm", "a", "1.0")], http=http)
+    assert out == {("npm", "a", "1.0"): []}
+    assert calls["n"] == 2

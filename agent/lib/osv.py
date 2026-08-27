@@ -5,6 +5,8 @@ HTTP is injected (see http_util) so tests use canned responses.
 """
 from __future__ import annotations
 
+import time
+
 from agent.lib.http_util import default_http
 from agent.lib.purl import osv_ecosystem
 from agent.lib import cvss, pool
@@ -18,6 +20,21 @@ OSV_VULN_URL = "https://api.osv.dev/v1/vulns/"
 # queryset exceeds 3,000 vulnerabilities; smaller chunks keep most responses to a single page,
 # which keeps the request count predictable. Pagination is still followed when it happens.
 BATCH_CHUNK = 200
+
+# Attempts per HTTP call before a transient network fault becomes a real one.
+#
+# Measured on a real fleet: the batched audit failed 3 runs in 5, every time with
+# `[Errno 104] Connection reset by peer`, and each failure discarded all 568 CVE findings — the
+# detail phase makes ~177 requests and any ONE of them failing ends the whole audit. The same
+# egress fault is documented in the fleet's CI, where plain `curl --retry` proved insufficient
+# precisely because it does not cover connection-level resets.
+#
+# This does not weaken principle 1. "Could not read it THIS attempt" and "could not read it" are
+# different claims; only the second degrades the source, and it still does — loudly, once the
+# attempts are spent. Retrying for ever would turn "cannot see" into "still trying", which is
+# worse than either.
+HTTP_ATTEMPTS = 3
+_RETRY_BACKOFF_S = 0.5
 
 
 def _severity_label(vuln: dict) -> str:
@@ -110,6 +127,24 @@ def query_package(eco: str, name: str, version: str | None, *, http=default_http
 
 
 
+def _http_retrying(http, url, **kw):
+    """Call `http`, retrying a TRANSPORT failure a bounded number of times.
+
+    Only OSError (which urllib's URLError and the reset above both are) is retried: a ValueError
+    from a malformed response is a protocol violation no repetition can fix, and retrying it
+    would hammer OSV for a fault that is really a bug on one side or the other.
+    """
+    last = None
+    for attempt in range(HTTP_ATTEMPTS):
+        try:
+            return http(url, **kw)
+        except OSError as exc:              # connection reset, DNS, timeout, refused
+            last = exc
+            if attempt + 1 < HTTP_ATTEMPTS:
+                time.sleep(_RETRY_BACKOFF_S * (attempt + 1))
+    raise last
+
+
 def _batch_ids(keys, *, http=default_http, chunk: int = BATCH_CHUNK) -> dict:
     """{(eco, name, version): [vuln id, ...]} for every key, in OSV's order, all pages followed.
 
@@ -129,7 +164,8 @@ def _batch_ids(keys, *, http=default_http, chunk: int = BATCH_CHUNK) -> dict:
                    for k, eco in window]
         owners = [k for k, _eco in window]
         while pending:
-            resp = http(OSV_QUERYBATCH_URL, method="POST", body={"queries": pending})
+            resp = _http_retrying(http, OSV_QUERYBATCH_URL, method="POST",
+                                  body={"queries": pending})
             results = resp.get("results") or []
             if len(results) != len(pending):
                 raise ValueError(
@@ -165,7 +201,8 @@ def query_batch(keys, *, http=default_http, jobs=1) -> dict:
     # sorted() so the detail fetches happen in a deterministic order regardless of how the ids
     # arrived — the scan's byte-identical-output guarantee reaches this far.
     unique = sorted({vid for ids in ids_by_key.values() for vid in ids if vid})
-    outcomes = pool.ordered_map(lambda vid: http(OSV_VULN_URL + vid), unique, jobs=jobs)
+    outcomes = pool.ordered_map(lambda vid: _http_retrying(http, OSV_VULN_URL + vid),
+                                unique, jobs=jobs)
     raw: dict = {}
     for vid, (rec, exc) in zip(unique, outcomes, strict=True):
         if exc is not None:
