@@ -27,6 +27,18 @@ SCAN="${CLAUDE_PLUGIN_ROOT:-}/bin/drift-scan"
 
 If the runner reports `uv`/python missing, run `"$SCAN" doctor`, relay the fix, and STOP — never fabricate a result. Management modes are one call each: `audit` → `"$SCAN" audit --progress --in "$D/inventory.json" --now "$(date +%F)" --out-json "$D/audit.json" --out-html "$D/dashboard.html"` (needs an existing `inventory.json`, else tell them to run a scan first); `unschedule` → `"$SCAN" unschedule --state "$D"`; `doctor` → `"$SCAN" doctor "${2:-}"`; `clean` → **the single cleanup command**: run `"$SCAN" clean --report` to see what's reclaimable, relay it, and on an explicit yes run `"$SCAN" clean --all --yes` (sweeps every run output the tool recorded across the machine + `~/.drift/{reports,eval}` — **keeps** the user's absorbed catalog unless they also ask to drop it, `--catalog`), or `"$SCAN" clean --state "$D" --yes` for just this folder's outputs. Never pass `--catalog` without an explicit ask — it discards learned shapes. For these, `D="$F/.drift-detector"` where `F` is the folder argument.
 
+**Scheduling and freshness — on request only, never volunteered after a scan.** `schedule
+<folder>` installs the weekly job: ask the cadence (default `0 7 * * 0`, Sundays 7am), **show the
+exact crontab line and get an explicit yes**, then `"$SCAN" schedule --root <root> --state "$D"
+--at "<cadence>"`. Relay the installed line. The scan log lands in `"$D/cron.log"` and the weekly
+freshness result — any new or moved vendor retirement — in `"$D/catalog-check.log"`; glance at the
+latter when it exists and surface any change. On demand, `"$SCAN" catalog-check --now "$(date
++%F)"` re-checks catalogued vendors against their live sources: **exit 3** means something changed
+(stage it and run `absorb`), **exit 4** means a source was unreachable.
+
+Why "on request only": this material used to be pitched at the end of every scan, and it is what
+buried the result. The closing block tells the user scheduling exists; that is enough.
+
 ## The guided flow (default mode)
 
 Run these steps IN ORDER. Do not skip the plan, and never scan the current directory or run on empty input.
@@ -95,28 +107,28 @@ This clones any URLs and classifies every source — **git repo · plain folder 
 
 ## Deliver the report
 
-1. **Verify — before you trust any number.** `"$SCAN" verify --state "$D"`. A green line means `drift.md`, `summary.html`, `dashboard.html` and `drift.json` all agree; a non-zero exit means they don't — say so, and don't report a figure until it's resolved. The run wrote to `"$D"`: **`drift.json`** (canonical data), **`drift.md`** (the report as Markdown — tables, findings, coverage verdicts, and a Mermaid exposure graph), **`summary.html`** (the DEFAULT quick view — coverage tree + glossary + the four headline numbers, no JavaScript, opens instantly), **`dashboard.html`** (a self-contained offline viewer), **`chart.html`** (an online charts view — same data, Chart.js from a CDN), plus `inventory.json` and `audit.json`.
+Three steps. The output ENDS with step 3 — nothing follows it.
 
-2. **Render the report in the chat.** Read **`drift.md`** and paste it inline — it is Markdown, so its tables and the exposure graph render in place, and reading its source (not the HTML, which you cannot see) is what keeps you honest. It is already verified: paste it **verbatim** — never re-author, re-summarize, or re-number it; hand-editing reintroduces the exact drift `verify` exists to prevent. Put a 2-line headline above it: the delta (*"🆕 N new · ✅ M resolved since last scan"*), then *"🔴 N fixes · 🟠 M to review across K repos"* and the most urgent sunset.
+1. **Verify — before you trust any number.** `"$SCAN" verify --state "$D"`. A green line means
+   `drift.md`, `summary.html`, `dashboard.html` and `drift.json` all agree; a non-zero exit means
+   they do not — say so, and report no figure until it is resolved.
 
-3. **List every representation as a link**, so the user picks how to view it:
-   - 📄 **Markdown** — `<D>/drift.md`
-   - ⚡ **Summary** — `file://<D>/summary.html` — the quick/default view: the coverage tree, its glossary, and the four headline numbers (fixes/sunsets/past-due/unaudited). No JavaScript at all, so it opens instantly and works offline; lead with this one when someone just wants the numbers.
-   - 🌐 **Dashboard** — `file://<D>/dashboard.html`  (offer `xdg-open`; self-contained, works offline)
-   - 📊 **Charts** — `file://<D>/chart.html` — the same data as bar/doughnut/timeline charts. **Needs internet** (loads Chart.js from a CDN); if it can't reach the CDN it says so and points back at the dashboard. Not a Claude Artifact (its CSP blocks the CDN).
-   - 🔢 **Data** — `<D>/drift.json`
-   - 📋 **Artifact** — publish `drift.md` as an Artifact and give the URL, **only if the user chose "shareable" at intake** (otherwise skip it and note it's available on request). The Artifact renders Markdown + Mermaid natively; publish the file **verbatim**. It leaves the machine (claude.ai) — never publish a client's findings unless they said to.
+2. **Deliver.** Read `drift.md` and paste it inline, **verbatim** — it is Markdown, so its tables
+   and the exposure graph render in place, and reading its source (not the HTML, which you cannot
+   see) is what keeps you honest. Never re-author, re-summarize or re-number it; hand-editing
+   reintroduces the exact drift `verify` exists to prevent. Then run the AI plane exactly as
+   described below, and let its leads print in full.
 
-4. **Honesty surfaces — say these plainly, they are the point:**
-   - Any vendor whose **catalog verdict** is not `CURRENT` (`drift.json` → `catalog[]`): *"0 findings for that vendor means UNAUDITED, not clean."*
-   - Any repo whose **coverage grade** is not `HIGH`, or any repo that came back **UNKNOWN** (`inventory.json` → `coverage.shapes[]`) — the scan could not fully read it. Offer **`/drift-absorb <folder>`**, which investigates exactly those blind spots and teaches the scanner what it missed; absorbed idioms make every later run see them for free.
-   - Findings are **DEPRECATED** (act now) / **REVIEW** (monitor), each cited. If the user calls one a non-issue, mute it: `"$SCAN" mute --state "$D" --fingerprint <fp>`; `--remove` un-mutes.
+3. **Close.** Run `"$SCAN" chat-summary --state "$D"` and paste its output **last, verbatim**.
 
-5. **Then offer autonomy.** *"That was a one-off. The best way to keep these green is a **weekly** run — it re-scans your repos AND re-checks the vendors' live deprecation sources, so a newly-announced retirement can't slip past. Want me to install a cron job (default **Sundays 7am**)?"* If yes: ask the cadence (default `0 7 * * 0`), **show the exact crontab line and get an explicit yes**, then `"$SCAN" schedule --root <root> --state "$D" --at "<cadence>"`. Relay the installed line; mention `/drift-detector unschedule <folder>` removes it, the scan log lands in `"$D/cron.log"`, and the weekly **freshness** result (any new/moved vendor retirement) in `"$D/catalog-check.log"`.
+   It already contains the headline, the delta, the most urgent retirement, what to do first, what
+   the scan could NOT see, and where every report lives. So: **do not re-summarise it, re-order it,
+   put a headline above it, append next steps, or offer anything.** If the user asks about
+   scheduling, cleanup or blind spots, answer then — the block tells them they can.
 
-   **Freshness on demand.** Any time, `"$SCAN" catalog-check --now "$(date +%F)"` re-checks the catalogued vendors (eBay, Shopify) against their live sources and reports what changed — a NEW retirement we lack, a date the vendor MOVED, or a computed rule that drifted. Exit 3 means something changed (stage it and run `absorb`); exit 4 means a source was unreachable. When a scan just ran and `"$D/catalog-check.log"` exists from the weekly job, glance at it and surface any change to the user.
-
-6. **Offer to tidy up (only if clutter has built up).** The tool leaves a small `.drift-detector/` output folder in every place it's scanned. After delivering results, run `"$SCAN" clean --report` (it prints a `CLUTTER {"count":N,"bytes":B}` line). If `count` is **3 or more**, mention it in one calm line — e.g. *"Heads-up: the tool has left N run-output folders (X) across the places you've scanned. Want me to clean them? Your learned catalog is kept."* — and on an explicit yes run `"$SCAN" clean --all --yes`. If `count` is 0–2, stay silent; it's not worth a prompt. Never delete without the yes, and never drop the catalog unless asked.
+   This is not a style preference. A PM ran this command, read the result, and was lost by what
+   followed: five further blocks, three of them asking him to decide something. The output has to
+   end where the answer ends.
 
 ## Ad-hoc shapes — the middle tier (gate-validated, this run) · POC
 
