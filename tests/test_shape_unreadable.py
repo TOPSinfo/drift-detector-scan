@@ -136,3 +136,29 @@ def test_the_invariant_reads_the_key_the_real_builder_emits():
         "build_payload emits no top-level `shapes` — the invariant's key path is wrong again")
     with pytest.raises(verify.Violation):
         verify.check_unreadable_not_known(payload)
+
+
+def test_every_blind_repo_is_named_not_only_the_first():
+    """`verify_payload` exists so a run reports every violation "in one pass instead of one per
+    run" — its own words. This check raised on the FIRST offender, so a real fleet with five
+    unreadable repos reported `✗ 1 invariant(s) violated` naming one of them. An operator fixes
+    that repo, re-runs the scan, and is told about the next: five scans to learn what one should
+    have said.
+
+    Measured on the live fleet, 2026-08-27: five repos were KNOWN with no readable source and
+    verify named only one of them.
+    """
+    from agent.lib import verify
+
+    payload = {"shapes": [
+        {"repo": "alpha", "languages": {}, "verdict": "KNOWN"},
+        {"repo": "beta", "languages": {"php": 3}, "verdict": "KNOWN"},   # readable, fine
+        {"repo": "gamma", "languages": {}, "verdict": "KNOWN"},
+        {"repo": "delta", "languages": {}, "verdict": "UNKNOWN"},        # already honest
+    ]}
+    with pytest.raises(verify.Violation) as exc:
+        verify.check_unreadable_not_known(payload)
+
+    msg = str(exc.value)
+    assert "alpha" in msg and "gamma" in msg, f"not every blind repo was named:\n{msg}"
+    assert "beta" not in msg and "delta" not in msg, f"a readable or honest repo was named:\n{msg}"

@@ -1124,11 +1124,18 @@ def check_unreadable_not_known(payload: dict) -> None:
     # `coverage.shapes`, which does not exist, so it could never fire on a real document; its
     # test passed only because the fixture copied the same mistake. The binding is now asserted
     # against a payload from build_payload rather than a hand-written dict.
-    for sh in (payload.get("shapes") or []):
-        if not (sh.get("languages") or {}) and sh.get("verdict") == "KNOWN":
-            raise Violation("unreadable-known",
-                            f"{sh.get('repo')!r} has no readable source yet reports KNOWN — "
-                            f"'could not look' must never render as 'looked and it is fine'")
+    #
+    # Every offender in ONE violation, not the first. `verify_payload` catches one Violation per
+    # check, so raising on the first blind repo reported one of the live fleet's five: the
+    # operator fixes it, re-runs the whole scan, and is told about the next. Five scans to learn
+    # what one should have said.
+    blind = [str(sh.get("repo")) for sh in (payload.get("shapes") or [])
+             if not (sh.get("languages") or {}) and sh.get("verdict") == "KNOWN"]
+    if blind:
+        named = ", ".join(repr(r) for r in blind)
+        raise Violation("unreadable-known",
+                        f"{len(blind)} repo(s) have no readable source yet report KNOWN — "
+                        f"'could not look' must never render as 'looked and it is fine': {named}")
 
 
 def verify_payload(payload: dict, findings: list) -> list:
