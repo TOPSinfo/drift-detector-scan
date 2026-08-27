@@ -63,10 +63,44 @@ def _match_key(m: dict) -> tuple:
             str(m.get("checkId", "")), str(m.get("vendor", "")), str(m.get("text", "")))
 
 
+# A host interpolated into the front of the same string: PHP's "{$this->baseUrl()}/x" and
+# "$host/x", JS's `${base}/x`. Only a LEADING one immediately followed by `/` is a hidden host —
+# an interpolation further along is a path parameter and must survive, or the operation shown to a
+# reader is corrupted.
+_HOST_INTERP = re.compile(r"^(?:\$\{[^}]*\}|\{[^}]*\}|\$[A-Za-z_][A-Za-z0-9_]*)(?=/)")
+
+
+def _strip_leading_host_interpolation(path: str) -> str:
+    """Drop a leading interpolated host so a path-constant idiom's `^/(a|b|c)/` can match.
+
+    Found on a real fleet: `->get("{$host}/sellers/v1/marketplaceParticipations")` — the dominant
+    Laravel shape — was invisible to the shipped SP-API idiom, whose regex anchors on a literal
+    leading slash. Every such call-site fell into residue as `config-driven-url`.
+
+    Relaxing the anchor instead is NOT an option: the absorb gate requires the alternation to sit
+    at path segment 0, so a corroborated idiom's regex cannot disagree with the segment-0 family
+    counter below. Normalising the path preserves that invariant — after stripping, the
+    alternation really is segment 0 — while making the idiom see what a human plainly reads.
+    """
+    return _HOST_INTERP.sub("", path, count=1)
+
+
 def _string_literal_of(text: str) -> str:
     """The first quoted string in a matched line — the path a path-constant rule caught."""
     m = _STRING_LIT.search(text or "")
     return m.group(1) if m else ""
+
+
+def _idiom_path_of(text: str) -> str:
+    """The path a path-constant idiom should see: the literal, minus any leading host.
+
+    ONE derivation, walked twice — by the corroboration pre-pass and by the attribution walk.
+    They must agree: the pre-pass decides whether an instance is corroborated at all, so if it
+    strips differently from the attribution site, an idiom can count zero families, fail its
+    threshold, and decline every call-site the attribution walk would have accepted. That is
+    exactly what happened when only one of the two was fixed — +0 attributed, and residue grew
+    because the new rule found the lines while nothing could claim them.""" 
+    return _strip_leading_host_interpolation(_string_literal_of(text))
 
 
 def _repo_in_scope(repo_id: str, suffix: str) -> bool:
@@ -418,8 +452,8 @@ def scan_endpoints(matches: list, repo_root: str, vendors: list, *, max_files: i
             continue
         rel = _relpath(m.get("path", ""), repo_root)
         lineno = int(m.get("line", 0) or 0)
-        path = _string_literal_of(m.get("text") or
-                                  _read_line(repo_root, rel, lineno, line_cache))
+        path = _idiom_path_of(m.get("text") or
+                              _read_line(repo_root, rel, lineno, line_cache))
         if not path or not re.search(inst["pathRegex"], path):
             continue
         seg = path.split("/")[1] if path.startswith("/") and "/" in path[1:] else ""
@@ -454,8 +488,12 @@ def scan_endpoints(matches: list, repo_root: str, vendors: list, *, max_files: i
                     continue
             elif not _repo_in_scope(repo_id or repo_root, inst.get("repo", "")):
                 continue
-            path = _string_literal_of(m.get("text") or
-                                      _read_line(repo_root, rel, lineno, line_cache))
+            # Same derivation the corroboration pre-pass used — see _idiom_path_of. Stripped
+            # before matching AND kept stripped, because carrying the interpolation into
+            # `operation`/`example` would show a reader "{$host}/sellers/v1/…" where the API's own
+            # docs say "/sellers/v1/…".
+            path = _idiom_path_of(m.get("text") or
+                                  _read_line(repo_root, rel, lineno, line_cache))
             if not path or not re.search(inst["pathRegex"], path):
                 continue
             v = by_name.get(m.get("vendor") or inst.get("vendor"))

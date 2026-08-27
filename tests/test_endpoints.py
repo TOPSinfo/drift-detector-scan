@@ -1043,3 +1043,81 @@ def test_a_declared_asset_host_is_not_claimed_by_a_parent_domain_vendor_rule(tmp
     assert by_host["fonts.googleapis.com"]["classified"] is False
     assert by_host["fonts.googleapis.com"]["hostClass"] == "asset-cdn"
     assert by_host["sheets.googleapis.com"]["vendor"] == "Google APIs"
+
+
+def test_an_interpolated_host_does_not_hide_a_path_constant(tmp_path):
+    """A path whose host is interpolated into the same string must still match a path-constant
+    idiom's pathRegex.
+
+    Found on a real fleet: `->get("{$host}/sellers/v1/marketplaceParticipations")` — the dominant
+    Laravel shape — was invisible to the shipped `spapi-operation-paths` idiom, whose regex is
+    `^/(…|sellers|…)/`. The leading `{$host}` defeats the `^/` anchor, so the call-site fell into
+    residue as `config-driven-url` and the repo reported UNKNOWN.
+
+    The anchor cannot simply be relaxed: the gate REQUIRES the alternation to sit at path segment
+    0 so a corroborated idiom's regex cannot disagree with endpoints.py's segment-0 family
+    counter. So the path is normalised before matching instead, which preserves that invariant —
+    after stripping, the alternation really is segment 0.
+    """
+    ms = [_pc("src/CatchApi/GetOrders.php", 9,
+              'protected $API_URL = "{$this->baseUrl()}/api/orders";'),
+          _sink("src/CatchApi/CatchApi.php", 298)]
+    out = scan_endpoints(ms, str(tmp_path), [_CATCH],
+                         idioms=[_CATCH_INST], repo_id=_CATCH_REMOTE)
+    eps = [e for e in out["endpoints"] if e["classified"]]
+    assert eps, "an interpolated host hid the path from its own idiom"
+    assert eps[0]["vendor"] == "Catch"
+    assert eps[0]["operation"] == "/api/orders", (
+        f"the stored path should be the real one, not the interpolation prefix: "
+        f"{eps[0]['operation']!r}")
+
+
+def test_a_simple_php_variable_prefix_is_stripped_too(tmp_path):
+    """PHP also allows `"$host/path"` without braces."""
+    ms = [_pc("src/CatchApi/GetOrders.php", 9, '$u = "$host/api/orders";'),
+          _sink("src/CatchApi/CatchApi.php", 298)]
+    out = scan_endpoints(ms, str(tmp_path), [_CATCH],
+                         idioms=[_CATCH_INST], repo_id=_CATCH_REMOTE)
+    assert [e for e in out["endpoints"] if e["classified"]], "a bare $var prefix was not stripped"
+
+
+def test_a_js_template_literal_is_a_KNOWN_GAP_not_a_silent_success(tmp_path):
+    """DOCUMENTED LIMITATION, asserted so it stays visible.
+
+    `_STRING_LIT` is `['"]([^'"]*)['"]` — backticks are not string literals to the scanner, so a
+    JS template literal yields NOTHING to strip and cannot reach a path-constant idiom at all.
+    That is a separate gap from the interpolated-host one fixed above: extraction, not matching.
+
+    It is left unfixed deliberately. Widening extraction to backticks changes what every idiom
+    sees across every JS repo, and no verified JS blind spot has been produced to justify it —
+    "claim only what you verified". When someone does widen it, this test fails and they should
+    read this note rather than assume they broke something."""
+    ms = [_pc("src/api.js", 9, 'const u = `${base}/api/orders`;'),
+          _sink("src/api.js", 20)]
+    out = scan_endpoints(ms, str(tmp_path), [_CATCH],
+                         idioms=[_CATCH_INST], repo_id=_CATCH_REMOTE)
+    assert [e for e in out["endpoints"] if e["classified"]] == [], (
+        "backtick extraction now works — good, but update this test and the note in it")
+
+
+def test_a_path_with_no_interpolation_is_untouched(tmp_path):
+    """The ordinary case must not change — this is the shape every existing idiom matches."""
+    ms = [_pc("src/CatchApi/GetOrders.php", 9, 'protected $API_URL = "/api/orders";'),
+          _sink("src/CatchApi/CatchApi.php", 298)]
+    out = scan_endpoints(ms, str(tmp_path), [_CATCH],
+                         idioms=[_CATCH_INST], repo_id=_CATCH_REMOTE)
+    eps = [e for e in out["endpoints"] if e["classified"]]
+    assert eps and eps[0]["operation"] == "/api/orders"
+
+
+def test_an_interpolation_that_is_not_a_host_prefix_is_left_alone(tmp_path):
+    """Only a LEADING interpolation immediately followed by `/` is a hidden host. One in the
+    middle of a path is a path parameter and must survive — stripping it would corrupt the
+    operation a reader is shown."""
+    ms = [_pc("src/CatchApi/GetOrders.php", 9,
+              'protected $API_URL = "/api/orders/{$orderId}/refund";'),
+          _sink("src/CatchApi/CatchApi.php", 298)]
+    out = scan_endpoints(ms, str(tmp_path), [_CATCH],
+                         idioms=[_CATCH_INST], repo_id=_CATCH_REMOTE)
+    eps = [e for e in out["endpoints"] if e["classified"]]
+    assert eps and eps[0]["operation"] == "/api/orders/{$orderId}/refund"
