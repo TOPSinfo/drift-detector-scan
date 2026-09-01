@@ -17,6 +17,8 @@ the environment, never committed.
 """
 from __future__ import annotations
 
+from urllib.parse import quote
+
 from agent.lib.http_util import default_http
 
 _MAX_FIRST = 6            # how many "do this first" rows to show
@@ -54,8 +56,34 @@ def _label(a: dict) -> str:
     return (a.get("ref", "") + (f" {a['unit']}" if a.get("unit") else "")).strip()
 
 
+def _stat_column(label: str, value, detail: str) -> dict:
+    return {"horizontalSizeStyle": "FILL_AVAILABLE_SPACE",
+            "horizontalAlignment": "START", "verticalAlignment": "TOP",
+            "widgets": [{"decoratedText": {"topLabel": label,
+                                           "text": f"<b>{value}</b>",
+                                           "bottomLabel": detail, "wrapText": True}}]}
+
+
+def _queue_chips(project_url: str) -> list:
+    """Deep links to the two maintainer work-orders this card is about.
+
+    A maintainer's next move is a filtered issue list, not the repo root — so the chips carry the
+    label filter. Only emitted when the caller supplies a project URL: a chip pointing nowhere is
+    worse than no chip.
+    """
+    base = project_url.rstrip("/")
+    def issues(label):
+        return f"{base}/-/issues?label_name%5B%5D={quote(label, safe='')}"
+    return [{"text": "🔒 Access work-order",
+             "onClick": {"openLink": {"url": issues("drift:blocked")}}},
+            {"text": "❓ Research queue",
+             "onClick": {"openLink": {"url": issues("drift:resolve")}}},
+            {"text": "📚 Catalog", "onClick": {"openLink": {"url": f"{base}/-/tree/main/catalog"}}}]
+
+
 def chat_card(payload: dict, *, report_url: str | None = None,
-              run_url: str | None = None) -> dict:
+              run_url: str | None = None, project_url: str | None = None,
+              icon_url: str | None = None) -> dict:
     """The full Google Chat message (cardsV2) for a scan — pure function of the payload."""
     c = payload.get("counts", {})
     sections = []
@@ -109,8 +137,19 @@ def chat_card(payload: dict, *, report_url: str | None = None,
     exposure += (f"<br>🧩 {c.get('sunsets', 0)} vendor-API sunset(s) · "
                  f"{c.get('critical', 0)} critical CVE(s) · "
                  f"❓ {c.get('unknown', 0)} unknown host(s)")
-    sections.append({"header": "Exposure",
-                     "widgets": [{"textParagraph": {"text": exposure}}]})
+    # Two-up: the number to act on beside the number that says how late it already is. Columns
+    # cap at 2, which is the right cap — a stat row people scan, not a table they read.
+    sections.append({"header": "Exposure", "widgets": [
+        {"columns": {"columnItems": [
+            _stat_column("action required", c.get("fixes", 0),
+                         f"{_review(c)} more to review · "
+                         f"{c.get('reposAffected', 0)}/{c.get('reposScanned', 0)} repo(s)"),
+            _stat_column("past their removal date", c.get("pastDue", 0),
+                         f"of {c.get('sunsets', 0)} vendor-API sunset(s) · "
+                         f"{c.get('critical', 0)} critical CVE(s)"),
+        ]}},
+        {"textParagraph": {"text": exposure}},
+    ]})
 
     # No developer fix-list here. It used to lead the card — package upgrades, one row each —
     # and it is exactly what made this message read as generic in a maintainers-only space: the
@@ -139,14 +178,24 @@ def chat_card(payload: dict, *, report_url: str | None = None,
         buttons.append({"text": "Full report", "onClick": {"openLink": {"url": report_url}}})
     if run_url:
         buttons.append({"text": "Scan run", "onClick": {"openLink": {"url": run_url}}})
+    tail = []
     if buttons:
-        sections.append({"widgets": [{"buttonList": {"buttons": buttons}}]})
+        tail.append({"buttonList": {"buttons": buttons}})
+    if project_url:
+        tail.append({"chipList": {"chips": _queue_chips(project_url)}})
+    if tail:
+        sections.append({"widgets": tail})
 
+    header = {"title": "Drift Detector",
+              "subtitle": f"maintainers · scan {payload.get('generated', '')} · "
+                          f"{c.get('reposScanned', 0)} repo(s)".strip()}
+    # Caller-supplied, because the tool ships no image: a broken imageUrl renders as a broken
+    # avatar on EVERY message, which is worse than the default.
+    if icon_url:
+        header.update({"imageUrl": icon_url, "imageType": "CIRCLE",
+                       "imageAltText": "Drift Detector"})
     return {"cardsV2": [{"cardId": "drift-scan", "card": {
-        "header": {"title": "Drift Detector",
-                   "subtitle": f"scan {payload.get('generated', '')} · "
-                               f"{c.get('reposScanned', 0)} repo(s)".strip()},
-        "sections": sections}}]}
+        "header": header, "sections": sections}}]}
 
 
 def post(webhook: str, message: dict, *, http=None) -> None:

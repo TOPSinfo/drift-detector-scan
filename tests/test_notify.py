@@ -24,9 +24,13 @@ def _card(payload=_PAYLOAD, **kw):
 def test_header_and_exposure_summarise_the_scan():
     card = _card(report_url="https://git.x/root/ops", run_url="https://gh/run/1")
     assert card["header"]["title"] == "Drift Detector" and "2026-07-27" in card["header"]["subtitle"]
-    exposure = card["sections"][0]["widgets"][0]["textParagraph"]["text"]
+    # Found by header, not by index: the maintainer sections come first when there is anything
+    # for a maintainer to do, and a positional lookup would silently start asserting the wrong
+    # section rather than failing.
+    exposure = _text(_section(card, "Exposure"))
     assert "18</b> to fix" in exposure and "2</b> to review" in exposure
     assert "18</b> already past" in exposure and "20 vendor-API" in exposure
+    assert "maintainers" in card["header"]["subtitle"]
 
 
 def test_the_card_does_not_carry_the_developer_fix_list():
@@ -276,3 +280,43 @@ def test_buttons_are_links_because_only_links_work():
     btns = [b for s in card["sections"] for w in s["widgets"]
             if "buttonList" in w for b in w["buttonList"]["buttons"]]
     assert btns and all("openLink" in b["onClick"] for b in btns)
+
+
+def test_exposure_is_a_two_up_stat_row():
+    """Four numbers in one sentence is a wall. Columns (max 2) put the two that matter side by
+    side, so the shape of the week is legible without reading."""
+    card = _card(_maint(_BLOCKED, queued=0))
+    sec = _section(card, "Exposure")
+    cols = next(w["columns"] for w in sec["widgets"] if "columns" in w)
+    assert len(cols["columnItems"]) == 2
+    left, right = (str(c) for c in cols["columnItems"])
+    assert "18" in left                      # to fix
+    assert "18" in right                     # already past their removal date
+
+
+def test_chips_deep_link_to_the_maintainer_queues():
+    """A maintainer's next move is a filtered issue list, not the repo root. Chips carry them
+    straight to the two work-orders this card is about."""
+    card = _card(_maint(_BLOCKED, queued=5), project_url="https://git.x/root/ops")
+    chips = [c for s in card["sections"] for w in s["widgets"]
+             if "chipList" in w for c in w["chipList"]["chips"]]
+    urls = " ".join(c["onClick"]["openLink"]["url"] for c in chips)
+    assert "drift%3Ablocked" in urls or "drift:blocked" in urls
+    assert "drift%3Aresolve" in urls or "drift:resolve" in urls
+    assert all(c.get("text") for c in chips)          # `text`, not `label` — the API's field
+
+
+def test_no_chips_without_a_project_url():
+    """Never invent a link. No project URL, no chips."""
+    card = _card(_maint(_BLOCKED, queued=5))
+    assert not [w for s in card["sections"] for w in s["widgets"] if "chipList" in w]
+
+
+def test_the_header_image_is_optional_and_circular_when_set():
+    """No image is shipped with the tool, and a broken imageUrl renders as a broken avatar on
+    every message — so it is caller-supplied or absent."""
+    assert "imageUrl" not in _card(_maint([], queued=0))["header"]
+    card = _card(_maint([], queued=0), icon_url="https://cdn.x/mark.png")
+    assert card["header"]["imageUrl"] == "https://cdn.x/mark.png"
+    assert card["header"]["imageType"] == "CIRCLE"
+    assert card["header"].get("imageAltText")

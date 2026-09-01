@@ -1638,7 +1638,9 @@ def _cmd_notify(args) -> int:
         # — notify must never turn a failure into a second red.
         print(f"notify: no report to send — skipping ({exc})")
         return 0
-    card = notify.chat_card(payload, report_url=args.report_url, run_url=args.run_url)
+    card = notify.chat_card(payload, report_url=args.report_url, run_url=args.run_url,
+                            project_url=getattr(args, "project_url", None),
+                            icon_url=getattr(args, "icon_url", None))
     try:
         notify.post(webhook, card)
     except Exception as exc:                    # a chat outage must not fail the pipeline
@@ -1789,6 +1791,11 @@ def main(argv: list[str]) -> int:
     pn.add_argument("--config", help="drift.yml — resolves the webhook from notify.gchat's env var")
     pn.add_argument("--report-url")
     pn.add_argument("--run-url")
+    # Deep-links the card's chips to the maintainer work-orders (drift:blocked, drift:resolve).
+    # Absent -> no chips, because a chip pointing nowhere is worse than no chip.
+    pn.add_argument("--project-url", help="project URL, for the card's work-order chips")
+    # The tool ships no avatar; a broken imageUrl renders broken on EVERY message.
+    pn.add_argument("--icon-url", help="public PNG/JPEG for the card header avatar")
     pn.set_defaults(func=_cmd_notify)
 
     par = sub.add_parser("adhoc-report")  # POC: the ad-hoc / gate-validated middle tier -> adhoc.json
