@@ -61,6 +61,13 @@ asset-cdn:          # fonts, icons, images, generic static-asset CDNs — not a 
   - picsum.photos
   - flagcdn.com
   - get.adobe.com         # the "Get Acrobat Reader" download badge — an outbound link, not a service
+  # Marketplace product-image CDNs. Both are DEDICATED image hosts on their own registrable
+  # domains — the vendors' real APIs live elsewhere (sellingpartnerapi-*.amazon.com, api.ebay.com)
+  # and are untouched by these entries. Between them they were 225 of the 925 queued call sites
+  # on the 2026-09-01 fleet scan, the largest single block of "unresolved integrations" in it.
+  - ssl-images-amazon.com  # images-na.ssl-images-amazon.com — image URLs built from Keepa tokens
+  - ebayimg.com            # i.ebayimg.com — listing images in the product-posting path
+  - flagpedia.net          # flag images; sibling of flagcdn.com already listed above
 vendored-lib:       # front-end libraries / UI kits the app bundles or links its own copy of
   - quilljs.com
   - leafletjs.com
@@ -83,6 +90,9 @@ vendored-lib:       # front-end libraries / UI kits the app bundles or links its
   - apexcharts.com
   - tinymce.com
   - select2.org
+  # PHPExcel's own site, linked from the library's HTML writer and examples. The library is
+  # vendored into the tree it was found in, so this is a bundled copy's homepage, not a service.
+  - phpexcel.net
 boilerplate:        # schema / namespace / doc / code hosts — links & namespaces, never a runtime integration
   - www.esri.com
   - google.com
@@ -96,6 +106,9 @@ boilerplate:        # schema / namespace / doc / code hosts — links & namespac
   - open.spotify.com
   - esriurl.com
   - openxmlformats.org
+  # ODF XML namespace declarations in PHPExcel's OpenDocument writer — a namespace URI is not
+  # fetched at runtime. Sits beside openxmlformats.org, which is here for the same reason.
+  - openoffice.org
   - schemas.microsoft.com
   - ietf.org
   - github.io

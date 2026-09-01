@@ -158,6 +158,44 @@ def test_queue_noise_is_bucketed_not_queued(host, expected):
     assert hc.classify(host) == expected
 
 
+# The same failure, measured again on the live fleet scan of 2026-09-01: 222 endpoints across 167
+# hosts sat in `queued`, and the work-order issue asked a human to name all of them. The single
+# largest entry was an image CDN with 186 call sites. Each host below was confirmed at its
+# file:line before being classified here — none is a service anyone calls:
+#
+#   ssl-images-amazon.com  product image URLs built from Keepa image tokens
+#   ebayimg.com            eBay listing image URLs in the product-posting path
+#   flagpedia.net          flag images inside a vis-timeline documentation template
+#   phpexcel.net           the vendored PHPExcel library's own site, linked from its HTML writer
+#   openoffice.org         ODF XML namespace declarations in PHPExcel's OpenDocument writer
+#
+# Only GENERIC hosts belong here. The rest of that queue is client- and vendor-specific (supplier
+# image hosts, B2B portals), and those are catalogued in the private drift-ops overlay — putting
+# them in this public tree is the leak `tests/test_no_internal_identifiers.py` exists to refuse.
+@pytest.mark.parametrize("host,expected", [
+    ("images-na.ssl-images-amazon.com", "asset-cdn"),
+    ("ssl-images-amazon.com", "asset-cdn"),
+    ("i.ebayimg.com", "asset-cdn"),
+    ("flagpedia.net", "asset-cdn"),
+    ("www.phpexcel.net", "vendored-lib"),
+    ("openoffice.org", "boilerplate"),
+    ("www.openoffice.org", "boilerplate"),
+])
+def test_fleet_queue_noise_2026_09_01_is_bucketed(host, expected):
+    assert hc.classify(host) == expected
+
+
+# A registrable-domain suffix entry must not swallow a sibling that IS a real API. amazon.com's
+# APIs live on other registrable domains entirely, but assert it so a future broadening of the
+# image-CDN entry cannot silently hide one.
+@pytest.mark.parametrize("host", [
+    "sellingpartnerapi-na.amazon.com",
+    "api.ebay.com",
+])
+def test_image_cdn_entries_do_not_swallow_real_vendor_apis(host):
+    assert hc.classify(host) != "asset-cdn"
+
+
 @pytest.mark.parametrize("host", [
     "spdx.org", "www.rfc-editor.org", "fb.me", "soundcloud.com", "get.adobe.com", "acme.com",
 ])
