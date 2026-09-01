@@ -936,3 +936,48 @@ def test_the_stream_is_off_unless_asked_for():
     plan = delivery.build_plan(_pl_eps([_ep("openapi-b-global.temu.com")]), _META,
                                {"issues": [], "mrs": {}}, "root/drift-detector")
     assert plan["issues"] == []
+
+
+def _blocked(vendor, sites, why):
+    return {"vendor": vendor, "verdict": "BLOCKED", "callSites": sites,
+            "checked": "2026-08-21", "blocked": why}
+
+
+def test_blocked_stream_is_off_by_default():
+    plan = delivery.build_plan(_pl_catalog([_blocked("Mirakl", 25, "portal is account-gated")]),
+                               _META, {"issues": [], "mrs": {}}, "root/drift-detector")
+    assert plan["issues"] == []
+
+
+def test_blocked_stream_files_one_access_work_order():
+    """BLOCKED is dropped by freshness.due_for_refresh on purpose — re-reading a gated page
+    cannot clear it. That left the one verdict needing an OUTSIDE actor with no surface at all.
+    This stream is that surface: ONE issue, its own label, aimed at whoever can supply access."""
+    records = [_blocked("Mirakl", 25, "portal is account-gated"),
+               _blocked("Temu", 1, "Seller Center requires an account"),
+               _cat("UPS", sites=35),                                   # UNAUDITED -> freshness
+               _cat("Stripe", verdict="CURRENT", checked="2026-07-20")]
+    plan = delivery.build_plan(_pl_catalog(records), _META, {"issues": [], "mrs": {}},
+                               "root/drift-detector", blocked_stream=True)
+    creates = [i for i in plan["issues"] if i["op"] == "create"]
+    assert len(creates) == 1
+    op = creates[0]
+    assert op.get("stream") == "blocked" and op["project"] == "root/drift-detector"
+    assert "2 vendor(s)" in op["title"]
+    assert "Mirakl" in op["body"] and "Temu" in op["body"]
+    assert "UPS" not in op["body"]        # unaudited is research work, a different queue
+
+
+def test_the_blocked_work_order_is_not_filed_when_nothing_is_blocked():
+    """So the stream closes itself, like the others."""
+    plan = delivery.build_plan(_pl_catalog([_cat("UPS", sites=35)]), _META,
+                               {"issues": [], "mrs": {}}, "root/drift-detector",
+                               blocked_stream=True)
+    assert [i for i in plan["issues"] if i["op"] == "create"] == []
+
+
+def test_blocked_carries_its_own_label_beside_the_maintainer_tag():
+    """Filters as maintainer work, but distinguishable — an admin chasing credentials should not
+    have to read through repo-shape and research tasks to find theirs."""
+    labels = delivery._issue_labels("blocked")
+    assert delivery.MAINTAINER_LABEL in labels and delivery.BLOCKED_LABEL in labels

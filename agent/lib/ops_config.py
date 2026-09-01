@@ -49,7 +49,8 @@ _FLEET_KEYS = {"url", "branch"}
 _DELIVERY_V1 = {"mode", "dev_as_issues", "devops_project"}
 _DELIVERY_V2 = {"mode", "devops", "developer"}
 # orthogonal to the v1/v2 split — allowed in either form, never counts toward the mix check
-_DELIVERY_COMMON = {"shape_stream", "freshness_stream", "resolve_stream", "granularity"}
+_DELIVERY_COMMON = {"shape_stream", "freshness_stream", "resolve_stream",
+                    "blocked_stream", "granularity"}
 _DELIVERY = _DELIVERY_V1 | _DELIVERY_V2 | _DELIVERY_COMMON
 _AUTH = {"clone", "persist", "deliver"}
 _NOTIFY = {"gchat", "email"}
@@ -241,6 +242,10 @@ def _load_delivery(path: str, raw: dict) -> dict:
             "devopsAssignee": devops_assignee, "developerFallbackAssignee": developer_fallback,
             "shape_stream": bool(d.get("shape_stream", False)),
             "freshness_stream": bool(d.get("freshness_stream", False)),
+            # blocked_stream files THE access work-order while any detected vendor's retirement
+            # list is unreadable — a different audience from freshness (who can supply access,
+            # not who reads pages), and the one verdict re-running the scan can never clear.
+            "blocked_stream": bool(d.get("blocked_stream", False)),
             "resolve_stream": bool(d.get("resolve_stream", False)),
             "granularity": granularity}
 

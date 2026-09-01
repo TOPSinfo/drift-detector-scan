@@ -19,7 +19,7 @@ from __future__ import annotations
 import json
 import os
 
-from agent.lib.catalog_coverage import SETTLED, STALE
+from agent.lib.catalog_coverage import BLOCKED, SETTLED, STALE
 
 STATE_NAME = "coverage-state.json"
 
@@ -57,9 +57,11 @@ def apply(records: list, state_dir: str, *, now: str) -> dict:
         # emptiness are different states here for the same reason they are everywhere else in
         # this tool.
         return {"comparedAgainst": None, "newlyAttested": [], "newlyStale": [],
-                "newlyDetected": [], "noLongerDetected": []}
+                "newlyDetected": [], "noLongerDetected": [],
+                "newlyBlocked": [], "noLongerBlocked": []}
 
     newly_attested, newly_stale, newly_detected = [], [], []
+    newly_blocked, no_longer_blocked = [], []
     for vendor, verdict in current.items():
         was = prior_verdicts.get(vendor)
         if was is None:
@@ -67,11 +69,24 @@ def apply(records: list, state_dir: str, *, now: str) -> dict:
             # already catalogued was not absorbed this period — nobody did that work now, and
             # crediting it would make the headline movement unreliable.
             newly_detected.append(vendor)
+            # BLOCKED is the deliberate exception. Credit is not what this one reports — a
+            # vendor whose retirement list cannot be read is a blind spot, and it is new TO US
+            # whenever it appears. Withholding it until the second sighting would leave the one
+            # verdict that needs an OUTSIDE actor silent for a whole cycle.
+            if verdict == BLOCKED:
+                newly_blocked.append(vendor)
             continue
         if verdict in SETTLED and was not in SETTLED:
             newly_attested.append(vendor)
         elif verdict == STALE and was != STALE:
             newly_stale.append(vendor)
+        # Reported on the TRANSITION only. A standing block restated every scan is the
+        # never-empty list `freshness.due_for_refresh` refuses to produce: it stops being read,
+        # and the next real block is missed inside it.
+        if verdict == BLOCKED and was != BLOCKED:
+            newly_blocked.append(vendor)
+        elif was == BLOCKED and verdict != BLOCKED:
+            no_longer_blocked.append(vendor)
 
     no_longer = [v for v in prior_verdicts if v not in current]
 
@@ -79,4 +94,6 @@ def apply(records: list, state_dir: str, *, now: str) -> dict:
             "newlyAttested": sorted(newly_attested),
             "newlyStale": sorted(newly_stale),
             "newlyDetected": sorted(newly_detected),
-            "noLongerDetected": sorted(no_longer)}
+            "noLongerDetected": sorted(no_longer),
+            "newlyBlocked": sorted(newly_blocked),
+            "noLongerBlocked": sorted(no_longer_blocked)}

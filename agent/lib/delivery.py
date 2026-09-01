@@ -34,6 +34,7 @@ MAINTAINER_LABEL = "drift:maintainer"
 SHAPE_LABEL = "drift:shape"           # absorption: a repo shape the scanner can't read
 FRESHNESS_LABEL = "drift:freshness"
 RESOLVE_LABEL = "drift:resolve"      # the vendor-resolution work-order   # a catalogued vendor's retirements went stale / need a re-check
+BLOCKED_LABEL = "drift:blocked"      # access needed: a retirement list nobody here can read
 _MARKER = re.compile(r"<!--\s*drift-detector:([0-9a-f]{16})\s*-->")
 
 
@@ -154,6 +155,12 @@ def resolve_work_order_md(hosts: list, generated: str) -> str:
             "",
             "This issue updates itself each scan and closes when the queue empties."]
     return "\n".join(out)
+
+
+def blocked_fingerprint() -> str:
+    """Constant identity for THE access work-order: one issue for every blocked vendor, updating
+    in place as blocks appear and clear, closed by `_finish` when nothing is blocked."""
+    return hashlib.sha256(b"blocked|access").hexdigest()[:16]
 
 
 def freshness_fingerprint() -> str:
@@ -488,6 +495,7 @@ def _audience_ops(acts: list, audience: str, title_word: str, body_fn, repo_meta
 def build_plan(payload: dict, repo_meta: dict, existing: dict, devops_project: str,
                *, dev_as_issues: bool = False, links: dict | None = None,
                shape_stream: bool = False, freshness_stream: bool = False,
+               blocked_stream: bool = False,
                resolve_stream: bool = False,
                assignees: dict | None = None,
                granularity: str = "comprehensive") -> dict:
@@ -584,6 +592,30 @@ def build_plan(payload: dict, repo_meta: dict, existing: dict, devops_project: s
             op = _issue_op(fp, f"[drift] catalog freshness: {len(due)} vendor(s) due a re-check",
                            body, by_fp, devops_project)
             op["stream"] = "freshness"      # so execute_plan labels it drift:freshness
+            issue_plan.append(op)
+
+    # ---- access work-order (maintainer: ONE issue while any vendor is BLOCKED) ----
+    # The vendors `freshness.due_for_refresh` deliberately drops: their retirement list cannot
+    # be read at all, so re-reading it can never clear them and listing them as research work
+    # would keep that queue permanently non-empty. The dropping code names how they DO clear —
+    # "only when someone supplies access" — and until this block that actor had no surface;
+    # the blind spot appeared in a table inside the report and nowhere else.
+    if blocked_stream:
+        from agent.lib import blocked as blocked_mod
+        blocked_rows = blocked_mod.records(payload.get("catalog", []))
+        if blocked_rows:
+            fp = blocked_fingerprint()
+            live_fps.add(fp)
+            # `generated` (the scan date), never wall-clock, so an unchanged block-list SKIPS
+            body = (marker(fp) + "\n\n"
+                    + blocked_mod.work_order_md(payload.get("catalog", []),
+                                                payload.get("generated", "")))
+            sites = sum(r.get("callSites", 0) for r in blocked_rows)
+            op = _issue_op(fp,
+                           f"[drift] access needed: {len(blocked_rows)} vendor(s), "
+                           f"{sites} call-site(s) unauditable",
+                           body, by_fp, devops_project)
+            op["stream"] = "blocked"        # so execute_plan labels it drift:blocked
             issue_plan.append(op)
 
     # ---- vendor resolution work-order (maintainer: ONE issue while the queue is non-empty) ----
@@ -699,6 +731,8 @@ def _issue_labels(stream: str) -> str:
         return f"{LABEL},{MAINTAINER_LABEL},{FRESHNESS_LABEL}"
     if stream == "resolve":
         return f"{LABEL},{MAINTAINER_LABEL},{RESOLVE_LABEL}"
+    if stream == "blocked":
+        return f"{LABEL},{MAINTAINER_LABEL},{BLOCKED_LABEL}"
     if stream == "developer":
         return f"{LABEL},{DEVELOPER_LABEL}"
     return f"{LABEL},{DEVOPS_LABEL}"

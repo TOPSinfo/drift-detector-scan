@@ -117,3 +117,51 @@ def test_a_prior_scan_that_found_no_vendors_is_still_a_baseline(tmp_path):
     delta = coverage_state.apply([_rec("Stripe", "CURRENT")], str(tmp_path), now="2026-08-31")
     assert delta["comparedAgainst"] == "2026-08-24"
     assert delta["newlyDetected"] == ["Stripe"]
+
+
+# ── BLOCKED movement ────────────────────────────────────────────────────────────────────────
+# BLOCKED is not in SETTLED and is not STALE, so before these tests a vendor turning BLOCKED
+# moved through the delta invisibly: newlyAttested no, newlyStale no, nothing. The one verdict
+# whose fix requires somebody OUTSIDE the team — credentials, an account, an allow-list — was
+# the one verdict that generated no signal at all.
+
+def test_a_vendor_that_became_blocked_is_reported(tmp_path):
+    coverage_state.apply([_rec("Mirakl", "UNAUDITED")], str(tmp_path), now="2026-08-24")
+    delta = coverage_state.apply([_rec("Mirakl", "BLOCKED")], str(tmp_path), now="2026-09-01")
+    assert delta["newlyBlocked"] == ["Mirakl"]
+
+
+def test_a_vendor_that_was_already_blocked_is_not_re_reported(tmp_path):
+    """The alert fires on CHANGE. A standing block repeated every scan is the never-empty list
+    freshness.py refuses to produce — it stops being read, and then a real new block is missed."""
+    coverage_state.apply([_rec("Temu", "BLOCKED")], str(tmp_path), now="2026-08-24")
+    delta = coverage_state.apply([_rec("Temu", "BLOCKED")], str(tmp_path), now="2026-09-01")
+    assert delta["newlyBlocked"] == []
+
+
+def test_a_vendor_that_got_unblocked_is_reported_as_no_longer_blocked(tmp_path):
+    """Somebody supplied access. That is the outcome this whole stream exists to produce, so it
+    is worth saying out loud — and it is what closes the work-order."""
+    coverage_state.apply([_rec("THE ICONIC", "BLOCKED")], str(tmp_path), now="2026-08-24")
+    delta = coverage_state.apply([_rec("THE ICONIC", "CURRENT")], str(tmp_path), now="2026-09-01")
+    assert delta["noLongerBlocked"] == ["THE ICONIC"]
+    assert delta["newlyBlocked"] == []
+
+
+def test_a_brand_new_vendor_that_arrives_already_blocked_is_reported_blocked(tmp_path):
+    """DELIBERATE divergence from newlyAttested, which withholds credit for a first sighting
+    because nobody did that work this period. Credit is not the question here: a blind spot is
+    new TO US whenever it appears, and an admin who is never told about it cannot clear it.
+    Reporting exposure on arrival is the same instinct as `cannot see` != `clean`."""
+    coverage_state.apply([_rec("Adyen", "CURRENT")], str(tmp_path), now="2026-08-24")
+    delta = coverage_state.apply([_rec("Adyen", "CURRENT"), _rec("Virtualstock", "BLOCKED")],
+                                 str(tmp_path), now="2026-09-01")
+    assert delta["newlyBlocked"] == ["Virtualstock"]
+    assert delta["newlyDetected"] == ["Virtualstock"]      # still reported as a first sighting
+
+
+def test_the_first_run_reports_no_blocked_movement(tmp_path):
+    """No baseline means no movement, exactly as for every other transition."""
+    delta = coverage_state.apply([_rec("Mirakl", "BLOCKED")], str(tmp_path), now="2026-08-24")
+    assert delta["newlyBlocked"] == []
+    assert delta["noLongerBlocked"] == []
