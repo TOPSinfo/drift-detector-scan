@@ -20,7 +20,7 @@ from __future__ import annotations
 from agent.lib.http_util import default_http
 
 _MAX_FIRST = 6            # how many "do this first" rows to show
-_MAX_VENDORS = 8          # how many vendors to name per maintainer list before summarising
+_SHOW_BEFORE_COLLAPSE = 5   # rows kept visible; the rest stay in the card, one tap away
 
 
 def _by_verdict(payload: dict, verdict: str) -> list:
@@ -29,16 +29,20 @@ def _by_verdict(payload: dict, verdict: str) -> list:
     return sorted(rows, key=lambda r: (-r.get("callSites", 0), r.get("vendor", "")))
 
 
-def _vendor_lines(rows: list, *, with_reason: bool) -> str:
-    out = []
-    for r in rows[:_MAX_VENDORS]:
-        line = f"<b>{r.get('vendor', '')}</b> — {r.get('callSites', 0)} call-site(s)"
-        if with_reason and (r.get("blocked") or "").strip():
-            line += f"<br><i>{r['blocked'].strip()}</i>"
-        out.append(line)
-    if len(rows) > _MAX_VENDORS:
-        out.append(f"<i>…and {len(rows) - _MAX_VENDORS} more</i>")
-    return "<br>".join(out)
+def _vendor_row(r: dict, *, with_reason: bool) -> dict:
+    """One vendor as a decoratedText row: exposure above, name in the middle, reason below.
+
+    A run-on paragraph of vendors is unreadable on a phone, which is where most of this space's
+    members will see it. `wrapText` is on because the blocked reasons are full sentences and
+    truncating one loses the only part that says what to obtain.
+    """
+    sites = r.get("callSites", 0)
+    row = {"topLabel": f"{sites} call-site(s)",
+           "text": f"<b>{r.get('vendor', '')}</b>",
+           "wrapText": True}
+    if with_reason and (r.get("blocked") or "").strip():
+        row["bottomLabel"] = r["blocked"].strip()
+    return {"decoratedText": row}
 
 
 def _review(counts: dict) -> int:
@@ -60,29 +64,42 @@ def chat_card(payload: dict, *, report_url: str | None = None,
     blocked = _by_verdict(payload, "BLOCKED")
     if blocked:
         sites = sum(r.get("callSites", 0) for r in blocked)
+        widgets = [{"textParagraph": {"text":
+            "🔒 Their retirement lists cannot be read from here at all. Re-running the scan "
+            "cannot change that — <b>only access can</b>."}}]
+        widgets += [_vendor_row(r, with_reason=True) for r in blocked]
+        widgets.append({"divider": {}})
         sections.append({
             "header": f"Cannot audit — {len(blocked)} vendor(s), {sites} call-site(s)",
-            "widgets": [{"textParagraph": {"text":
-                "Their retirement lists cannot be read from here at all. Re-running the scan "
-                "cannot change that — only access can.<br><br>"
-                + _vendor_lines(blocked, with_reason=True)}}]})
+            # Never collapsed: this is the one list nobody else in the org can act on.
+            "widgets": widgets})
 
     unaudited = _by_verdict(payload, "UNAUDITED")
     if unaudited:
+        widgets = [{"textParagraph": {"text":
+            "🔍 Detected and readable, but nobody has read their deprecation page yet. "
+            "<b>0 findings here means unaudited, not clean.</b>"}}]
+        widgets += [_vendor_row(r, with_reason=False) for r in unaudited]
+        widgets.append({"divider": {}})
         sections.append({
             "header": f"Never checked — {len(unaudited)} vendor(s)",
-            "widgets": [{"textParagraph": {"text":
-                "Detected, readable, but nobody has read their deprecation page yet. "
-                "<b>0 findings here means unaudited, not clean.</b><br><br>"
-                + _vendor_lines(unaudited, with_reason=False)}}]})
+            # EVERY vendor stays in the card. This list used to end in "…and N more", which
+            # dropped the tail; collapsing keeps it and shows the loudest few by default.
+            "collapsible": True,
+            "uncollapsibleWidgetsCount": _SHOW_BEFORE_COLLAPSE,
+            "widgets": widgets})
 
     queued = ((c.get("coverage") or {}).get("queued") or 0)
     if queued:
         sections.append({
             "header": "Still unnamed",
-            "widgets": [{"textParagraph": {"text":
-                f"<b>{queued}</b> detected host(s) have no vendor named yet, so they can never "
-                f"be audited for a retirement. They read as 0 findings until someone names them."}}]})
+            "widgets": [{"decoratedText": {
+                "topLabel": "resolution queue",
+                "text": f"<b>{queued}</b> detected host(s) with no vendor named",
+                "bottomLabel": "They can never be audited for a retirement until someone names "
+                               "them, and read as 0 findings until then.",
+                "wrapText": True}},
+                {"divider": {}}]})
 
     exposure = (f"🔴 <b>{c.get('fixes', 0)}</b> to fix · "
                 f"🟠 <b>{_review(c)}</b> to review "

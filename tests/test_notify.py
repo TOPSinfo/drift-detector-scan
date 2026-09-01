@@ -1,4 +1,6 @@
 """Google Chat push — a rich cardsV2 message. Pure card builder + injected POST."""
+import json
+
 from agent.lib import notify
 
 
@@ -150,7 +152,14 @@ def _section(card, header):
 
 
 def _text(section):
-    return " ".join(w.get("textParagraph", {}).get("text", "") for w in section["widgets"])
+    """All human-visible text in a section, whatever widget carries it — so a test asserts WHAT
+    the card says, not which widget type happens to say it."""
+    out = []
+    for w in section["widgets"]:
+        out.append(w.get("textParagraph", {}).get("text", ""))
+        dt = w.get("decoratedText", {})
+        out += [dt.get("topLabel", ""), dt.get("text", ""), dt.get("bottomLabel", "")]
+    return " ".join(x for x in out if x)
 
 
 _BLOCKED = [{"vendor": "Mirakl", "verdict": "BLOCKED", "callSites": 25,
@@ -211,3 +220,59 @@ def test_a_clean_maintainer_view_says_so_rather_than_showing_empty_sections():
     hs = _headers(card)
     assert not any(h.startswith("Cannot audit") for h in hs)
     assert not any(h.startswith("Never checked") for h in hs)
+
+
+# ── card craft ──────────────────────────────────────────────────────────────────────────────
+# An incoming webhook is one-way: "users can't interact with the webhook … Webhooks aren't
+# conversational" (Google's own webhook guide). So no textInput, selectionInput, dateTimePicker,
+# no buttons carrying an `action`, no dialogs. What IS available is decoratedText, dividers,
+# collapsible sections, chips, columns and link buttons — and the card should use them.
+
+def _widgets(section):
+    return section["widgets"]
+
+
+def test_each_blocked_vendor_is_its_own_row_not_a_run_on_paragraph():
+    """A paragraph of concatenated vendors is unreadable on a phone. decoratedText gives each one
+    a line: exposure above, vendor in the middle, the reason underneath."""
+    card = _card(_maint(_BLOCKED, queued=0))
+    sec = _section(card, [h for h in _headers(card) if h.startswith("Cannot audit")][0])
+    rows = [w["decoratedText"] for w in _widgets(sec) if "decoratedText" in w]
+    assert len(rows) == 2
+    foxtail = next(r for r in rows if "Foxtail" in r["text"])
+    assert "42" in foxtail["topLabel"]                       # exposure, above the name
+    assert "login-gated" in foxtail["bottomLabel"]           # what to obtain, below it
+    assert foxtail.get("wrapText") is True                   # reasons are long; don't truncate
+
+
+def test_the_unaudited_section_collapses_instead_of_truncating():
+    """24 vendors used to become "…and 16 more", which loses the tail entirely. A collapsible
+    section keeps every one and shows the loudest few."""
+    many = [{"vendor": f"V{i}", "verdict": "UNAUDITED", "callSites": 30 - i} for i in range(24)]
+    card = _card(_maint(many, queued=0))
+    sec = _section(card, [h for h in _headers(card) if h.startswith("Never checked")][0])
+    assert sec.get("collapsible") is True
+    assert sec.get("uncollapsibleWidgetsCount", 0) >= 1
+    rows = [w for w in _widgets(sec) if "decoratedText" in w]
+    assert len(rows) == 24                                   # every vendor present, none dropped
+    assert "and 16 more" not in str(sec)
+
+
+def test_sections_are_separated_by_dividers():
+    card = _card(_maint(_BLOCKED + _UNAUDITED, queued=191))
+    assert any("divider" in w for s in card["sections"] for w in s["widgets"])
+
+
+def test_the_card_uses_no_widget_a_webhook_cannot_deliver():
+    """A webhook is send-only. An interactive widget would render dead, or reject the message."""
+    card = _card(_maint(_BLOCKED + _UNAUDITED, queued=191))
+    blob = json.dumps(card)
+    for banned in ("textInput", "selectionInput", "dateTimePicker", '"action"'):
+        assert banned not in blob, banned
+
+
+def test_buttons_are_links_because_only_links_work():
+    card = _card(_maint(_BLOCKED, queued=0), report_url="https://x/r", run_url="https://x/run")
+    btns = [b for s in card["sections"] for w in s["widgets"]
+            if "buttonList" in w for b in w["buttonList"]["buttons"]]
+    assert btns and all("openLink" in b["onClick"] for b in btns)
