@@ -27,13 +27,17 @@ def test_header_and_exposure_summarise_the_scan():
     assert "18</b> already past" in exposure and "20 vendor-API" in exposure
 
 
-def test_do_this_first_lists_action_required_with_clean_repo():
-    widgets = _card()["sections"][1]["widgets"]
-    assert _card()["sections"][1]["header"] == "Do this first"
-    # only DEPRECATED actions, clean repo name in the bottom label
-    assert any("GetCategorySpecifics" in w["decoratedText"]["text"] for w in widgets)
-    assert any("example-org/ebayapi" in w["decoratedText"]["bottomLabel"] for w in widgets)
-    assert all("GetItem" not in w["decoratedText"]["text"] for w in widgets)   # REVIEW excluded
+def test_the_card_does_not_carry_the_developer_fix_list():
+    """REMOVED deliberately. The card used to lead with a "Do this first" list of package
+    upgrades — composer/phpoffice/phpspreadsheet, npm/handlebars and the like. That is developer
+    work, it is already carried by the per-repo issues and the dashboard, and in a maintainers-
+    only space it was the whole of what made the message read as generic: the same list every
+    week, none of it addressed to the person reading it.
+
+    What a maintainer cannot get anywhere else is what the scan could NOT do, and that is what
+    the card leads with now."""
+    headers = [s.get("header") for s in _card()["sections"]]
+    assert "Do this first" not in headers
 
 
 def test_buttons_link_the_report_and_run():
@@ -118,3 +122,92 @@ def test_a_vendor_that_regained_access_is_pushed_too():
 def test_a_payload_without_a_delta_does_not_crash():
     """A first run has no baseline, and older payloads predate the key entirely."""
     assert "Access needed" not in _headers(_card(_PAYLOAD))
+
+
+# ── the maintainer card ─────────────────────────────────────────────────────────────────────
+# This space is maintainers-only; the dashboard is the surface everyone else reads. A card that
+# repeats the dashboard's exposure numbers tells a maintainer nothing they cannot already see,
+# and buries the one thing only they can act on: the vendors the tool could NOT audit. So the
+# card leads with what the scan could not do, and keeps exposure as a single line for context.
+
+def _maint(catalog=None, queued=0, **delta):
+    d = dict(_PAYLOAD)
+    d["catalog"] = catalog or []
+    d["counts"] = dict(_PAYLOAD["counts"], coverage={"queued": queued})
+    if delta:
+        base = {"newlyBlocked": [], "noLongerBlocked": []}
+        base.update(delta)
+        d["catalogDelta"] = base
+    return d
+
+
+def _headers(card):
+    return [s.get("header", "") for s in card["sections"]]
+
+
+def _section(card, header):
+    return next(s for s in card["sections"] if s.get("header") == header)
+
+
+def _text(section):
+    return " ".join(w.get("textParagraph", {}).get("text", "") for w in section["widgets"])
+
+
+_BLOCKED = [{"vendor": "Mirakl", "verdict": "BLOCKED", "callSites": 25,
+             "blocked": "documentation portal is account-gated"},
+            {"vendor": "Foxtail", "verdict": "BLOCKED", "callSites": 42,
+             "blocked": "login-gated, no public developer portal"}]
+_UNAUDITED = [{"vendor": "UPS", "verdict": "UNAUDITED", "callSites": 35},
+              {"vendor": "Xero", "verdict": "UNAUDITED", "callSites": 13}]
+
+
+def test_the_card_leads_with_what_could_not_be_audited():
+    """Order is the message. A maintainer opening this should see the blocked vendors first."""
+    card = _card(_maint(_BLOCKED + _UNAUDITED, queued=191))
+    assert _headers(card)[0].startswith("Cannot audit")
+
+
+def test_blocked_vendors_are_named_with_their_exposure_and_reason():
+    card = _card(_maint(_BLOCKED, queued=0))
+    t = _text(_section(card, [h for h in _headers(card) if h.startswith("Cannot audit")][0]))
+    assert "Foxtail" in t and "42" in t
+    assert "login-gated" in t          # WHY, so the admin knows what to obtain
+    assert "Mirakl" in t and "25" in t
+
+
+def test_blocked_vendors_are_ordered_by_exposure():
+    """Foxtail's 42 call-sites outrank Mirakl's 25 — that is the order to chase access in."""
+    card = _card(_maint(_BLOCKED, queued=0))
+    t = _text(_section(card, [h for h in _headers(card) if h.startswith("Cannot audit")][0]))
+    assert t.index("Foxtail") < t.index("Mirakl")
+
+
+def test_unaudited_vendors_are_listed_separately_from_blocked():
+    """Different work: one needs an account, the other needs somebody to read a page. Collapsing
+    them sends a maintainer to do the wrong thing — the same split catalog_coverage insists on."""
+    card = _card(_maint(_BLOCKED + _UNAUDITED, queued=0))
+    hs = _headers(card)
+    assert any(h.startswith("Never checked") for h in hs)
+    t = _text(_section(card, [h for h in hs if h.startswith("Never checked")][0]))
+    assert "UPS" in t and "35" in t
+    assert "Mirakl" not in t
+
+
+def test_the_unnamed_host_queue_is_reported():
+    card = _card(_maint(_BLOCKED, queued=191))
+    assert any("191" in _text(s) for s in card["sections"] if s.get("header"))
+
+
+def test_exposure_survives_as_one_line_for_context():
+    """Not removed — a maintainer still wants to know the scan found something."""
+    card = _card(_maint(_BLOCKED, queued=0))
+    assert "Exposure" in _headers(card)
+    assert "18</b> to fix" in _text(_section(card, "Exposure"))
+
+
+def test_a_clean_maintainer_view_says_so_rather_than_showing_empty_sections():
+    """Nothing blocked and nothing unaudited is the goal state, and it should read as one."""
+    card = _card(_maint([], queued=0))
+    hs = _headers(card)
+    assert not any(h.startswith("Cannot audit") for h in hs)
+    assert not any(h.startswith("Never checked") for h in hs)
