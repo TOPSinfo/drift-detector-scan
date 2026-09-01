@@ -659,8 +659,13 @@ def _finish(issue_plan, mr_plan, by_fp, live_fps, devops_project) -> dict:
 _STREAM_HEAD = {"devops": "DevOps issues", "developer": "Developer issues",
                 "shape": "Maintainer · absorption", "freshness": "Maintainer · catalog freshness",
                 "resolve": "Maintainer · vendor resolution",
+                "blocked": "Maintainer · access needed",
                 "closing": "Closing (resolved)"}
-_STREAM_ORDER = ("devops", "developer", "shape", "freshness", "resolve", "closing")
+# Every stream build_plan can set MUST appear here. A missing key does not raise — `_by_stream`
+# buckets it and this loop skips it — so the op is planned, labelled and filed while being
+# invisible in the dry-run review, which is the last checkpoint before delivery goes live. That
+# is exactly how the access work-order shipped unseen on 2026-09-01; a test pins the invariant.
+_STREAM_ORDER = ("devops", "developer", "shape", "freshness", "resolve", "blocked", "closing")
 
 
 def _by_stream(issues: list) -> dict:

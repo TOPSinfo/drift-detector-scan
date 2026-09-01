@@ -981,3 +981,29 @@ def test_blocked_carries_its_own_label_beside_the_maintainer_tag():
     have to read through repo-shape and research tasks to find theirs."""
     labels = delivery._issue_labels("blocked")
     assert delivery.MAINTAINER_LABEL in labels and delivery.BLOCKED_LABEL in labels
+
+
+def test_the_blocked_work_order_appears_in_the_dry_run_view():
+    """FOUND IN A LIVE RUN: build_plan emitted the access work-order and plan_detail dropped it
+    on the floor. `_by_stream` buckets by the op's stream, but the printer iterates _STREAM_ORDER
+    and silently skips any key missing from it — so a stream could be planned, labelled and
+    FILED while being invisible in the dry-run review, which is the last checkpoint before
+    delivery goes live. Silent omission is the worst possible failure for a review surface."""
+    records = [_blocked("Mirakl", 25, "portal is account-gated")]
+    plan = delivery.build_plan(_pl_catalog(records), _META, {"issues": [], "mrs": {}},
+                               "root/drift-detector", blocked_stream=True)
+    detail = delivery.plan_detail(plan)
+    assert "access needed" in detail
+    assert "Mirakl" in detail or "1 vendor(s)" in detail
+    assert "blocked" in delivery.plan_summary(plan)
+
+
+def test_every_stream_build_plan_can_emit_has_a_dry_run_heading():
+    """The invariant behind the bug above, so the next stream cannot repeat it. Any stream name
+    build_plan sets must be renderable; a missing heading is a KeyError at best and a silent
+    disappearance at worst."""
+    emitted = {"devops", "developer", "shape", "freshness", "resolve", "blocked", "closing"}
+    assert emitted <= set(delivery._STREAM_ORDER), (
+        f"streams with no dry-run ordering: {sorted(emitted - set(delivery._STREAM_ORDER))}")
+    assert emitted <= set(delivery._STREAM_HEAD), (
+        f"streams with no dry-run heading: {sorted(emitted - set(delivery._STREAM_HEAD))}")
