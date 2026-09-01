@@ -185,6 +185,48 @@ def test_fleet_queue_noise_2026_09_01_is_bucketed(host, expected):
     assert hc.classify(host) == expected
 
 
+# Seller Central is already boilerplate for `.com` and `.com.au` — it is the merchant PORTAL, a
+# link rendered for a human to click. The 2026-09-01 fleet uses SEVENTEEN locales, and the other
+# fifteen sat in `queued` as "API services we haven't researched yet". The catalog and the queue
+# disagreed about the same portal, which is exactly the rfc-editor.org failure above, at scale.
+#
+# A locale list would go stale the next time Amazon opens a marketplace, so this is a host-shape
+# rule: nothing ships a callable API under a `sellercentral.` label.
+@pytest.mark.parametrize("host", [
+    "sellercentral.amazon.ca", "sellercentral.amazon.de", "sellercentral.amazon.es",
+    "sellercentral.amazon.fr", "sellercentral.amazon.in", "sellercentral.amazon.it",
+    "sellercentral.amazon.com.mx", "sellercentral.amazon.co.uk", "sellercentral.amazon.co.jp",
+    "sellercentral.amazon.ae", "sellercentral.amazon.com.be", "sellercentral.amazon.com.br",
+    "sellercentral.amazon.nl", "sellercentral.amazon.pl", "sellercentral.amazon.se",
+    "sellercentral.amazon.sg",
+])
+def test_seller_central_is_boilerplate_in_every_locale(host):
+    assert hc.classify(host) == "boilerplate"
+
+
+# Storefront and media hosts found in the same queue. www.amazon.com is already boilerplate for
+# this exact reason — these call sites are product-detail links rendered into DataTables columns.
+@pytest.mark.parametrize("host,expected", [
+    ("www.amazon.ca", "boilerplate"),
+    ("www.amazon.com.au", "boilerplate"),
+    ("docs.aws.amazon.com", "boilerplate"),
+    ("m.media-amazon.com", "asset-cdn"),
+])
+def test_amazon_storefront_and_media_hosts_are_bucketed(host, expected):
+    assert hc.classify(host) == expected
+
+
+# The portal rule must not reach the Selling Partner API, which is the real integration the whole
+# product exists to track.
+@pytest.mark.parametrize("host", [
+    "sellingpartnerapi-na.amazon.com",
+    "sellingpartnerapi-eu.amazon.com",
+    "mws.amazonservices.com",
+])
+def test_the_portal_rule_does_not_touch_the_selling_partner_api(host):
+    assert hc.classify(host) not in {"boilerplate", "asset-cdn"}
+
+
 # A registrable-domain suffix entry must not swallow a sibling that IS a real API. amazon.com's
 # APIs live on other registrable domains entirely, but assert it so a future broadening of the
 # image-CDN entry cannot silently hide one.

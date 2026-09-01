@@ -49,6 +49,15 @@ _API_PATH = re.compile(r"/(v[0-9]+|rest|graphql|oauth|api)(/|$|\?)", re.I)
 _ASSET_EXT = re.compile(r"\.(png|jpe?g|gif|svg|webp|woff2?|ttf|eot|css|js|ico|mp4|pdf)(\?|$)", re.I)
 _ASSET_FILE_EXTS = {".css", ".scss", ".less"}
 
+# Merchant/seller PORTALS — a vendor's own web console, rendered into the UI as a link for a human
+# to click, never called. `sellercentral.amazon.com` and `.com.au` were already curated as
+# boilerplate, but the 2026-09-01 fleet reaches SEVENTEEN locales and the other fifteen sat in the
+# research queue as "API services we haven't researched yet" — the catalog and the queue
+# disagreeing about the same portal. A hand-listed locale set goes stale the next time a
+# marketplace opens, so this is a host-shape rule instead. Checked AFTER the reputation catalog
+# (curated data still wins) and after the `api.` label rule, so a real API host cannot be caught.
+_MERCHANT_PORTAL = re.compile(r"(^|\.)sellercentral\.", re.I)
+
 
 def is_integration(host_class: str, own_infra_reason: str | None = None) -> bool:
     """A found third-party integration worth surfacing (vs. a bundled asset/library/schema host).
@@ -132,6 +141,8 @@ def classify(host: str, *, url: str | None = None, in_call: bool = False,
     rep = _reputation(host)
     if rep:
         return rep
+    if _MERCHANT_PORTAL.search(host):
+        return "boilerplate"
     u = url or ""
     if _SHARE_PATHS.search(u):
         return "social-widget"

@@ -68,6 +68,7 @@ asset-cdn:          # fonts, icons, images, generic static-asset CDNs — not a 
   - ssl-images-amazon.com  # images-na.ssl-images-amazon.com — image URLs built from Keepa tokens
   - ebayimg.com            # i.ebayimg.com — listing images in the product-posting path
   - flagpedia.net          # flag images; sibling of flagcdn.com already listed above
+  - media-amazon.com       # m.media-amazon.com — Amazon's media CDN, beside ssl-images-amazon.com
 vendored-lib:       # front-end libraries / UI kits the app bundles or links its own copy of
   - quilljs.com
   - leafletjs.com
@@ -102,6 +103,11 @@ boilerplate:        # schema / namespace / doc / code hosts — links & namespac
   # which is here for the same reason.
   - sellercentral.amazon.com
   - sellercentral.amazon.com.au
+  # Storefronts. www.amazon.com is already here; these are the same product-detail links on other
+  # marketplaces, rendered into DataTables columns for a human to click.
+  - www.amazon.ca
+  - www.amazon.com.au
+  - docs.aws.amazon.com   # AWS documentation. NOT amazonaws.com, which stays absent on purpose.
   - www.walmart.com
   - open.spotify.com
   - esriurl.com
