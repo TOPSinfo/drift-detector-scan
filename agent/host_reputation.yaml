@@ -94,6 +94,16 @@ vendored-lib:       # front-end libraries / UI kits the app bundles or links its
   # PHPExcel's own site, linked from the library's HTML writer and examples. The library is
   # vendored into the tree it was found in, so this is a bundled copy's homepage, not a service.
   - phpexcel.net
+  # Bundled front-end libraries whose own sites are linked from their source headers. Found in
+  # the 2026-09-01 fleet queue, each at a file:line inside the vendored copy itself.
+  - raphaeljs.com
+  - vuejs.org              # Vue's warning/doc URLs, inside a bundled app.js
+  - svgjs.com              # beside svgjs.dev above — apexcharts bundles it
+  - d3js.org
+  - bost.ocks.org          # d3's author site, from d3/package.js
+  - imakewebthings.com     # the waypoints library's author site
+  - highslide.com
+  - coderthemes.com        # beside keenthemes.com above
 boilerplate:        # schema / namespace / doc / code hosts — links & namespaces, never a runtime integration
   - www.esri.com
   - google.com
@@ -115,6 +125,22 @@ boilerplate:        # schema / namespace / doc / code hosts — links & namespac
   # ODF XML namespace declarations in PHPExcel's OpenDocument writer — a namespace URI is not
   # fetched at runtime. Sits beside openxmlformats.org, which is here for the same reason.
   - openoffice.org
+  # Spec, documentation and link hosts from the 2026-09-01 fleet queue. SPECIFIC hosts, never the
+  # bare domain, wherever the parent ships a real API — ibm.com, apple.com and office.com all do,
+  # and burying one would be the cardinal sin this catalog exists to avoid.
+  - www.ibm.com                  # a spec reference inside dompdf's vendored html5lib
+  - www.xmlrpc.com               # the XML-RPC spec, from CodeIgniter's Xmlrpcs.php
+  - www.ecma-international.org
+  - www.google.co.jp             # demo data in amcharts' bundled maps documentation
+  - www.google.co.uk             # (google.com is already here, for the same reason)
+  - www.who.int
+  - curl.se                      # the CA-bundle URL in stripe-php's update_certs.php
+  - forms.office.com             # a form link rendered for a human — NOT graph.microsoft.com
+  - forms.gle
+  - apps.apple.com               # an App Store link in a config file
+  - httpstat.us                  # a deliberate test endpoint in a webhook-delivery test command
+  - claude.ai                    # a CORS/MCP allow-list entry; the API is api.anthropic.com
+  - domain.com                   # a literal placeholder in a PrestaShop config sample
   - schemas.microsoft.com
   - ietf.org
   - github.io

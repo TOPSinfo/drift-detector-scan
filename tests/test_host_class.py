@@ -227,6 +227,57 @@ def test_the_portal_rule_does_not_touch_the_selling_partner_api(host):
     assert hc.classify(host) not in {"boilerplate", "asset-cdn"}
 
 
+# Documentation, spec and vendored-library hosts from the 2026-09-01 fleet queue. Every one was
+# confirmed at its file:line first, and none is a service anyone calls:
+#
+#   www.ibm.com / www.xmlrpc.com / www.ecma-international.org  spec references inside dompdf's
+#                                 html5lib, CodeIgniter's Xmlrpcs.php, and a JS loader
+#   www.google.co.jp/.co.uk / www.who.int  demo data in amcharts' bundled maps documentation
+#   raphaeljs / vuejs / svgjs / d3js / bost.ocks.org / imakewebthings / highslide / coderthemes
+#                                 the bundled libraries' own sites, linked from their headers
+#   curl.se                       the CA-bundle URL in stripe-php's update_certs.php
+#   forms.office.com / forms.gle / apps.apple.com   links rendered for a human to click
+#   httpstat.us                   a deliberate test endpoint in a webhook-delivery test command
+#   claude.ai                     a CORS/MCP allow-list entry, not a call (the API is elsewhere)
+#   domain.com                    a literal placeholder in a PrestaShop config sample
+#
+# Specific hosts, not bare domains, wherever the parent has real APIs — ibm.com, apple.com and
+# office.com all do, and burying them would be the cardinal sin this catalog exists to avoid.
+@pytest.mark.parametrize("host,expected", [
+    ("www.ibm.com", "boilerplate"),
+    ("www.xmlrpc.com", "boilerplate"),
+    ("www.ecma-international.org", "boilerplate"),
+    ("www.google.co.jp", "boilerplate"),
+    ("www.google.co.uk", "boilerplate"),
+    ("www.who.int", "boilerplate"),
+    ("curl.se", "boilerplate"),
+    ("forms.office.com", "boilerplate"),
+    ("forms.gle", "boilerplate"),
+    ("apps.apple.com", "boilerplate"),
+    ("httpstat.us", "boilerplate"),
+    ("claude.ai", "boilerplate"),
+    ("domain.com", "boilerplate"),
+    ("raphaeljs.com", "vendored-lib"),
+    ("vuejs.org", "vendored-lib"),
+    ("svgjs.com", "vendored-lib"),
+    ("d3js.org", "vendored-lib"),
+    ("bost.ocks.org", "vendored-lib"),
+    ("imakewebthings.com", "vendored-lib"),
+    ("highslide.com", "vendored-lib"),
+    ("coderthemes.com", "vendored-lib"),
+])
+def test_fleet_doc_and_library_hosts_are_bucketed(host, expected):
+    assert hc.classify(host) == expected
+
+
+# The parents of the SPECIFIC entries above ship real APIs. None of them may be buried.
+@pytest.mark.parametrize("host", [
+    "api.ibm.com", "graph.microsoft.com", "api.apple.com", "api.anthropic.com",
+])
+def test_specific_doc_entries_do_not_bury_their_parents_apis(host):
+    assert hc.classify(host) not in {"boilerplate", "vendored-lib", "asset-cdn"}
+
+
 # A registrable-domain suffix entry must not swallow a sibling that IS a real API. amazon.com's
 # APIs live on other registrable domains entirely, but assert it so a future broadening of the
 # image-CDN entry cannot silently hide one.
