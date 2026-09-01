@@ -12,6 +12,7 @@ import re
 from pathlib import Path
 
 from agent.lib import classify_url, host_class, own_domains, own_infra, scope_edges
+from agent.lib.own_infra import _MIN_TOKEN as _OWN_MIN_TOKEN
 
 UNKNOWN = "Unknown"
 
@@ -32,20 +33,56 @@ def _ext_of(rel: str) -> str:
 
 
 def _registrable(host: str) -> str:
-    parts = (host or "").split(".")
-    return ".".join(parts[-2:]) if len(parts) >= 2 else (host or "")
+    """The registrable domain, PUBLIC-SUFFIX aware — delegated to own_infra, which already gets
+    this right for the own-domain claims it makes.
+
+    This used to take the last two labels, so `www.acme.com.au` reduced to `com.au` and every
+    host on a multi-part TLD shared one bucket. `_tag_own_infra` then read two UNRELATED
+    third parties on `.com.au` as two hosts of a single domain and swept both into own-infra —
+    deleting real vendors from the audit backlog, across .com.au, .co.uk, .co.nz, .com.br and
+    the rest. Measured on the live fleet 2026-09-01: 22 own-infra endpoints were bucketed under
+    a "registrable domain" of literally `com.au`.
+    """
+    return own_infra._registrable(host) or (host or "")
 
 
-def _tag_own_infra(endpoints: list) -> None:
+def _vendor_named(reg: str, vendor_tokens: frozenset) -> bool:
+    """Does this registrable domain carry a catalogued vendor's NAME? (`amazon.ae` -> yes.)
+
+    The same collision rule `own_infra.signals` applies to repo-derived tokens: a label that
+    EQUALS a vendor token, or CONTAINS one of length >= _MIN_TOKEN. Over-refusing is the safe
+    direction, identically to that guard — a refused claim leaves the host visible in the queue
+    for a human, a wrongly-kept one deletes a real vendor from the audit backlog.
+    """
+    label = (reg or "").split(".")[0]
+    if not label:
+        return False
+    return (label in vendor_tokens
+            or any(len(vt) >= _OWN_MIN_TOKEN and vt in label for vt in vendor_tokens))
+
+
+def _tag_own_infra(endpoints: list, vendor_tokens: frozenset = frozenset()) -> None:
     """A registrable domain that appears as >=2 distinct UNCLASSIFIED hosts is the repo's OWN
     infrastructure (you run many services on your own domain; you reach a third party at a single
     host). Retag in place so your own backends stop counting as vendor integrations. api-leads and
-    already-typed hosts are untouched, so a real API on a multi-host vendor is never hidden."""
+    already-typed hosts are untouched, so a real API on a multi-host vendor is never hidden.
+
+    The premise is false for a vendor with per-locale domains, and this swept them up. Measured on
+    the live fleet 2026-09-01: `www.amazon.ae` and `sellercentral.amazon.ae` were both
+    unclassified in one repo, `amazon.ae` hit the threshold, and Amazon's storefront and seller
+    portal became that client's "own infrastructure" — 52 endpoints deleted from the audit
+    backlog by a heuristic rather than by anyone's decision.
+
+    `own_infra.signals` already refuses exactly this when the claim comes from a repo NAME, and
+    calls a kept collision "this project's cardinal sin". That guard was never applied here,
+    because this sweep consults no repo identity at all — only sibling counts. It does now.
+    """
     by_reg: dict = {}
     for e in endpoints:
         if e.get("hostClass") == "unclassified":
             by_reg.setdefault(_registrable(e.get("domain") or ""), set()).add(e.get("domain"))
-    own = {reg for reg, hosts in by_reg.items() if len(hosts) >= 2}
+    own = {reg for reg, hosts in by_reg.items()
+           if len(hosts) >= 2 and not _vendor_named(reg, vendor_tokens)}
     for e in endpoints:
         if e.get("hostClass") == "unclassified" and _registrable(e.get("domain") or "") in own:
             e["hostClass"] = "own-infra"
@@ -569,7 +606,7 @@ def scan_endpoints(matches: list, repo_root: str, vendors: list, *, max_files: i
     endpoints = sorted(groups.values(), key=lambda r: (
         r.get("vendor") or "", r.get("domain") or "", str(r.get("version") or ""),
         r.get("apiPath") or "", str(r.get("operation") or ""), r.get("example") or ""))
-    _tag_own_infra(endpoints)
+    _tag_own_infra(endpoints, vendor_tokens)
     # The whole record after the loc, for the same reason the walk key carries the text: two path
     # constants on ONE line share a loc, and sorting on the loc alone left which came first to the
     # engine. Every value is stringified so the key stays total if a field is ever not a string.

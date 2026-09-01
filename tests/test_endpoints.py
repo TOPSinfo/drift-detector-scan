@@ -1121,3 +1121,68 @@ def test_an_interpolation_that_is_not_a_host_prefix_is_left_alone(tmp_path):
                          idioms=[_CATCH_INST], repo_id=_CATCH_REMOTE)
     eps = [e for e in out["endpoints"] if e["classified"]]
     assert eps and eps[0]["operation"] == "/api/orders/{$orderId}/refund"
+
+
+def test_sibling_hosts_on_a_vendor_domain_are_not_swept_into_own_infra(tmp_path):
+    """The >=2-sibling sweep must obey the SAME vendor guard as the repo-token path above.
+
+    `own_infra.signals()` drops any repo-derived token that equals or contains a catalogued
+    vendor name, because keeping it "silently deletes a real vendor from the audit backlog —
+    this project's cardinal sin". `_tag_own_infra` never consulted that guard: it counted two
+    distinct unclassified hosts under one registrable domain and declared the domain own, with
+    no reference to the repo's identity at all.
+
+    MEASURED ON THE LIVE FLEET (2026-09-01): `www.amazon.ae` and `sellercentral.amazon.ae`
+    were both unclassified in one repo, so `amazon.ae` hit the threshold and Amazon's storefront
+    and seller portal were classified as that client's OWN infrastructure — 52 endpoints across
+    two repos, deleted from the audit backlog by a heuristic, not by anyone's decision.
+
+    The premise "you reach a third party at a single host" is simply false for a marketplace
+    with per-locale domains.
+    """
+    _write(tmp_path, "a.php", '$x=file_get_contents("https://www.amazon.ae/dp/x");\n')
+    _write(tmp_path, "b.php", '$y=file_get_contents("https://payments.amazon.ae/y");\n')
+    ms = [_url("a.php", 1), _url("b.php", 1)]
+    by = {e["domain"]: e["hostClass"] for e in scan_endpoints(ms, str(tmp_path), _VENDORS)["endpoints"]}
+    # Neither host is CATALOGUED (the catalogued domain is sellingpartnerapi), so both arrive
+    # unclassified and the sweep sees two siblings under `amazon.ae`. The registrable label
+    # `amazon` is a vendor-name token, so the sweep must refuse the claim.
+    assert by["www.amazon.ae"] != "own-infra", "Amazon's storefront is not the client's own infra"
+    assert by["payments.amazon.ae"] != "own-infra"
+
+
+def test_the_sibling_sweep_still_works_for_a_genuine_own_domain(tmp_path):
+    """The guard must not disarm the heuristic it protects — an unrelated domain still sweeps."""
+    _write(tmp_path, "a.php", '$x=file_get_contents("https://shop.acmegrocer.com/x");\n')
+    _write(tmp_path, "b.php", '$y=file_get_contents("https://orders.acmegrocer.com/y");\n')
+    ms = [_url("a.php", 1), _url("b.php", 1)]
+    by = {e["domain"]: e["hostClass"] for e in scan_endpoints(ms, str(tmp_path), _VENDORS)["endpoints"]}
+    assert by["shop.acmegrocer.com"] == "own-infra"
+    assert by["orders.acmegrocer.com"] == "own-infra"
+
+
+def test_unrelated_hosts_on_a_multi_part_tld_are_not_siblings(tmp_path):
+    """`_registrable` took the last TWO labels, so every `.com.au` host collapsed to `com.au` —
+    and two UNRELATED third parties on that TLD looked like two hosts of one domain, sweeping
+    both into own-infra. Same for .co.uk, .co.nz, .com.br, .co.jp.
+
+    Measured on the live fleet 2026-09-01: 22 own-infra endpoints sat under a registrable domain
+    of literally `com.au`. `own_infra._registrable` in this same package already handles public
+    suffixes correctly; this sweep just wasn't using it.
+    """
+    _write(tmp_path, "a.php", '$x=file_get_contents("https://www.alpha.com.au/x");\n')
+    _write(tmp_path, "b.php", '$y=file_get_contents("https://www.beta.com.au/y");\n')
+    ms = [_url("a.php", 1), _url("b.php", 1)]
+    by = {e["domain"]: e["hostClass"] for e in scan_endpoints(ms, str(tmp_path), _VENDORS)["endpoints"]}
+    assert by["www.alpha.com.au"] != "own-infra", "two unrelated .com.au vendors are not siblings"
+    assert by["www.beta.com.au"] != "own-infra"
+
+
+def test_two_hosts_on_the_same_multi_part_tld_domain_still_sweep(tmp_path):
+    """The correction must keep the heuristic working where it is actually right."""
+    _write(tmp_path, "a.php", '$x=file_get_contents("https://shop.acmegrocer.com.au/x");\n')
+    _write(tmp_path, "b.php", '$y=file_get_contents("https://orders.acmegrocer.com.au/y");\n')
+    ms = [_url("a.php", 1), _url("b.php", 1)]
+    by = {e["domain"]: e["hostClass"] for e in scan_endpoints(ms, str(tmp_path), _VENDORS)["endpoints"]}
+    assert by["shop.acmegrocer.com.au"] == "own-infra"
+    assert by["orders.acmegrocer.com.au"] == "own-infra"
