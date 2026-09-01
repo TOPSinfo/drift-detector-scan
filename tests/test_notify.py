@@ -303,7 +303,10 @@ def test_chips_deep_link_to_the_maintainer_queues():
     urls = " ".join(c["onClick"]["openLink"]["url"] for c in chips)
     assert "drift%3Ablocked" in urls or "drift:blocked" in urls
     assert "drift%3Aresolve" in urls or "drift:resolve" in urls
-    assert all(c.get("text") for c in chips)          # `text`, not `label` — the API's field
+    # `label`, not `text`: the live API returns 400 INVALID_ARGUMENT on `text`, and the
+    # whole message is dropped. This assertion is the guard against that regression.
+    assert all(c.get("label") for c in chips)
+    assert not any("text" in c for c in chips)
 
 
 def test_no_chips_without_a_project_url():
@@ -320,3 +323,23 @@ def test_the_header_image_is_optional_and_circular_when_set():
     assert card["header"]["imageUrl"] == "https://cdn.x/mark.png"
     assert card["header"]["imageType"] == "CIRCLE"
     assert card["header"].get("imageAltText")
+
+
+def test_a_rejected_card_is_reported_as_a_bug_not_an_outage(capsys, tmp_path, monkeypatch):
+    """A 4xx means the card is malformed — ours to fix. Swallowing it identically to a network
+    outage is how a broken card ships and every message silently stops arriving, which is
+    exactly what happened when a chip carried `text` instead of `label`."""
+    import urllib.error
+    from agent import cli
+    (tmp_path / "drift.json").write_text(json.dumps(_PAYLOAD))
+
+    def boom(webhook, message, **kw):
+        raise urllib.error.HTTPError("u", 400, "Bad Request", {}, None)
+
+    monkeypatch.setattr(notify, "post", boom)
+    args = type("A", (), {"state": str(tmp_path), "webhook": "https://hook",
+                          "config": None, "report_url": None, "run_url": None,
+                          "project_url": None, "icon_url": None})()
+    assert cli._cmd_notify(args) == 0                 # still never reddens the pipeline
+    err = capsys.readouterr().err
+    assert "REJECTED" in err and "bug in the card" in err

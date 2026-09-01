@@ -1644,7 +1644,17 @@ def _cmd_notify(args) -> int:
     try:
         notify.post(webhook, card)
     except Exception as exc:                    # a chat outage must not fail the pipeline
-        print(f"notify: post failed (non-fatal) — {exc}", file=sys.stderr)
+        # A 4xx is NOT an outage — it is a malformed card, i.e. our bug, and swallowing it the
+        # same way hides it completely. That happened: a chip sent `text` where the API wants
+        # `label`, Chat answered 400 INVALID_ARGUMENT, and the run printed one soft line while
+        # every message silently stopped arriving. Still exit 0 (chat must never redden a green
+        # scan), but say plainly which of the two this is.
+        status = getattr(exc, "code", None) or getattr(exc, "status", None)
+        if isinstance(status, int) and 400 <= status < 500:
+            print(f"notify: the card was REJECTED (HTTP {status}) — this is a bug in the card, "
+                  f"not a chat outage. Nothing was posted. Detail: {exc}", file=sys.stderr)
+        else:
+            print(f"notify: post failed (non-fatal) — {exc}", file=sys.stderr)
         return 0
     print("notify: sent ✓")
     return 0

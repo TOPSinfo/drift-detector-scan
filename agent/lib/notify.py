@@ -74,11 +74,15 @@ def _queue_chips(project_url: str) -> list:
     base = project_url.rstrip("/")
     def issues(label):
         return f"{base}/-/issues?label_name%5B%5D={quote(label, safe='')}"
-    return [{"text": "🔒 Access work-order",
+    # `label`, NOT `text`. The reference summary said `text`; the live API rejects it with
+    # 400 INVALID_ARGUMENT, "Unknown name \"text\" … Cannot find field". Verified against the
+    # real endpoint, which is the only authority that matters here.
+    return [{"label": "🔒 Access work-order",
              "onClick": {"openLink": {"url": issues("drift:blocked")}}},
-            {"text": "❓ Research queue",
+            {"label": "❓ Research queue",
              "onClick": {"openLink": {"url": issues("drift:resolve")}}},
-            {"text": "📚 Catalog", "onClick": {"openLink": {"url": f"{base}/-/tree/main/catalog"}}}]
+            {"label": "📚 Catalog",
+             "onClick": {"openLink": {"url": f"{base}/-/tree/main/catalog"}}}]
 
 
 def chat_card(payload: dict, *, report_url: str | None = None,
