@@ -81,7 +81,7 @@ def test_do_first_is_capped_at_three_and_keeps_payload_order():
 def test_blind_spots_are_named_not_merely_counted():
     """`counts.unaudited` exists, but a reader can only act on the NAMES."""
     f = digest.summary_facts(_PAYLOAD)
-    assert f["unaudited"] == [{"vendor": "UPS", "call_sites": 1}]
+    assert f["unaudited"] == [{"vendor": "UPS", "call_sites": 1, "verdict": "UNAUDITED"}]
     assert f["unknown_repos"] == ["a"]
 
 

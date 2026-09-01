@@ -55,9 +55,17 @@ def summary_facts(payload: dict, *, leads: int | None = None) -> dict:
         "do_first": actions[:_DO_FIRST],
         # Named, not merely counted: `counts.unaudited` gives a number, but only the names are
         # actionable, and this section exists to be acted on.
-        "unaudited": [{"vendor": c.get("vendor"), "call_sites": c.get("callSites", 0)}
+        # The VERDICT travels with the vendor. Collapsing BLOCKED into the word "unaudited"
+        # sends a reader to research a page that cannot be read — catalog_coverage keeps the two
+        # apart precisely because "a reader who cannot tell them apart will chase the wrong one".
+        "unaudited": [{"vendor": c.get("vendor"), "call_sites": c.get("callSites", 0),
+                       "verdict": c.get("verdict")}
                       for c in (payload.get("catalog") or [])
                       if c.get("verdict") and c["verdict"] != "CURRENT"],
+        # Access CHANGES only — the standing list lives in the drift:blocked work-order.
+        "newly_blocked": list((payload.get("catalogDelta") or {}).get("newlyBlocked") or []),
+        "no_longer_blocked": list(
+            (payload.get("catalogDelta") or {}).get("noLongerBlocked") or []),
         "unknown_repos": [s.get("repo") for s in (payload.get("shapes") or [])
                           if s.get("verdict") == "UNKNOWN"],
         # Injected, never read from disk — see the test that pins this.

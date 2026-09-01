@@ -48,6 +48,23 @@ def chat_card(payload: dict, *, report_url: str | None = None,
                 "bottomLabel": repo + (f" · {when}" if when else "")}})
         sections.append({"header": "Do this first", "widgets": widgets})
 
+    # Access CHANGES only. The standing list of blocked vendors lives in the drift:blocked
+    # work-order, which updates in place; restating four unchanging vendors here every week
+    # would be the never-read list `freshness.due_for_refresh` refuses to produce, in chat.
+    delta = payload.get("catalogDelta") or {}
+    newly = delta.get("newlyBlocked") or []
+    cleared = delta.get("noLongerBlocked") or []
+    if newly or cleared:
+        lines = []
+        if newly:
+            lines.append("🔒 <b>Now unauditable:</b> " + ", ".join(newly)
+                         + "<br><i>Their retirement list cannot be read from here — this clears "
+                           "only when someone supplies access.</i>")
+        if cleared:
+            lines.append("🔓 <b>Access regained:</b> " + ", ".join(cleared))
+        sections.append({"header": "Access needed",
+                         "widgets": [{"textParagraph": {"text": "<br>".join(lines)}}]})
+
     buttons = []
     if report_url:
         buttons.append({"text": "Full report", "onClick": {"openLink": {"url": report_url}}})

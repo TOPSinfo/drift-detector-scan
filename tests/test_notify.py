@@ -74,3 +74,47 @@ def test_cli_posts_a_card_when_webhook_given(tmp_path, monkeypatch, capsys):
                    "--report-url", "https://git.x/root/ops"])
     assert rc == 0 and posted["webhook"] == "https://chat/hook"
     assert "cardsV2" in posted["msg"] and "sent" in capsys.readouterr().out
+
+
+# ── Access changes ──────────────────────────────────────────────────────────────────────────
+# The standing list of blocked vendors lives in the drift:blocked work-order, which updates in
+# place. The push channel carries only the CHANGES: a weekly restatement of four unchanging
+# vendors is the never-read list `freshness.due_for_refresh` refuses to produce, moved to chat.
+
+def _with_delta(**delta):
+    d = dict(_PAYLOAD)
+    d["catalogDelta"] = {"comparedAgainst": "2026-07-20", "newlyAttested": [], "newlyStale": [],
+                         "newlyDetected": [], "noLongerDetected": [],
+                         "newlyBlocked": [], "noLongerBlocked": []}
+    d["catalogDelta"].update(delta)
+    return d
+
+
+def _headers(card):
+    return [s.get("header", "") for s in card["sections"]]
+
+
+def test_a_quiet_scan_carries_no_access_section():
+    """Nothing changed — the work-order already holds the standing list."""
+    assert "Access needed" not in _headers(_card(_with_delta()))
+
+
+def test_a_newly_blocked_vendor_is_pushed():
+    """The one transition that needs someone OUTSIDE the team, so it must not wait for anyone
+    to open an issue tracker."""
+    card = _card(_with_delta(newlyBlocked=["Mirakl"]))
+    assert "Access needed" in _headers(card)
+    text = str(card["sections"])
+    assert "Mirakl" in text
+
+
+def test_a_vendor_that_regained_access_is_pushed_too():
+    """Good news closes the loop: whoever chased the credential learns it landed."""
+    card = _card(_with_delta(noLongerBlocked=["THE ICONIC"]))
+    text = str(card["sections"])
+    assert "THE ICONIC" in text
+
+
+def test_a_payload_without_a_delta_does_not_crash():
+    """A first run has no baseline, and older payloads predate the key entirely."""
+    assert "Access needed" not in _headers(_card(_PAYLOAD))

@@ -19,8 +19,15 @@ def _blind_spot_lines(f: dict) -> list[str]:
     """Rendered even when empty — an absent section is indistinguishable from one nobody wrote."""
     if not f["unaudited"] and not f["unknown_repos"]:
         return ["  nothing — every vendor CURRENT, every repo read"]
-    out = [f"  {v['vendor']} UNAUDITED, {v['call_sites']} call-site(s) — "
+    out = [f"  {v['vendor']} {v.get('verdict') or 'UNAUDITED'}, {v['call_sites']} call-site(s) — "
            f"0 findings there is not evidence of health" for v in f["unaudited"][:3]]
+    # A block clears by someone obtaining access, never by re-reading the page, so it is called
+    # out separately from the research backlog above.
+    if f.get("newly_blocked"):
+        out.append("  access needed — now unauditable: "
+                   + ", ".join(f["newly_blocked"]))
+    if f.get("no_longer_blocked"):
+        out.append("  access regained: " + ", ".join(f["no_longer_blocked"]))
     if f["unknown_repos"]:
         out.append(f"  {len(f['unknown_repos'])} repo(s) UNKNOWN — "
                    f"{', '.join(f['unknown_repos'][:3])}")

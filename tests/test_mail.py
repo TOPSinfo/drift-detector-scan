@@ -194,3 +194,52 @@ def test_a_missing_env_var_also_exits_non_zero(tmp_path, monkeypatch):
     """Configured but unset is a deployment error, not an opt-out."""
     monkeypatch.delenv("DRIFT_TEST_SMTP", raising=False)
     assert _run(["email-summary", "--state", _state(tmp_path), "--config", _cfg(tmp_path)]) != 0
+
+
+# ── blocked vs unaudited ──────────────────────────────────────────────────────────────────────
+# catalog_coverage keeps these apart on purpose: "externally blocked, and a reader who cannot
+# tell them apart will chase the wrong one." The mail collapsed every non-CURRENT vendor into
+# the word UNAUDITED, so a reader was told to go research a page that cannot be read.
+
+def _cat_payload(records, **delta):
+    d = dict(_PAYLOAD)
+    d["catalog"] = records
+    if delta:
+        base = {"newlyBlocked": [], "noLongerBlocked": []}
+        base.update(delta)
+        d["catalogDelta"] = base
+    return d
+
+
+def test_a_blocked_vendor_is_not_described_as_unaudited():
+    facts = _facts(_cat_payload([
+        {"vendor": "Mirakl", "verdict": "BLOCKED", "callSites": 25},
+    ]))
+    _, text, _ = mail.summary_mail(facts)
+    assert "Mirakl" in text
+    assert "Mirakl UNAUDITED" not in text
+    assert "BLOCKED" in text
+
+
+def test_an_unaudited_vendor_still_reads_as_unaudited():
+    facts = _facts(_cat_payload([
+        {"vendor": "UPS", "verdict": "UNAUDITED", "callSites": 35},
+    ]))
+    _, text, _ = mail.summary_mail(facts)
+    assert "UPS UNAUDITED" in text
+
+
+def test_a_newly_blocked_vendor_is_called_out_in_the_mail():
+    """Same rule as the chat card: the standing list lives in the work-order, the mail carries
+    the change."""
+    facts = _facts(_cat_payload(
+        [{"vendor": "Mirakl", "verdict": "BLOCKED", "callSites": 25}],
+        newlyBlocked=["Mirakl"]))
+    _, text, _ = mail.summary_mail(facts)
+    assert "Mirakl" in text and "access" in text.lower()
+
+
+def test_no_access_change_adds_no_access_line():
+    facts = _facts(_cat_payload([{"vendor": "UPS", "verdict": "UNAUDITED", "callSites": 35}]))
+    _, text, _ = mail.summary_mail(facts)
+    assert "access regained" not in text.lower()
