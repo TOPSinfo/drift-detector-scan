@@ -302,3 +302,39 @@ def test_a_claim_on_a_sink_the_brief_flagged_is_in_scope():
                "residue": {"pathLiterals": [], "pathConstants": [], "sinks": []}})
     problems = absorb.verify_against_repo("/repo", staged, ["a.php:9"], scan=scan)
     assert not any("out of scope" in p for p in problems), problems
+
+
+def test_verbatim_date_check_accepts_a_two_digit_year():
+    """Vendors write two-digit years, and the gate could not see them.
+
+    Groq's own deprecation table publishes `Shutdown Date: 08/16/26` — a date already PAST as of
+    2026-09-01. Every form the check knew carried a four-digit year, so a real, sourced,
+    past-due sunset could not be absorbed: the gate refused it as "the date is not on the page"
+    when the date was plainly on the page. A guard that cannot read the vendor's own notation
+    silently protects nothing and blocks real findings.
+    """
+    d = "2026-08-16"
+    for text in ("Shutdown Date: 08/16/26",
+                 "shuts down 8/16/26",
+                 "retires 16/08/26 (EU format)"):
+        assert absorb.date_in_text(d, text), text
+
+
+def test_a_two_digit_year_still_needs_the_right_day_and_month():
+    assert not absorb.date_in_text("2026-08-16", "Shutdown Date: 08/17/26")
+    assert not absorb.date_in_text("2026-08-16", "Shutdown Date: 08/16/25")
+
+
+def test_two_digit_years_are_only_offered_this_century():
+    """`26` means 2026 here. Emitting the same short form for 1926 would let a page about a
+    century-old date satisfy a claim about a modern one — the check would stop distinguishing
+    the two. Outside 2000-2099 the four-digit forms are the only ones accepted."""
+    assert not absorb.date_in_text("1926-08-16", "Shutdown Date: 08/16/26")
+    assert absorb.date_in_text("1926-08-16", "Shutdown Date: 08/16/1926")
+
+
+def test_a_two_digit_year_still_needs_a_token_boundary():
+    """The same rule as every other form: a short date is easier to hit inside a version string
+    or a build id, so the boundary matters MORE here, not less."""
+    assert not absorb.date_in_text("2026-08-16", "version 108/16/265")
+    assert not absorb.date_in_text("2026-08-16", "8/16/260")

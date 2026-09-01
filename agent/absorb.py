@@ -45,7 +45,8 @@ def date_in_text(date_iso: str, text: str) -> bool:
     """The 'verbatim date' check: is the ISO date present in `text` in any common human form?
     A retirement date must appear ON the page it cites — not merely be asserted by the model.
     Converts "the model says the page says <date>" into "the page demonstrably contains <date>."
-    Covers ISO, M/D/Y, D/M/Y, 'Month D, Y', 'D Month Y', 3-letter abbreviations, and ordinals.
+    Covers ISO, M/D/Y, D/M/Y, two-digit years this century, 'Month D, Y', 'D Month Y',
+    3-letter abbreviations, and ordinals.
 
     Every form must land at a TOKEN BOUNDARY — not merely as a substring of a larger token
     (a build id, a longer run of digits, ...). Without this, "2026-11-30" matches inside
@@ -68,6 +69,20 @@ def date_in_text(date_iso: str, text: str) -> bool:
         f"{mon} {d.day}{sfx}, {d.year}", f"{d.day}{sfx} {mon} {d.year}",
         f"{d.day} {mon} {d.year}", f"{d.day} {abbr} {d.year}", f"{d.day:02d} {mon} {d.year}",
     }
+    # Two-digit years, THIS CENTURY ONLY. Vendors write them — Groq's deprecation table
+    # publishes "Shutdown Date: 08/16/26" — and without these forms the gate refused a real,
+    # sourced, already-past sunset on the grounds that the date was not on the page, when it was
+    # plainly on the page. A guard that cannot read the vendor's own notation blocks findings
+    # without protecting anything.
+    #
+    # Restricted to 2000-2099 deliberately: emitting `26` for 1926 as well would let a page about
+    # a century-old date satisfy a claim about a modern one, and the check would stop telling
+    # them apart. Both digit orders are offered, exactly as they already are for four-digit
+    # years — that M/D vs D/M ambiguity is pre-existing and not widened here.
+    if 2000 <= d.year <= 2099:
+        yy = f"{d.year % 100:02d}"
+        forms |= {f"{d.month}/{d.day}/{yy}", f"{d.day}/{d.month}/{yy}",
+                  f"{d.month:02d}/{d.day:02d}/{yy}", f"{d.day:02d}/{d.month:02d}/{yy}"}
     return any(re.search(r"(?<![A-Za-z0-9])" + re.escape(f.lower()) + r"(?![A-Za-z0-9])", t)
                for f in forms)
 
