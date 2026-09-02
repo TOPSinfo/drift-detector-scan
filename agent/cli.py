@@ -885,36 +885,30 @@ _DATEISH = re.compile(
 #
 # Those are different sentences, and the difference is not which field the date sits in — it is
 # whether the date-shaped string is the WHOLE value (a name) or embedded in prose (an assertion).
-# Amazon SP-API versions its endpoints by date, so `version: "2020-09-04"` and
-# `endpoint: "/feeds/2020-09-04/feeds/{feedId}"` are identifiers copied out of the source at a
-# cited file:line. Refusing them left the gate unable to express a true lead about the product's
-# flagship vendor — and a model met that refusal by rewriting the evidence until it passed.
+# Amazon SP-API versions its endpoints by date, so `version: "2020-09-04"` is an identifier copied
+# out of the source at a cited file:line, not a claim about the future.
 #
-# Deliberately narrow: two named fields, and only a bare token or a complete path segment. Not
-# "dates are allowed in identifiers", which would grow. `note` and every other field keep the
-# broad scan, because prose is where a claim hides.
-_VERSION_TOKEN = re.compile(r"^v?\d{4}[-/]\d{2}[-/]\d{2}$", re.IGNORECASE)
-_PATH_SEGMENT_DATE = re.compile(r"(?:^|/)v?\d{4}[-/]\d{2}[-/]\d{2}(?:/|$)", re.IGNORECASE)
-# A real URL path is printable ASCII with no whitespace of any kind. Checked as an ALLOWLIST
-# (every char must be in \x21-\x7e), not a "no \s" denylist — \s does not match every Unicode
-# space: zero-width space (U+200B) and the zero-width no-break space / BOM (U+FEFF) both sail
-# through `\s`, so a sentence with those in place of ASCII spaces would still read as "no
-# whitespace" under a denylist while being prose to any reader. The allowlist rejects the
-# character outright, whatever it is.
-_ENDPOINT_SAFE = re.compile(r"^[\x21-\x7e]+$")
+# `endpoint` was tried under the same reasoning and withdrawn. Three attempts to write a lexical
+# rule that separates a real dated path segment (`/feeds/2020-09-04/feeds/{feedId}`) from a claim
+# written to look like one (`/2027-03-01/sunset-per-the-vendor-changelog`) were each defeated in
+# turn: stripping every slash-bounded date let a date wrapped in prose through; a whitespace
+# denylist missed U+200B and U+FEFF; and prose does not need whitespace at all to read as a
+# sentence. They are the same shape — no regex tells them apart. The intended fix is corroborating
+# a dated endpoint against what the deterministic scanner actually observed, not another lexical
+# rule; that needs a `drift.json` field `agent/lib/endpoints.py` currently drops before
+# serialisation, and is specced separately. Until then `endpoint` gets no exemption and is
+# checked like `note`.
+#
+# Deliberately narrow: one named field, and only a bare token. Not "dates are allowed in
+# identifiers", which would grow. `note`, `endpoint`, and every other field keep the broad scan,
+# because prose is where a claim hides.
+_VERSION_TOKEN = re.compile(r"v?\d{4}[-/]\d{2}[-/]\d{2}", re.IGNORECASE)
 
 
 def _identifier_date_ok(field: str, value: str) -> bool:
-    """Is this date shape a NAME rather than a claim? Only for the two identifier fields."""
+    """Is this date shape a NAME rather than a claim? Only `version` is exempt — see above."""
     if field == "version":
-        return bool(_VERSION_TOKEN.match(value.strip()))
-    if field == "endpoint":
-        if not isinstance(value, str) or not _ENDPOINT_SAFE.match(value):
-            return False
-        matches = list(_PATH_SEGMENT_DATE.finditer(value))
-        if len(matches) != 1:
-            return False
-        return not _DATEISH.search(_PATH_SEGMENT_DATE.sub("/", value, count=1))
+        return bool(_VERSION_TOKEN.fullmatch(value))
     return False
 
 

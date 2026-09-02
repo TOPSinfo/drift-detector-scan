@@ -157,16 +157,33 @@ def test_a_dated_api_version_is_an_identifier_not_a_claim(tmp_path):
                      "--now", "2026-09-02"]) == 0
 
 
-def test_a_dated_version_inside_an_endpoint_path_is_an_identifier(tmp_path):
+def test_an_endpoint_identifier_exemption_was_withdrawn_deliberately(tmp_path, capsys):
+    """`endpoint` used to get the same identifier exemption as `version` — this exact path was
+    accepted once. It was WITHDRAWN, not overlooked: no lexical rule can tell a real dated path
+    segment apart from a claim written to look like one (`/2027-03-01/sunset-per-the-vendor-
+    changelog` is the same shape and must also be refused, see the smuggling tests below). The
+    fix is corroborating against the scanner's own observations, specced separately. A future
+    reader must not "restore" this exemption as a bug fix — it is not one."""
     ai = _ai_with(tmp_path, endpoint="/feeds/2020-09-04/feeds/{feedId}")
     assert cli.main(["leads", "--state", str(tmp_path), "--ai-results", ai,
-                     "--now", "2026-09-02"]) == 0
+                     "--now", "2026-09-02"]) == 2
+    assert "carries a date" in capsys.readouterr().err
 
 
 def test_a_v_prefixed_dated_version_is_an_identifier(tmp_path):
     ai = _ai_with(tmp_path, version="v2020-09-04")
     assert cli.main(["leads", "--state", str(tmp_path), "--ai-results", ai,
                      "--now", "2026-09-02"]) == 0
+
+
+def test_a_version_with_a_trailing_newline_is_not_an_exact_token(tmp_path, capsys):
+    """`_VERSION_TOKEN` used to be `^...$` checked with `.match()`, and `$` matches just before a
+    trailing newline — so `"2020-09-04\\n"` slipped through as though it were the bare token. The
+    exemption must be for an EXACT identifier, not "starts and ends with one, modulo a newline"."""
+    ai = _ai_with(tmp_path, version="2020-09-04\n")
+    assert cli.main(["leads", "--state", str(tmp_path), "--ai-results", ai,
+                     "--now", "2026-09-02"]) == 2
+    assert "carries a date" in capsys.readouterr().err
 
 
 def test_prose_in_an_identifier_field_is_still_a_claim(tmp_path, capsys):
