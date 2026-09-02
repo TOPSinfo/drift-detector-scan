@@ -881,6 +881,31 @@ _DATEISH = re.compile(
     r"|\d{1,2}(?:st|nd|rd|th)?\s+" + _MONTHISH + r"\.?,?\s+\d{4}",  # 1 March 2026 / 1 Mar 2026
     re.IGNORECASE)
 
+# A lead may not say WHEN something retires. It may say WHAT it found, WHERE.
+#
+# Those are different sentences, and the difference is not which field the date sits in — it is
+# whether the date-shaped string is the WHOLE value (a name) or embedded in prose (an assertion).
+# Amazon SP-API versions its endpoints by date, so `version: "2020-09-04"` and
+# `endpoint: "/feeds/2020-09-04/feeds/{feedId}"` are identifiers copied out of the source at a
+# cited file:line. Refusing them left the gate unable to express a true lead about the product's
+# flagship vendor — and a model met that refusal by rewriting the evidence until it passed.
+#
+# Deliberately narrow: two named fields, and only a bare token or a complete path segment. Not
+# "dates are allowed in identifiers", which would grow. `note` and every other field keep the
+# broad scan, because prose is where a claim hides.
+_VERSION_TOKEN = re.compile(r"^v?\d{4}[-/]\d{2}[-/]\d{2}$")
+_PATH_SEGMENT_DATE = re.compile(r"(?:^|/)v?\d{4}[-/]\d{2}[-/]\d{2}(?:/|$)")
+
+
+def _identifier_date_ok(field: str, value: str) -> bool:
+    """Is this date shape a NAME rather than a claim? Only for the two identifier fields."""
+    if field == "version":
+        return bool(_VERSION_TOKEN.match(value.strip()))
+    if field == "endpoint":
+        return bool(_PATH_SEGMENT_DATE.search(value)) and not _DATEISH.search(
+            _PATH_SEGMENT_DATE.sub("/", value))
+    return False
+
 
 def _cmd_leads(args) -> int:
     """Validate an AI cross-check pass into <state>/leads.json (drift-leads/v1).
@@ -924,7 +949,8 @@ def _cmd_leads(args) -> int:
             # so `{"retired":"yes","note":"Sunset on 2026-03-01 per the changelog"}` sailed
             # through untouched and put an ungated date in front of a reader.
             for field, val in i.items():
-                if isinstance(val, str) and _DATEISH.search(val):
+                if isinstance(val, str) and _DATEISH.search(val) \
+                        and not _identifier_date_ok(field, val):
                     problems.append(f"{host}: {field!r} carries a date ({val!r}) — a lead says "
                                     f"WHETHER, never WHEN; a dated claim must go through the "
                                     f"absorb gate")

@@ -130,3 +130,64 @@ def test_leads_needs_a_prior_scan(tmp_path):
     ai.write_text('{"meta":{},"repos":[]}')
     assert cli.main(["leads", "--state", str(tmp_path), "--ai-results", str(ai),
                      "--now", "2026-08-12"]) == 2
+
+
+def _ai_with(tmp_path, **fields):
+    """One integration record with `fields` merged in, plus the drift.json it needs."""
+    drift = {"endpoints": [{"repo": "r1", "vendor": "eBay", "classified": True,
+                            "domain": "api.ebay.com", "files": ["a.php:1"]}]}
+    (tmp_path / "drift.json").write_text(json.dumps(drift))
+    rec = {"vendor": "Acme SP", "host": "api.acme.test", "file": "k.php",
+           "line": "9", "retired": "unknown"}
+    rec.update(fields)
+    ai = {"meta": {"reposRead": 1, "tokens": 5},
+          "repos": [{"repo": "r1", "summary": "s", "integrations": [rec]}]}
+    p = tmp_path / "ai.json"
+    p.write_text(json.dumps(ai))
+    return str(p)
+
+
+def test_a_dated_api_version_is_an_identifier_not_a_claim(tmp_path):
+    """Amazon SP-API versions its endpoints BY DATE, so `2020-09-04` is the version's NAME. It
+    exists in the source at the cited line and asserts nothing about the future. Refusing it made
+    the gate unable to express a true lead about the product's flagship vendor — and the observed
+    consequence was a model that rewrote the evidence until the gate accepted it."""
+    ai = _ai_with(tmp_path, version="2020-09-04")
+    assert cli.main(["leads", "--state", str(tmp_path), "--ai-results", ai,
+                     "--now", "2026-09-02"]) == 0
+
+
+def test_a_dated_version_inside_an_endpoint_path_is_an_identifier(tmp_path):
+    ai = _ai_with(tmp_path, endpoint="/feeds/2020-09-04/feeds/{feedId}")
+    assert cli.main(["leads", "--state", str(tmp_path), "--ai-results", ai,
+                     "--now", "2026-09-02"]) == 0
+
+
+def test_a_v_prefixed_dated_version_is_an_identifier(tmp_path):
+    ai = _ai_with(tmp_path, version="v2020-09-04")
+    assert cli.main(["leads", "--state", str(tmp_path), "--ai-results", ai,
+                     "--now", "2026-09-02"]) == 0
+
+
+def test_prose_in_an_identifier_field_is_still_a_claim(tmp_path, capsys):
+    """The exemption is a BARE TOKEN, not the field name. A sentence is an assertion wherever it
+    sits, and this is the smuggling route the exemption must not open."""
+    ai = _ai_with(tmp_path, version="retires 2027-03-01")
+    assert cli.main(["leads", "--state", str(tmp_path), "--ai-results", ai,
+                     "--now", "2026-09-02"]) == 2
+    assert "carries a date" in capsys.readouterr().err
+
+
+def test_prose_in_an_endpoint_is_still_a_claim(tmp_path, capsys):
+    ai = _ai_with(tmp_path, endpoint="sunsets 2026-03-01")
+    assert cli.main(["leads", "--state", str(tmp_path), "--ai-results", ai,
+                     "--now", "2026-09-02"]) == 2
+    assert "carries a date" in capsys.readouterr().err
+
+
+def test_a_bare_date_in_a_note_is_still_refused(tmp_path, capsys):
+    """`note` is prose by definition. A bare date there is a claim with the sentence omitted."""
+    ai = _ai_with(tmp_path, note="2020-09-04")
+    assert cli.main(["leads", "--state", str(tmp_path), "--ai-results", ai,
+                     "--now", "2026-09-02"]) == 2
+    assert "carries a date" in capsys.readouterr().err
