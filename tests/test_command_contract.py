@@ -140,3 +140,12 @@ def test_the_command_forbids_reframing_the_workaround_as_a_helpful_offer():
     text = " ".join(CMD.read_text().split())
     assert "Do not then offer to fix it and resubmit" in text
     assert "not a patch to make the refused one pass" in text
+
+
+def test_the_ai_wait_has_the_same_progress_rule_as_the_scan():
+    """The scan got a progress rule; the AI pass, which takes MINUTES, got none. The observed run
+    filled the gap with five consecutive lines all saying 'still running' — the same noise the
+    closing-block work removed from the tail, reappearing in the middle."""
+    text = " ".join(CMD.read_text().split())
+    assert "Same progress rule as a fleet scan" in text
+    assert "Never narrate the wait" in text

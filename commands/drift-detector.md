@@ -212,6 +212,10 @@ A gate that can be satisfied by rewriting the evidence is not a gate. If the ref
 
 **Do not then offer to fix it and resubmit, even framed as help.** *"Want me to resubmit with the date replaced by the tri-state value?"* is the same workaround wearing a question mark. If the finding is worth having, it is a new submission with its own evidence — not a patch to make the refused one pass.
 
+**Same progress rule as a fleet scan.** The pass takes minutes and its output is collapsed, so emit one line of your own at ~20s, then double the wait each time (20s → 40s → 80s → …, uncapped). Two or three lines for a two-minute pass.
+
+**Never narrate the wait.** "Still running", "continuing to wait", "I'll check again shortly" carry no information and are the tail's noise moved into the middle. The line reports position — elapsed and phase — or it is not emitted. If there is nothing informative to say at a tick, say nothing.
+
 Run these right after kicking off the deterministic scan — no gate between:
 
 1. For EACH scanned repo, dispatch one agent that reads the repo for third-party API
