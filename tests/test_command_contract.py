@@ -30,3 +30,19 @@ def test_the_command_forbids_reading_the_scanned_repos_instruction_files():
         "CLAUDE.md`, `AGENTS.md`, `.claude/rules/**`,\n"
         "`.cursor/**`, `.cursorrules` and `.github/copilot-instructions.md`"
     ) in text
+
+
+def test_the_command_sizes_progress_to_the_run():
+    """One line before a 15-second scan; a background poll for a 26-minute one. A fixed interval
+    is chatty on three repos and silent on fifty-two."""
+    text = CMD.read_text()
+    assert "--progress" in text
+    assert "run_in_background" in text or "background" in text
+
+
+def test_the_command_forbids_one_line_per_repo_progress():
+    # Assert the actual prohibition sentence, not just that "repo" and "line" appear somewhere —
+    # a rewording to "you MAY emit one line per repo" would still contain both words but must
+    # fail this test.
+    text = CMD.read_text()
+    assert "Never one line per repo" in text

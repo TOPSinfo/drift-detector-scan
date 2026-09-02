@@ -66,6 +66,18 @@ This clones any URLs and classifies every source — **git repo · plain folder 
   ```bash
   "$SCAN" run --progress --root <root1> --root <root2> … --state "$D" --now "$(date +%F)"
   ```
+  **Show that it's alive.** Tool output renders COLLAPSED in the terminal, so the scanner's own
+  `⚙ [n/N] <repo>` line never reaches the user — text you emit is the only channel that always
+  renders.
+  - **One or two repos** (seconds): say one line before you start — `▸ Scanning <name> — about
+    15s` — and nothing during.
+  - **A fleet** (minutes): start the command above with `run_in_background`, then poll its output
+    for the latest `⚙ [n/N]` line and echo one of your own — `▸ 12/52 · <repo>`. Check at ~20s,
+    then double the wait each time (20s → 40s → 80s → 160s → …, capped at 5 minutes) — this scales
+    itself to however long the run actually takes, landing at roughly 6–10 lines end to end
+    whether it finishes in 3 minutes or 3 hours, with no repo count to compute up front.
+    Never one line per repo — the line reports position, not events. Stop polling when the
+    process exits, not when the text stops changing.
 - **The resolution pass — no-queue, runs right here, automatically.** A scan can leave hosts
   unresolved: an own-infra guess too weak to trust alone, or a detected API service not yet in
   the vendor catalog. There used to be a queue for these; there is not one any more
