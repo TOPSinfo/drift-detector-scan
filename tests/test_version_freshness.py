@@ -8,6 +8,8 @@ from agent.lib import freshness_check
     ("1.0.0", "1.0.0", False),
     ("1.0.1", "1.0.0", False),      # ahead of the marketplace: a dev checkout, not stale
     ("0.9.0", "0.10.0", True),      # numeric, not lexical: 9 < 10
+    ("1.2.0", "1.2.0-rc.1", False),      # pre-release suffix digit must not corrupt the core
+    ("1.2.0", "1.2.0-hotfix.5", False),  # same: "5" is not a fourth release component
 ])
 def test_compare_detects_staleness(installed, published, stale):
     is_stale, _ = freshness_check.compare(installed, published)

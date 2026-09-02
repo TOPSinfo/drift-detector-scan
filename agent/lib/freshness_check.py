@@ -8,14 +8,20 @@ from __future__ import annotations
 
 import re
 
-_NUM = re.compile(r"\d+")
+_CORE = re.compile(r"^\s*v?(\d+(?:\.\d+)*)")
 
 
 def _parts(v: str):
-    # Leading numeric components, so 0.9.0 < 0.10.0 compares numerically rather than lexically.
-    # A pre-release suffix (-beta) is ignored for ordering: it is not what staleness turns on.
-    nums = _NUM.findall(str(v or "").strip())
-    return [int(n) for n in nums] if nums else None
+    # Only the leading dotted-numeric release core (optionally "v"-prefixed), so 0.9.0 < 0.10.0
+    # compares numerically rather than lexically. Everything from the first character that
+    # isn't a digit or a dot onward — a pre-release suffix like "-rc.1" or "-hotfix.5" — is
+    # dropped whole, including any digits inside it; it never contributes components to the
+    # comparison. The previous approach harvested every digit run in the string, so a numeric
+    # suffix on one side silently grew that side's version and could report an up-to-date
+    # install as behind a same-numbered pre-release/hotfix tag.
+    s = "" if v is None else str(v).strip()
+    m = _CORE.match(s)
+    return [int(n) for n in m.group(1).split(".")] if m else None
 
 
 def compare(installed: str, published: str) -> tuple[bool, str]:

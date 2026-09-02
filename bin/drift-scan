@@ -79,11 +79,30 @@ if [ "${1:-}" = "doctor" ]; then
   fi
   # Freshness. Network-OPTIONAL by design: a check that fails the run when offline is a check
   # people disable. Offline prints one plain line; it never changes doctor's exit code.
+  # Uses system python3, not the venv's, deliberately: freshness_check imports nothing but
+  # stdlib `re`, and doctor must work before the venv exists (first run, offline provisioning).
+  # Do not add a heavier import to freshness_check without moving this to $VENV/bin/python —
+  # otherwise this block silently and permanently degrades to "version check unavailable".
   PUB_URL="https://raw.githubusercontent.com/TOPSinfo/drift-detector-scan/master/.claude-plugin/marketplace.json"
   INST_VER="$(python3 -c "import json;print(json.load(open('$ROOT/.claude-plugin/plugin.json')).get('version',''))" 2>/dev/null || echo '')"
-  PUB_VER="$(curl -fsS --max-time 5 "$PUB_URL" 2>/dev/null | python3 -c "import json,sys;d=json.load(sys.stdin);print((d.get('plugins') or [{}])[0].get('version',''))" 2>/dev/null || echo '')"
+  # Selects the plugins[] entry named drift-detector rather than assuming index 0, in case the
+  # marketplace ever lists more than one plugin.
+  PUB_VER="$(curl -fsS --max-time 5 "$PUB_URL" 2>/dev/null | python3 -c "
+import json, sys
+d = json.load(sys.stdin)
+plugins = d.get('plugins') or []
+p = next((x for x in plugins if x.get('name') == 'drift-detector'), plugins[0] if plugins else {})
+print(p.get('version', ''))
+" 2>/dev/null || echo '')"
   if [ -n "$PUB_VER" ]; then
-    PYTHONPATH="$ROOT" python3 -c "from agent.lib import freshness_check; print('  ' + freshness_check.compare('$INST_VER','$PUB_VER')[1])" 2>/dev/null \
+    # INST_VER/PUB_VER are passed as argv, not spliced into the python source: PUB_VER comes
+    # from the network, and building code by string interpolation from untrusted input is the
+    # wrong shape even when today's quoting happens to degrade safely.
+    PYTHONPATH="$ROOT" python3 -c "
+import sys
+from agent.lib import freshness_check
+print('  ' + freshness_check.compare(sys.argv[1], sys.argv[2])[1])
+" "$INST_VER" "$PUB_VER" 2>/dev/null \
       || echo "  drift-detector: version check unavailable"
   else
     echo "  drift-detector: could not reach the marketplace to check for updates (offline?)"
