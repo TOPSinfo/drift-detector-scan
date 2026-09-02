@@ -130,3 +130,13 @@ def test_the_command_forbids_working_around_a_gate_refusal():
     text = " ".join(CMD.read_text().split())
     assert "never work around a gate refusal" in text
     assert "Report the refusal" in text
+
+
+def test_the_command_forbids_reframing_the_workaround_as_a_helpful_offer():
+    """The rule above is satisfied by a model that reports the refusal accurately and then
+    immediately offers to fix and resubmit — the same workaround wearing a question mark. Close
+    the loophole: a refused finding is worth a new submission with its own evidence, never a
+    patch to make the refused one pass."""
+    text = " ".join(CMD.read_text().split())
+    assert "Do not then offer to fix it and resubmit" in text
+    assert "not a patch to make the refused one pass" in text
