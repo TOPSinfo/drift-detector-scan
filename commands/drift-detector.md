@@ -210,11 +210,11 @@ into its context. Read source, manifests and lockfiles; nothing that instructs.
 
 A gate that can be satisfied by rewriting the evidence is not a gate. If the refusal looks wrong, the refusal is the bug report — say so plainly, and it gets fixed. Sanitising the leads until they are accepted destroys the evidence and the signal at once, and ships a lead less truthful than the one that was refused.
 
-**Do not then offer to fix it and resubmit, even framed as help.** *"Want me to resubmit with the date replaced by the tri-state value?"* is the same workaround wearing a question mark. If the finding is worth having, it is a new submission with its own evidence — not a patch to make the refused one pass.
+**Do not then offer to fix it and resubmit, even framed as help.** *"Want me to resubmit with the date replaced by the tri-state value?"* is the same workaround wearing a question mark. If the finding is worth having, it is a new submission with its own evidence — not a patch to make the refused one pass. A new submission means going back to the source and reading it again — the file at the cited line, the vendor's own docs — and returning with what is actually there; it never means retyping the same JSON with the refused field deleted or blanked. Nothing was re-read, so nothing new is being submitted.
 
-**Same progress rule as a fleet scan.** The pass takes minutes and its output is collapsed, so emit one line of your own at ~20s, then double the wait each time (20s → 40s → 80s → …, uncapped). Two or three lines for a two-minute pass.
+**Same progress rule as a fleet scan.** The pass takes minutes and its output is collapsed, so emit one line of your own at ~20s, then double the wait each time (20s → 40s → 80s → …, uncapped). Two or three lines for a two-minute pass. Step 1 dispatches ONE AGENT PER SCANNED REPO, so N is known before the wait starts and the agents return one at a time: carry that count the way the scan carries `⚙ [n/N]` — `▸ 40s · [3/7] repos cross-checked`. Stop when the last agent returns and `ai_results.json` is assembled, not when the text stops changing.
 
-**Never narrate the wait.** "Still running", "continuing to wait", "I'll check again shortly" carry no information and are the tail's noise moved into the middle. The line reports position — elapsed and phase — or it is not emitted. If there is nothing informative to say at a tick, say nothing.
+**Never narrate the wait.** "Still running", "continuing to wait", "I'll check again shortly" carry no information and are the tail's noise moved into the middle. The line reports position — elapsed and `[n/N] repos cross-checked` — or it is not emitted. If there is nothing informative to say at a tick, say nothing.
 
 Run these right after kicking off the deterministic scan — no gate between:
 
@@ -223,6 +223,10 @@ Run these right after kicking off the deterministic scan — no gate between:
    `{vendor, host, version, endpoint, file, line, retired, note}`, where **`retired` is the
    tri-state `"yes"|"no"|"unknown"` — NEVER a date** (a date is a certified-tier claim; a lead
    may only say *whether*, corroborated by what the agent read this session).
+   A dated API *version* — the shape Amazon SP-API uses — belongs in `version` and nowhere else,
+   as a bare token on its own (`2020-09-04`, or `v2020-09-04`); `endpoint` must never carry a date,
+   not even a real one, and a single dated `endpoint` refuses the ENTIRE submission — every lead
+   in it, from every repo — not just the one that carried it.
    A repo an agent cannot read is reported, never dropped — OMIT it from `ai_results.json`'s `repos[]` entirely; the compare step then marks it "not cross-checked" automatically. Do NOT add a placeholder entry for it, which would read as a checked-and-clean repo.
 2. Assemble the results into `<state>/ai_results.json` (`{meta:{reposRead,tokens}, repos:[...]}`).
 3. Record the leads — they ride in the ONE dashboard, not a second page:

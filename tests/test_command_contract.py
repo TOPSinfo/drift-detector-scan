@@ -149,3 +149,36 @@ def test_the_ai_wait_has_the_same_progress_rule_as_the_scan():
     text = " ".join(CMD.read_text().split())
     assert "Same progress rule as a fleet scan" in text
     assert "Never narrate the wait" in text
+    # The cadence alone is not the rule. The scan's version works because it has a real signal
+    # (`⚙ [n/N]` on the CLI's own output) and a stop condition (the process exits); the AI wait
+    # copied the cadence and the "position, not events" wording with neither, so a model complies
+    # literally with "40s elapsed — agents still reading repos" at every doubling and emits
+    # exactly the filler the rule was written to remove. Step 1 dispatches one agent per scanned
+    # repo, so N is known before the wait starts: the line must carry that count, and the wait
+    # must end on the last agent returning, not on the text going quiet.
+    assert "Step 1 dispatches ONE AGENT PER SCANNED REPO, so N is known before the wait starts" \
+        in text
+    assert "[n/N] repos cross-checked" in text
+    assert ("Stop when the last agent returns and `ai_results.json` is assembled, not when the "
+            "text stops changing.") in text
+
+
+def test_the_command_tells_the_agent_which_field_a_dated_version_goes_in():
+    """The `version` exemption exists in the gate but nothing told the sub-agent to use it, so
+    the true Amazon SP-API path `/feeds/2020-09-04/feeds/{feedId}` went in `endpoint` — and
+    because the gate refuses the BATCH, one such lead destroyed four clean ones and wrote no
+    `leads.json` at all. The accepted shape has to be stated where the JSON is specified."""
+    text = _flat()
+    assert "belongs in `version` and nowhere else" in text
+    assert "`endpoint` must never carry a date" in text
+    assert "refuses the ENTIRE submission" in text
+
+
+def test_the_new_submission_rule_names_the_act_that_makes_it_new():
+    """"A new submission with its own evidence" is satisfiable by re-dispatching the sub-agent and
+    re-running `leads` with the refused field blanked — no document edited, nothing offered, and
+    the model can call it new in good faith. The rule needs an operational test, not a label."""
+    text = _flat()
+    assert "going back to the source and reading it again" in text
+    assert ("it never means retyping the same JSON with the refused field deleted or blanked"
+            in text)
