@@ -135,3 +135,60 @@ def test_container_named_drift_detector_is_not_one_run(home, tmp_path):
     (slug / "inventory.json").write_text("{}")
     assert cleanup.is_state_dir(str(container)) is False
     assert cleanup.is_state_dir(str(slug)) is True
+
+
+# ── the blast-radius guard ──────────────────────────────────────────────────────────────────
+# A user ran the plugin's offered cleanup on 2026-09-02 and `clean --all` deleted 3.8 GB of a
+# live fleet working tree: ~50 cloned repos under drift-fleet/state/sources/, including the very
+# repo it had just been asked to scan. The ledger records whatever --state path was ever passed,
+# and that directory legitimately carries drift.json — so `is_state_dir` says yes, and --all
+# skipped even that check. Nothing in the tool distinguished "one repo's report folder" from
+# "the fleet's working directory with fifty checkouts inside it".
+#
+# A directory holding git checkouts is somebody's source, not our disposable output. That is the
+# line, and it is a filesystem fact needing no ledger and no heuristics.
+
+def _mk_state(tmp_path, name):
+    d = tmp_path / name
+    d.mkdir(parents=True)
+    (d / "drift.json").write_text("{}")
+    return d
+
+
+def test_a_state_dir_holding_a_git_checkout_is_refused(tmp_path):
+    from agent.lib import cleanup
+    d = _mk_state(tmp_path, "state")
+    (d / "sources" / "some-repo" / ".git").mkdir(parents=True)
+    assert cleanup.holds_source(str(d)) is True
+
+
+def test_an_ordinary_report_folder_is_still_removable(tmp_path):
+    """The guard must not disarm the feature: a plain .drift-detector output folder has no
+    checkout under it and stays cleanable."""
+    from agent.lib import cleanup
+    d = _mk_state(tmp_path, ".drift-detector")
+    (d / "dashboard.html").write_text("x")
+    assert cleanup.holds_source(str(d)) is False
+
+
+def test_a_repository_root_is_refused(tmp_path):
+    from agent.lib import cleanup
+    d = _mk_state(tmp_path, "repo")
+    (d / ".git").mkdir()
+    assert cleanup.holds_source(str(d)) is True
+
+
+def test_plan_skips_the_protected_target_and_says_why(tmp_path, monkeypatch):
+    """Skipped, not silently dropped — the user must see what was spared and why."""
+    from agent.lib import cleanup
+    safe = _mk_state(tmp_path, "safe/.drift-detector")
+    danger = _mk_state(tmp_path, "fleet-state")
+    (danger / "sources" / "r" / ".git").mkdir(parents=True)
+    monkeypatch.setattr(cleanup, "read_runs", lambda: [str(safe), str(danger)])
+    pl = cleanup.plan(all_=True, state=None, include_catalog=False)
+    paths = [t["path"] for t in pl["targets"]]
+    assert str(safe) in paths
+    assert str(danger) not in paths
+    reasons = " ".join(s.get("reason", "") for s in pl.get("skipped", []))
+    assert str(danger) in " ".join(s.get("path", "") for s in pl.get("skipped", []))
+    assert "checkout" in reasons or "source" in reasons

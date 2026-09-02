@@ -278,6 +278,8 @@ def _cmd_clean(args) -> int:
         pl = cleanup.plan(all_=True, state=None, include_catalog=False)
         n, total = len(pl["targets"]), pl["total"]
         print(f"reclaimable: {n} run output(s) · {cleanup.human_size(total)}")
+        for sk in pl.get("skipped", []):
+            print(f"  (refused)  {sk['path']}  — {sk['reason']}")
         print("CLUTTER " + json.dumps({"count": n, "bytes": total}))    # machine line for the plugin
         return 0
 
@@ -299,6 +301,11 @@ def _cmd_clean(args) -> int:
         print(f"  {cleanup.human_size(t['size']):>10}  {t['path']}")
     for p in pl["preserved"]:
         print(f"     (kept)  {p['path']}  — your absorbed catalog; pass --catalog to remove it too")
+    # Say what was REFUSED and why. The 2026-09-02 incident began with a one-line "87 folders,
+    # 4.1 GB" summary that hid a single 3.8 GB entry which was a live working tree; the user
+    # approved a number, not a list. Anything spared is now stated before the prompt.
+    for sk in pl.get("skipped", []):
+        print(f"  (refused)  {sk['path']}  — {sk['reason']}")
     if not getattr(args, "yes", False):
         try:
             resp = input("proceed? [y/N] ").strip().lower()

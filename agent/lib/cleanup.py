@@ -88,15 +88,55 @@ def human_size(n: int) -> str:
     return f"{size:.1f} GB"
 
 
+# How deep to look for a checkout before concluding there is none. A clone cache puts them at
+# <state>/sources/<repo>/.git — depth 3 — and bounding the walk keeps this cheap on a big tree.
+_SOURCE_SCAN_DEPTH = 4
+
+
+def holds_source(path: str) -> bool:
+    """Does `path` contain a git checkout — at its root or beneath it?
+
+    The blast-radius guard. On 2026-09-02 `clean --all` removed 3.8 GB of a live fleet working
+    tree: fifty cloned repos under <state>/sources/, including the repo the tool had just been
+    asked to scan. That directory legitimately carries drift.json, so `is_state_dir` said yes and
+    --all never asked anything further. Nothing distinguished one repo's report folder from a
+    working directory with fifty checkouts inside it.
+
+    A directory holding checkouts is somebody's SOURCE, not our disposable output. That is a
+    filesystem fact — no ledger, no heuristic — and it is the line this refuses to cross.
+    """
+    if not path or not os.path.isdir(path):
+        return False
+    base = os.path.abspath(path)
+    if os.path.exists(os.path.join(base, ".git")):
+        return True
+    for cur, dirs, _files in os.walk(base):
+        if os.path.relpath(cur, base).count(os.sep) >= _SOURCE_SCAN_DEPTH:
+            dirs[:] = []
+            continue
+        if ".git" in dirs:
+            return True
+    return False
+
+
 def plan(*, all_: bool, state: str | None, include_catalog: bool) -> dict:
     """What `clean` WOULD remove. Returns {targets:[{path,size,kind}], preserved:[...], total}.
     Targets are deduped by path; the catalog is listed under `preserved` unless include_catalog."""
     root = drift_home.drift_root()
     targets: list = []
 
+    skipped: list = []
+
     def add(path: str, kind: str) -> None:
-        if os.path.isdir(path):
-            targets.append({"path": os.path.abspath(path), "size": dir_size(path), "kind": kind})
+        if not os.path.isdir(path):
+            return
+        if holds_source(path):
+            # Refused, and REPORTED — a target silently dropped is how the user learns the tool
+            # is unpredictable instead of careful.
+            skipped.append({"path": os.path.abspath(path), "size": dir_size(path), "kind": kind,
+                            "reason": "holds a git checkout — this is source, not scan output"})
+            return
+        targets.append({"path": os.path.abspath(path), "size": dir_size(path), "kind": kind})
 
     if state and is_state_dir(state):
         add(state, "run")
@@ -121,7 +161,8 @@ def plan(*, all_: bool, state: str | None, include_catalog: bool) -> dict:
     cat = os.path.join(root, "catalog")
     if not include_catalog and os.path.isdir(cat) and (all_ or state):
         preserved.append({"path": os.path.abspath(cat), "size": dir_size(cat), "kind": "catalog"})
-    return {"targets": uniq, "preserved": preserved, "total": sum(t["size"] for t in uniq)}
+    return {"targets": uniq, "preserved": preserved, "skipped": skipped,
+            "total": sum(t["size"] for t in uniq)}
 
 
 def execute(targets: list) -> list:
