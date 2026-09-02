@@ -893,8 +893,15 @@ _DATEISH = re.compile(
 # Deliberately narrow: two named fields, and only a bare token or a complete path segment. Not
 # "dates are allowed in identifiers", which would grow. `note` and every other field keep the
 # broad scan, because prose is where a claim hides.
-_VERSION_TOKEN = re.compile(r"^v?\d{4}[-/]\d{2}[-/]\d{2}$")
-_PATH_SEGMENT_DATE = re.compile(r"(?:^|/)v?\d{4}[-/]\d{2}[-/]\d{2}(?:/|$)")
+_VERSION_TOKEN = re.compile(r"^v?\d{4}[-/]\d{2}[-/]\d{2}$", re.IGNORECASE)
+_PATH_SEGMENT_DATE = re.compile(r"(?:^|/)v?\d{4}[-/]\d{2}[-/]\d{2}(?:/|$)", re.IGNORECASE)
+# A real URL path is printable ASCII with no whitespace of any kind. Checked as an ALLOWLIST
+# (every char must be in \x21-\x7e), not a "no \s" denylist — \s does not match every Unicode
+# space: zero-width space (U+200B) and the zero-width no-break space / BOM (U+FEFF) both sail
+# through `\s`, so a sentence with those in place of ASCII spaces would still read as "no
+# whitespace" under a denylist while being prose to any reader. The allowlist rejects the
+# character outright, whatever it is.
+_ENDPOINT_SAFE = re.compile(r"^[\x21-\x7e]+$")
 
 
 def _identifier_date_ok(field: str, value: str) -> bool:
@@ -902,8 +909,12 @@ def _identifier_date_ok(field: str, value: str) -> bool:
     if field == "version":
         return bool(_VERSION_TOKEN.match(value.strip()))
     if field == "endpoint":
-        return bool(_PATH_SEGMENT_DATE.search(value)) and not _DATEISH.search(
-            _PATH_SEGMENT_DATE.sub("/", value))
+        if not isinstance(value, str) or not _ENDPOINT_SAFE.match(value):
+            return False
+        matches = list(_PATH_SEGMENT_DATE.finditer(value))
+        if len(matches) != 1:
+            return False
+        return not _DATEISH.search(_PATH_SEGMENT_DATE.sub("/", value, count=1))
     return False
 
 

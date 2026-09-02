@@ -191,3 +191,42 @@ def test_a_bare_date_in_a_note_is_still_refused(tmp_path, capsys):
     assert cli.main(["leads", "--state", str(tmp_path), "--ai-results", ai,
                      "--now", "2026-09-02"]) == 2
     assert "carries a date" in capsys.readouterr().err
+
+
+def test_a_date_wrapped_in_slashes_inside_an_endpoint_sentence_is_still_a_claim(tmp_path, capsys):
+    """`_PATH_SEGMENT_DATE.sub` used to strip EVERY slash-bounded date out of the value before the
+    remainder was checked for a date shape. Wrap the claim's date in a leading/trailing slash
+    anywhere in a sentence and the substitution erases it, leaving no date behind to catch — the
+    whole sentence then passed as though it were a bare identifier."""
+    for endpoint in (
+        "notice: /2027-03-01/ this API is retiring soon and will stop working",
+        "sunset scheduled — /2027-03-01/ — please migrate before then",
+    ):
+        ai = _ai_with(tmp_path, endpoint=endpoint)
+        rc = cli.main(["leads", "--state", str(tmp_path), "--ai-results", ai,
+                       "--now", "2026-09-02"])
+        assert rc == 2, f"{endpoint!r} was wrongly accepted"
+        assert "carries a date" in capsys.readouterr().err
+
+
+def test_a_second_dated_segment_appended_to_a_real_path_is_still_a_claim(tmp_path, capsys):
+    """A real versioned path has exactly one dated segment. A second one tacked on is a claim
+    riding along with the identifier, not part of it."""
+    ai = _ai_with(tmp_path, endpoint="/feeds/2020-09-04/feeds/{feedId}/2026-03-01")
+    rc = cli.main(["leads", "--state", str(tmp_path), "--ai-results", ai, "--now", "2026-09-02"])
+    assert rc == 2
+    assert "carries a date" in capsys.readouterr().err
+
+
+def test_zero_width_space_cannot_stand_in_for_the_ascii_space_the_gate_looks_for(tmp_path, capsys):
+    """A whitespace DENYLIST (`re.search(r"\\s", value)`) is not the same guard as an ALLOWLIST
+    of real-path characters: `\\s` does not match the zero-width space (U+200B), so a sentence
+    that substitutes U+200B for every ASCII space reads as "no whitespace" while still being
+    prose to a reader. The gate must reject any character outside printable ASCII, not just the
+    ones `\\s` happens to know about."""
+    zwsp = "​"
+    endpoint = zwsp.join(["notice:", "/2027-03-01/", "this", "API", "is", "retiring", "soon"])
+    ai = _ai_with(tmp_path, endpoint=endpoint)
+    rc = cli.main(["leads", "--state", str(tmp_path), "--ai-results", ai, "--now", "2026-09-02"])
+    assert rc == 2
+    assert "carries a date" in capsys.readouterr().err
