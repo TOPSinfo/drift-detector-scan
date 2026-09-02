@@ -47,7 +47,7 @@ Run these steps IN ORDER. Do not skip the plan, and never scan the current direc
 - **Source type** — a local folder, a single git/GitLab URL, a **whole GitLab group or user namespace** (`https://git.example.com/acme` — scans every repo the token can access under it, so you cannot miss one), a GitHub URL, or a mix.
 - **Private?** (only if a URL) — a private clone reuses the machine's own git auth (a configured credential helper, an SSH key, or a `GITLAB_TOKEN`/`DRIFT_GIT_TOKEN` in the environment, used transiently and never written to disk). If none is set, say plainly that the clone will fail and how to fix it — do not proceed hoping.
 - **Local folder** — note that it does not need to be a git repo; a plain source folder scans too (it just won't have "changed since last scan" or clickable `file:line`).
-- **Share the report?** — a hosted **Claude artifact** (rendered in chat, shareable by URL, but it leaves the machine for claude.ai) or **local-only** (the files + the report pasted in chat). **Ask this ONCE and remember it for the session.** Default **local-only** — the safe choice when the repos are a client's, not the user's own.
+- **Share the report?** — a hosted **Claude artifact** (rendered in chat, shareable by URL, but it leaves the machine for claude.ai) or **local-only** (the files on disk, summarised in chat). **Ask this ONCE and remember it for the session.** Default **local-only** — the safe choice when the repos are a client's, not the user's own.
 - Then collect the path(s)/URL(s). If no folder was given and the user gives none, say **"No folder given."** and stop.
 
 **Pick the state dir `D`:** a single local folder → `"$F/.drift-detector"`; otherwise (URLs, or several sources) → `"$HOME/.drift-detector/<slug>"`. URLs clone into `"$D/sources"`.
@@ -72,7 +72,7 @@ This clones any URLs and classifies every source — **git repo · plain folder 
   - **One or two repos** (seconds): say one line before you start — `▸ Scanning <name> — about
     15s` — and nothing during.
   - **Three or more repos** (a fleet, minutes+): start the command above with `run_in_background`,
-    then poll its **stderr** for the latest `⚙ [n/N]` line and echo one of your own — `▸ 12/52 ·
+    then poll its **output** for the latest `⚙ [n/N]` line and echo one of your own — `▸ 12/52 ·
     <repo>`. Check at ~20s, then double the wait each time (20s → 40s → 80s → 160s → …,
     uncapped) — this scales itself to however long the run actually takes: 3 lines for a
     3-minute run, 6 for a 26-minute run, 9 for a 3-hour run. That is bounded logarithmic growth,
@@ -104,6 +104,7 @@ This clones any URLs and classifies every source — **git repo · plain folder 
      ```bash
      "$SCAN" run --progress --root <root1> --root <root2> … --state "$D" --now "$(date +%F)" --resolve "$D/resolution-verdicts.json"
      ```
+     Same progress rule as the first run — this re-scan takes as long.
      One command does all of it: gate-validate every verdict, apply the clean ones to the local
      catalog overlay, **re-scan**, and write the delivered report — `drift.json` is produced
      entirely by that re-scan, never by the verdicts directly. Exit codes: `0` clean · `5` the
@@ -116,30 +117,40 @@ This clones any URLs and classifies every source — **git repo · plain folder 
      and never withhold the report waiting on this step.
 - **The AI cross-check** — dispatch it **immediately, without asking** (details in "The AI plane" below). It runs as part of *this* scan, not a follow-up you offer.
 
-**5 · Deliver BOTH tiers** — the certified report and the AI leads, clearly separated (see below).
+**5 · Deliver BOTH tiers** — the certified report and the AI leads, clearly separated. Run the
+AI plane and the ad-hoc lane exactly as described below and let their output print in full. All of
+it — every tally, every pointer to the AI Frontier tab, every offer — is emitted **before** the
+closing block. The block ends the output; nothing follows it.
 
 ## Deliver the report
 
-Four steps. The output ENDS with step 4 — nothing follows it.
+Four steps, IN THIS ORDER. The output ENDS with step 4 — nothing follows it. Everything the AI
+plane and the ad-hoc lane produce (tallies, pointers, offers) comes before it.
 
 1. **Verify — before you trust any number.** `"$SCAN" verify --state "$D"`. A green line means
    `drift.md`, `summary.html`, `dashboard.html` and `drift.json` all agree; a non-zero exit means
    they do not — say so, and report no figure until it is resolved.
 
-2. **Emit the closing block, verbatim.** Run
+2. **One link, not four.** Offer the dashboard. Mention the other representations only if asked.
+
+3. **Add at most two sentences of your own**, and only for something the block cannot know —
+   a degraded run, an unusual failure. If the block says it, you do not.
+
+4. **Emit the closing block, verbatim.** Run
    `"$SCAN" chat-summary --state "$D"` — add `--full` when this is a headless/`-p` run — and
-   paste its output **unchanged** as the last thing you say. It already carries the headline, the
-   delta, the most-urgent finding, *Do first*, and *What this scan could NOT see*.
+   paste its output **unchanged**. It already carries the headline, the delta, the most-urgent
+   finding, *Do first*, and *What this scan could NOT see*.
 
    **Do not paste `drift.md` inline.** It is a document written to be read in a browser, its YAML
    front-matter is renderer metadata, and relaying it duplicates every honesty surface the block
    has already stated. On 2026-09-02 a real run stated the same three unaudited vendors three
    times over and buried the next action underneath them.
 
-3. **Add at most two sentences of your own**, and only for something the block cannot know —
-   a degraded run, an unusual failure. If the block says it, you do not.
+   **It is the last thing you say: do not re-summarise it, re-order it, put a headline above it, append next steps, or offer anything.** If the user asks about scheduling, cleanup or blind spots, answer then — the block tells them they can.
 
-4. **One link, not four.** Offer the dashboard. Mention the other representations only if asked.
+   This is not a style preference. A PM ran this command, read the result, and was lost by what
+   followed: five further blocks, three of them asking him to decide something. The output has to
+   end where the answer ends.
 
 ## Ad-hoc shapes — the middle tier (gate-validated, this run) · POC
 
@@ -171,9 +182,10 @@ the certified state dir, `R` the repo name, `ABS` its absolute path.
    Then re-run `"$SCAN" render --state "$S" --now "$(date +%F)"` so the dashboard picks it up: these rows appear in the
    **AI Frontier** tab badged `GATE-VALIDATED` (amber, this run only). Show its tally and point to
    the tab. It exits 3 if the shape was over-broad — then do NOT present it as validated.
-6. **Offer to persist** (never act): *"N call-sites are now attributed. Absorb these shapes into
-   `~/.drift/catalog` so every future run sees them?"* Only on explicit yes: `"$SCAN" absorb
-   --staged "$A/staged" --repo "$ABS"` (with `DRIFT_CATALOG_DIR="$HOME/.drift/catalog"`).
+6. **Offer to persist** — before the closing block, and never act on it yourself:
+   *"N call-sites are now attributed. Absorb these shapes into `~/.drift/catalog` so every
+   future run sees them?"* Only on explicit yes: `"$SCAN" absorb --staged "$A/staged" --repo
+   "$ABS"` (with `DRIFT_CATALOG_DIR="$HOME/.drift/catalog"`).
 
 **Hard rules:** open only briefed lines · claims ⊆ the brief's residue · no dates in this lane ·
 `absorb --check` is the only pass signal · everything ad-hoc writes stays under `"$S/adhoc/"` (the
@@ -213,7 +225,8 @@ Run these right after kicking off the deterministic scan — no gate between:
    clearly-separated tiers. The certified `drift.json` is untouched, and `verify`'s
    `ai-firewall` invariant proves it.
 4. Show the tally (agree / AI-only / tool-only) and point the user at the dashboard's AI
-   Frontier tab.
+   Frontier tab. This, and every offer below, is emitted **before** the closing block of
+   "Deliver the report" — that block ends the output and nothing follows it.
 5. For any AI-only lead worth keeping, OFFER to promote it via `/drift-absorb` — the absorb gate
    verifies it (sourced date, no false attribution, residue shrinks) before it can ever become a
    certified finding. Never present a lead as certified; never merge one without the gate.

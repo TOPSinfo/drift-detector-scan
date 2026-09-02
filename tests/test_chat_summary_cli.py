@@ -38,3 +38,28 @@ def test_the_flag_does_not_change_the_zero_repo_refusal(tmp_path, capsys):
     (st / "drift.json").write_text(json.dumps(payload))
     assert cli._cmd_chat_summary(_args(st, full=True)) == 4
     assert "NOT a clean result" in capsys.readouterr().out
+
+
+# ── through the real parser ──────────────────────────────────────────────────────────────────
+# Everything above hands _cmd_chat_summary a hand-built namespace, so a `dest` rename in the
+# parser would leave these green and the actual CLI broken. These drive argparse.
+
+
+def test_the_full_flag_is_wired_through_real_argparse(tmp_path, capsys):
+    st = _state(tmp_path)
+    assert cli.main(["chat-summary", "--state", str(st), "--full"]) == 0
+    assert "more unaudited" not in capsys.readouterr().out
+
+
+def test_the_default_through_real_argparse_is_brief(tmp_path, capsys):
+    st = _state(tmp_path)
+    assert cli.main(["chat-summary", "--state", str(st)]) == 0
+    assert "more unaudited" in capsys.readouterr().out
+
+
+def test_the_brief_flag_is_accepted_and_is_the_default(tmp_path, capsys):
+    """The spec and the plugin both name `--brief`. It selects what you already get — but a
+    documented flag that exits 2 with "unrecognized arguments" is a bug, not a no-op."""
+    st = _state(tmp_path)
+    assert cli.main(["chat-summary", "--state", str(st), "--brief"]) == 0
+    assert "more unaudited" in capsys.readouterr().out

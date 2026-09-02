@@ -10,6 +10,11 @@ from agent.lib import freshness_check
     ("0.9.0", "0.10.0", True),      # numeric, not lexical: 9 < 10
     ("1.2.0", "1.2.0-rc.1", False),      # pre-release suffix digit must not corrupt the core
     ("1.2.0", "1.2.0-hotfix.5", False),  # same: "5" is not a fourth release component
+    # The mirror case: a RELEASED 1.0.0 supersedes the 1.0.0-beta that preceded it. Reported
+    # "up to date (1.0.0-beta)" until 2026-09-02 — a false "you are current" from the module
+    # whose whole job is catching exactly this.
+    ("1.0.0-beta", "1.0.0", True),
+    ("v1.2", "1.3", True),          # the "v" prefix is accepted, and does not corrupt the core
 ])
 def test_compare_detects_staleness(installed, published, stale):
     is_stale, _ = freshness_check.compare(installed, published)

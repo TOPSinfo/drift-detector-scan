@@ -1826,6 +1826,10 @@ def main(argv: list[str]) -> int:
     # is the common one.
     pcs.add_argument("--full", action="store_true",
                      help="complete blind-spot lists — for a CI log or a -p run")
+    # An explicit no-op: brief is already the default, but the spec and the plugin both name
+    # `--brief`, and a documented flag that errors out is worse than a redundant one.
+    pcs.add_argument("--brief", action="store_false", dest="full",
+                     help="capped blind-spot lists (the default)")
     pcs.set_defaults(func=_cmd_chat_summary)
 
     pn = sub.add_parser("notify")         # push a one-line summary to a Google Chat webhook

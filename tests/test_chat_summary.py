@@ -28,8 +28,13 @@ def test_the_block_ends_the_run_visibly():
 
 
 def test_the_block_stays_within_its_line_budget():
-    """BRIEF only. --full is for a log, where completeness beats brevity."""
-    n = len(chat_summary.render(_facts()).splitlines())
+    """It replaced a wall; it must not quietly become one. 52 actions, still a glance.
+
+    BRIEF only — `--full` is for a log, where completeness beats brevity. The load is the whole
+    test: rendering the default payload measures nothing, because the default payload is small
+    enough to fit the budget however the block grows."""
+    n = len(chat_summary.render(
+        _facts({**_PAYLOAD, "actions": _PAYLOAD["actions"] * 13})).splitlines())
     assert n <= 30, f"the closing block has grown to {n} lines"
 
 
@@ -221,6 +226,15 @@ def test_full_lists_every_unreadable_root():
 
 
 def test_brief_is_the_default_and_unchanged():
-    """Every existing caller gets exactly today's block."""
+    """Every existing caller gets exactly the block it got before `--full` existed.
+
+    `render(facts) == render(facts, full=False)` proves only that the default argument is
+    `False` — both sides move together, so it cannot notice brief changing. These are golden
+    values measured against the pre-`--full` renderer (commit 1a45c77): if brief drifts, one of
+    them breaks."""
     facts = _facts(_payload_with_unaudited(24))
-    assert chat_summary.render(facts) == chat_summary.render(facts, full=False)
+    brief = chat_summary.render(facts)
+    assert brief == chat_summary.render(facts, full=False)
+    assert len(brief.splitlines()) == 11, "brief changed shape"
+    assert "  • …and 21 more unaudited vendor(s)" in brief, (
+        "the cap line that makes brief brief is gone or reworded")
