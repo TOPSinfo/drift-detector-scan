@@ -720,6 +720,12 @@ def _cmd_verify(args) -> int:
         for v in violations:
             print(f"  [{v.check}] {v.detail}")
         return 3
+    print(_verify_headline(payload))
+    return 0
+
+
+def _verify_headline(payload: dict) -> str:
+    """The one line a reader compares against last week. It must not improve for a bad reason."""
     n = payload.get("counts", {})
     # "unchecked", not "unaudited": the count is every non-CURRENT vendor, and since BLOCKED
     # exists that includes vendors we DID check and were refused. Naming the blocked share
@@ -728,10 +734,19 @@ def _cmd_verify(args) -> int:
     unchecked = f"{n.get('unaudited', 0)} unchecked-vendor(s)"
     if blocked:
         unchecked += f" ({blocked} blocked on access)"
-    print(f"✓ report is self-consistent — {n.get('sunsets', 0)} sunsets, "
-          f"{n.get('eol', 0)} eol, {unchecked}; "
-          f"drift.md, summary.html, dashboard.html and drift.json all agree")
-    return 0
+    line = (f"✓ report is self-consistent — {n.get('sunsets', 0)} sunsets, "
+            f"{n.get('eol', 0)} eol, {unchecked}; "
+            f"drift.md, summary.html, dashboard.html and drift.json all agree")
+    # A repo that could not be read makes every count above cover LESS of the fleet, and a
+    # smaller backlog then reads as progress. On 2026-09-02 `unaudited` fell 24 -> 14 and ten of
+    # those were one repo failing to clone — nine vendors leaving the catalog with it. The
+    # rootsUnscannable list was in the payload and the scan logged a ⚠, but this line — the one
+    # a reader actually compares week to week — said only that things had improved.
+    unreadable = payload.get("rootsUnscannable") or []
+    if unreadable:
+        line += (f"\n⚠ {len(unreadable)} repo(s) could not be read, so these counts cover less "
+                 f"than the fleet — a smaller backlog here is not necessarily progress")
+    return line
 
 
 def _cmd_preflight(args) -> int:

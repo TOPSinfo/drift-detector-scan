@@ -92,6 +92,28 @@ def chat_card(payload: dict, *, report_url: str | None = None,
     c = payload.get("counts", {})
     sections = []
 
+    # ── a repo that could not be read invalidates everything below it ───────────────────────
+    # Leads the card on purpose. Every count further down covers less of the fleet than it
+    # looks like, and the backlog SHRINKS when a repo drops out — on 2026-09-02 one failed
+    # clone took nine vendors with it and `unaudited` fell from 24 to 14, which reads as a good
+    # week unless something says otherwise. This is that something.
+    unreadable = payload.get("rootsUnscannable") or []
+    if unreadable:
+        widgets = [{"textParagraph": {"text":
+            f"⚠️ <b>{len(unreadable)} repo(s) were not read this scan.</b> Every count below "
+            f"covers less than the fleet — a smaller backlog here is "
+            f"<b>not necessarily progress</b>."}}]
+        for r in unreadable[:_SHOW_BEFORE_COLLAPSE]:
+            root = str(r.get("root", ""))
+            widgets.append({"decoratedText": {
+                "topLabel": "not scanned",
+                "text": f"<b>{root.rstrip('/').rsplit('/', 1)[-1] or root}</b>",
+                "bottomLabel": (r.get("reason") or "no reason recorded").strip()[:220],
+                "wrapText": True}})
+        widgets.append({"divider": {}})
+        sections.append({"header": f"Could not be read — {len(unreadable)} repo(s)",
+                         "widgets": widgets})
+
     # ── what a maintainer has to act on, FIRST ──────────────────────────────────────────────
     blocked = _by_verdict(payload, "BLOCKED")
     if blocked:

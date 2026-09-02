@@ -262,3 +262,52 @@ def test_group_and_explicit_member_resolve_once_not_twice(tmp_path):
         str(tmp_path / "s"), clone=fake_clone, expand_group=fake_expand)
     assert not out["errors"], out["errors"]
     assert len(out["projects"]) == 1, out["projects"]     # one repo, not two
+
+
+# ── clone retry ─────────────────────────────────────────────────────────────────────────────
+# Two of five fleet runs on 2026-09-01/02 lost a whole repo to `Recv failure: Connection reset
+# by peer` talking to the same self-hosted GitLab host — two different repos, on two runs.
+# The second loss removed NINE vendors from the catalog for that run. The scan reported
+# it honestly, but a transient reset costing a repo is worth a retry, not a report.
+
+def test_a_transient_clone_failure_is_retried():
+    from agent.lib import source_resolver as sr
+    calls = []
+
+    def flaky(url, dest, *, branch=None):
+        calls.append(url)
+        if len(calls) < 3:
+            return False, "fatal: unable to access: Recv failure: Connection reset by peer"
+        return True, "cloned"
+
+    ok, msg = sr._clone_with_retry(flaky, "https://g/x", "/tmp/x", branch=None, sleep=lambda _: None)
+    assert ok and len(calls) == 3
+
+
+def test_a_permanent_clone_failure_is_not_retried():
+    """A missing branch or a rejected credential will not improve on the third attempt, and on a
+    fleet this size retrying every one of them costs minutes for nothing."""
+    from agent.lib import source_resolver as sr
+    calls = []
+
+    def missing(url, dest, *, branch=None):
+        calls.append(url)
+        return False, "branch 'nope' not found on the remote"
+
+    ok, msg = sr._clone_with_retry(missing, "https://g/x", "/tmp/x", branch="nope",
+                                   sleep=lambda _: None)
+    assert not ok and len(calls) == 1
+
+
+def test_retries_are_bounded_and_return_the_last_error():
+    from agent.lib import source_resolver as sr
+    calls = []
+
+    def always_reset(url, dest, *, branch=None):
+        calls.append(url)
+        return False, "Recv failure: Connection reset by peer"
+
+    ok, msg = sr._clone_with_retry(always_reset, "https://g/x", "/tmp/x", branch=None,
+                                   sleep=lambda _: None)
+    assert not ok and len(calls) == sr._CLONE_ATTEMPTS
+    assert "Connection reset" in msg

@@ -24,6 +24,7 @@ import hashlib
 import os
 import re
 import subprocess
+import time
 from pathlib import Path
 
 from agent.lib.repo_discovery import discover_repos, diagnose_root
@@ -54,7 +55,37 @@ def _has_code(path: str) -> bool:
     return any(next(p.rglob(g), None) is not None for g in _CODE_GLOBS)
 
 
-def _default_clone(url: str, dest: str, *, branch: str | None = None) -> tuple[bool, str]:
+# A network hiccup should not cost a whole repo. Two of five fleet runs on 2026-09-01/02 lost
+# one to `Recv failure: Connection reset by peer` against the same GitLab host; the second took
+# nine vendors out of the catalog with it. Matched on the message because git reports every one
+# of these through the same non-zero exit.
+_TRANSIENT = re.compile(
+    r"(connection reset|recv failure|send failure|timed out|timeout|could not resolve host"
+    r"|temporary failure|early eof|unexpected disconnect|remote end hung up|rpc failed"
+    r"|the requested url returned error: 5\d\d)", re.I)
+_CLONE_ATTEMPTS = 3
+
+
+def _clone_with_retry(clone_once, url: str, dest: str, *, branch, sleep=time.sleep):
+    """Retry `clone_once` only while the failure looks transient.
+
+    A missing branch, a rejected credential or a 404 will not improve on the third attempt, and
+    on a fleet of fifty repos retrying every permanent failure costs minutes to learn nothing.
+    So the message decides: a reset or a timeout is retried, anything else is returned at once.
+    """
+    last = ""
+    for attempt in range(1, _CLONE_ATTEMPTS + 1):
+        ok, msg = clone_once(url, dest, branch=branch)
+        if ok:
+            return True, msg
+        last = msg or ""
+        if not _TRANSIENT.search(last) or attempt == _CLONE_ATTEMPTS:
+            return False, last
+        sleep(2 ** (attempt - 1))       # 1s, 2s — bounded, and long enough for a blip to pass
+    return False, last
+
+
+def _clone_once(url: str, dest: str, *, branch: str | None = None) -> tuple[bool, str]:
     """Clone (or update) `url` into `dest` using the machine's own git auth.
 
     A GITLAB_TOKEN / DRIFT_GIT_TOKEN in the environment is used via a transient in-memory
@@ -243,3 +274,8 @@ def resolve_sources(roots: list, state_dir: str, *, clone=None, expand_group=Non
         seen.add(abs_)
         uniq.append((abs_, ident, kind))
     return {"projects": uniq, "branches": branches, "errors": errors}
+
+
+def _default_clone(url: str, dest: str, *, branch: str | None = None) -> tuple[bool, str]:
+    """The clone used by `resolve_sources` — one attempt per call before, retried now."""
+    return _clone_with_retry(_clone_once, url, dest, branch=branch)

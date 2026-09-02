@@ -343,3 +343,36 @@ def test_a_rejected_card_is_reported_as_a_bug_not_an_outage(capsys, tmp_path, mo
     assert cli._cmd_notify(args) == 0                 # still never reddens the pipeline
     err = capsys.readouterr().err
     assert "REJECTED" in err and "bug in the card" in err
+
+
+# ── unreadable repos ────────────────────────────────────────────────────────────────────────
+
+def _unread(payload, roots):
+    d = dict(payload)
+    d["rootsUnscannable"] = roots
+    return d
+
+
+_RESET = [{"root": "https://g/example-org/acme-crm",
+           "reason": "could not clone: Recv failure: Connection reset by peer"}]
+
+
+def test_an_unreadable_repo_leads_the_card():
+    """It goes ABOVE the vendor lists because it invalidates them: every count on this card
+    covers less of the fleet than it appears to. On 2026-09-02 one failed clone took nine
+    vendors out of the catalog and the backlog looked like it had shrunk."""
+    card = _card(_unread(_maint(_BLOCKED, queued=5), _RESET))
+    assert _headers(card)[0].startswith("Could not be read")
+
+
+def test_the_unreadable_repo_is_named_with_its_reason():
+    card = _card(_unread(_maint(_BLOCKED, queued=5), _RESET))
+    t = _text(_section(card, [h for h in _headers(card) if h.startswith("Could not be read")][0]))
+    assert "acme-crm" in t
+    assert "Connection reset" in t
+    assert "not necessarily progress" in t or "cover less" in t.lower()
+
+
+def test_a_complete_scan_has_no_unreadable_section():
+    card = _card(_maint(_BLOCKED, queued=5))
+    assert not any(h.startswith("Could not be read") for h in _headers(card))
