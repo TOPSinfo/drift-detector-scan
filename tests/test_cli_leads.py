@@ -247,3 +247,27 @@ def test_zero_width_space_cannot_stand_in_for_the_ascii_space_the_gate_looks_for
     rc = cli.main(["leads", "--state", str(tmp_path), "--ai-results", ai, "--now", "2026-09-02"])
     assert rc == 2
     assert "carries a date" in capsys.readouterr().err
+
+
+def test_a_fullwidth_digit_version_is_not_an_identifier(tmp_path, capsys):
+    """`_VERSION_TOKEN` used to spell its digits `\\d`, which matches all 760 Unicode `Nd` code
+    points — so the fullwidth `２０２７-０３-０１` and the Arabic-Indic `٢٠٢٧-٠٣-٠١` satisfied the
+    exemption and were released, while reading to a human as exactly the date the gate exists to
+    refuse. `_DATEISH` keeps the broad `\\d` on purpose and catches both; narrowing only the
+    exemption to `[0-9]` means the broad scan's catch is no longer let go."""
+    for version in ("２０２７-０３-０１", "٢٠٢٧-٠٣-٠١"):
+        ai = _ai_with(tmp_path, version=version)
+        rc = cli.main(["leads", "--state", str(tmp_path), "--ai-results", ai,
+                       "--now", "2026-09-02"])
+        assert rc == 2, f"{version!r} was wrongly accepted as an identifier"
+        assert "carries a date" in capsys.readouterr().err
+        assert not (tmp_path / "leads.json").exists()
+
+
+def test_the_ascii_dated_version_still_passes_after_the_narrowing(tmp_path):
+    """The other half of the narrowing: it must be strictly MORE refusing, never differently
+    refusing. The real SP-API version token is still an identifier."""
+    ai = _ai_with(tmp_path, version="2020-09-04")
+    assert cli.main(["leads", "--state", str(tmp_path), "--ai-results", ai,
+                     "--now", "2026-09-02"]) == 0
+    assert (tmp_path / "leads.json").exists()

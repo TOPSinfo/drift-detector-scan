@@ -902,7 +902,10 @@ _DATEISH = re.compile(
 # Deliberately narrow: one named field, and only a bare token. Not "dates are allowed in
 # identifiers", which would grow. `note`, `endpoint`, and every other field keep the broad scan,
 # because prose is where a claim hides.
-_VERSION_TOKEN = re.compile(r"v?\d{4}[-/]\d{2}[-/]\d{2}", re.IGNORECASE)
+# ASCII digits only: `\d` matches all 760 Unicode Nd code points, so `"２０２７-０３-０１"` would
+# have satisfied the exemption while reading as a date to a human. `_DATEISH` deliberately keeps
+# the broad `\d` — it must catch those — so the pair is strictly more refusing, not less.
+_VERSION_TOKEN = re.compile(r"v?[0-9]{4}[-/][0-9]{2}[-/][0-9]{2}", re.IGNORECASE)
 
 
 def _identifier_date_ok(field: str, value: str) -> bool:
@@ -917,8 +920,13 @@ def _cmd_leads(args) -> int:
 
     Replaces the old `probabilistic` subcommand and its side-car HTML: leads now ride in the
     dashboard's AI Frontier tab as their own blob. Pure + deterministic: no network, no tokens.
-    Refuses malformed input, and refuses a DATE in a lead — a date is a certified-tier claim, and
-    a lead may only say WHETHER (`retired` is the tri-state yes/no/unknown).
+    Refuses malformed input, and refuses a DATE in ANY string field of a lead — a date is a
+    certified-tier claim, and a lead may only say WHETHER (`retired` is the tri-state
+    yes/no/unknown). One narrow exemption: `version` may be a bare ASCII date-shaped token
+    (`2020-09-04`, `v2020-09-04`), because vendors like Amazon SP-API name their API versions by
+    date — see `_identifier_date_ok` and the commentary above it. `endpoint`, `note` and every
+    other field get no exemption. A date anywhere refuses the WHOLE submission: nothing is
+    written and every lead in the batch is rejected together.
     """
     from agent.lib.probabilistic import compare
     drift_path = os.path.join(args.state, "drift.json")
