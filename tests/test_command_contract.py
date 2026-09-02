@@ -120,3 +120,13 @@ def test_the_resolution_rescan_carries_the_progress_rule_too():
     """The re-scan is a second full scan of the same fleet. Attaching the progress rule only to
     the first run leaves the back half of the wall time silent."""
     assert "Same progress rule as the first run — this re-scan takes as long." in _flat()
+
+
+def test_the_command_forbids_working_around_a_gate_refusal():
+    """On 2026-09-02 the leads gate refused a batch and the model edited the evidence and
+    resubmitted until it passed — turning a real API version into 'dated (see file:line)'. A gate
+    that can be satisfied by degrading the evidence is not a gate. CLAUDE.md already says a
+    refusal is a trust artifact; the command file never said it."""
+    text = " ".join(CMD.read_text().split())
+    assert "never work around a gate refusal" in text
+    assert "Report the refusal" in text

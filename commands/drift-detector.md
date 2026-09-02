@@ -231,5 +231,9 @@ Run these right after kicking off the deterministic scan — no gate between:
    verifies it (sourced date, no false attribution, residue shrinks) before it can ever become a
    certified finding. Never present a lead as certified; never merge one without the gate.
 
+**If the gate refuses, never work around a gate refusal.** Report the refusal and move on: name the vendor, the field, and the reason the gate gave. Do NOT edit the document and resubmit until it passes.
+
+A gate that can be satisfied by rewriting the evidence is not a gate. If the refusal looks wrong, the refusal is the bug report — say so plainly, and it gets fixed. Sanitising the leads until they are accepted destroys the evidence and the signal at once, and ships a lead less truthful than the one that was refused.
+
 ## Follow-ups
 Answer *"which repos use Amazon SP-API?"*, *"who's on an old runtime?"* etc. from `inventory.json` (the queryable shape-map) — filter the JSON, do **not** re-scan. Per repo: `{path, ref, head_sha, runtimes, frameworks, sdks[], endpoints[{vendor,domain,version,apiPath,file_count,files:[path:line]}]}`; plus `audit.json` for the vuln/EOL/sunset findings and `drift.json` → `catalog[]` for per-vendor coverage.
