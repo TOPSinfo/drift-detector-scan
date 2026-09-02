@@ -77,6 +77,17 @@ if [ "${1:-}" = "doctor" ]; then
   else
     echo "  engine      : not yet — provisioned on first scan"
   fi
+  # Freshness. Network-OPTIONAL by design: a check that fails the run when offline is a check
+  # people disable. Offline prints one plain line; it never changes doctor's exit code.
+  PUB_URL="https://raw.githubusercontent.com/TOPSinfo/drift-detector-scan/master/.claude-plugin/marketplace.json"
+  INST_VER="$(python3 -c "import json;print(json.load(open('$ROOT/.claude-plugin/plugin.json')).get('version',''))" 2>/dev/null || echo '')"
+  PUB_VER="$(curl -fsS --max-time 5 "$PUB_URL" 2>/dev/null | python3 -c "import json,sys;d=json.load(sys.stdin);print((d.get('plugins') or [{}])[0].get('version',''))" 2>/dev/null || echo '')"
+  if [ -n "$PUB_VER" ]; then
+    PYTHONPATH="$ROOT" python3 -c "from agent.lib import freshness_check; print('  ' + freshness_check.compare('$INST_VER','$PUB_VER')[1])" 2>/dev/null \
+      || echo "  drift-detector: version check unavailable"
+  else
+    echo "  drift-detector: could not reach the marketplace to check for updates (offline?)"
+  fi
   echo
   if [ "$ready" = "1" ]; then
     echo "Ready ✓   run:  /drift-detector <folder>"
