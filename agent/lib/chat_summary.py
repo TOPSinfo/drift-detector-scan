@@ -46,8 +46,14 @@ def _action_line(a: dict) -> str:
     return f"{ref}{tail} — {sites} site(s)" + (f" in {where}" if where else "")
 
 
-def render(f: dict) -> str:
-    """The block. Always emitted last, always verbatim."""
+def render(f: dict, *, full: bool = False) -> str:
+    """The block. Always emitted last, always verbatim.
+
+    `full` is for a CI job log or a `-p` run — a surface read LATER by someone who cannot ask for
+    the rest, so the blind-spot lists are complete there. In chat the reader is present, and a
+    capped list plus "…and N more" is the right trade. Brief is the default: every existing
+    caller keeps today's block exactly.
+    """
     L: list[str] = [_headline(f), _delta(f)]
 
     u = f.get("urgent")
@@ -66,10 +72,11 @@ def render(f: dict) -> str:
     unreadable = f.get("unreadable") or []
     # Roots that could not be read are named FIRST and unconditionally — they are the reason a
     # scan covers less than it appears to, and on a zero-repo scan they are the explanation.
-    for r in unreadable[:3]:
+    shown = unreadable if full else unreadable[:3]
+    for r in shown:
         name = (r.get("root") or "").rstrip("/").rsplit("/", 1)[-1] or r.get("root", "")
         L.append(f"  • {name} COULD NOT BE READ — {r.get('reason') or 'no reason recorded'}")
-    if len(unreadable) > 3:
+    if not full and len(unreadable) > 3:
         L.append(f"  • …and {len(unreadable) - 3} more unreadable root(s)")
 
     # "every repo read" is a CLAIM, and it is false when no repo was read. An empty scan used to
@@ -79,10 +86,10 @@ def render(f: dict) -> str:
     elif not f["unaudited"] and not f["unknown_repos"] and not unreadable:
         L.append("  • nothing — every vendor CURRENT, every repo read")
     else:
-        for v in f["unaudited"][:3]:
+        for v in (f["unaudited"] if full else f["unaudited"][:3]):
             L.append(f"  • {v['vendor']} {v.get('verdict') or 'UNAUDITED'}, "
                      f"{v['call_sites']} call-site(s) — 0 findings there is not evidence of health")
-        if len(f["unaudited"]) > 3:
+        if not full and len(f["unaudited"]) > 3:
             L.append(f"  • …and {len(f['unaudited']) - 3} more unaudited vendor(s)")
         if f["unknown_repos"]:
             names = ", ".join(f["unknown_repos"][:3])

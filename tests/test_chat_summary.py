@@ -28,10 +28,14 @@ def test_the_block_ends_the_run_visibly():
 
 
 def test_the_block_stays_within_its_line_budget():
-    """It replaced a wall; it must not quietly become one. 50 actions, still a glance."""
-    payload = {**_PAYLOAD, "actions": _PAYLOAD["actions"] * 13}
-    n = len(_render(payload).rstrip().splitlines())
+    """BRIEF only. --full is for a log, where completeness beats brevity."""
+    n = len(chat_summary.render(_facts()).splitlines())
     assert n <= 30, f"the closing block has grown to {n} lines"
+
+
+def test_full_is_allowed_to_exceed_the_chat_budget():
+    facts = _facts(_payload_with_unaudited(24))
+    assert len(chat_summary.render(facts, full=True).splitlines()) > 30
 
 
 # ── honesty ───────────────────────────────────────────────────────────────────────────────────
@@ -169,3 +173,54 @@ def test_a_partial_scan_still_names_the_repo_it_could_not_read():
     out = chat_summary.render(digest.summary_facts(payload))
     assert "acme-crm" in out
     assert "Scan complete" in out          # it DID complete; it just did not cover everything
+
+
+# ── --full: a surface nobody is watching ─────────────────────────────────────────────────────
+# Chat has a reader present who can ask for the rest, so a capped list plus "…and N more" is the
+# right trade there. A CI job log (or a `-p` run) is read LATER by nobody who can ask — the N it
+# drops are the whole reason to read the log. `full=True` uncaps the two blind-spot lists and
+# nothing else; brief stays the default so every existing caller is untouched.
+
+def _facts(payload=None, **kw):
+    return digest.summary_facts(payload or _PAYLOAD, **kw)
+
+
+def _payload_with_unaudited(n):
+    return {"generated": "2026-09-02",
+            "counts": {"fixes": 1, "reposScanned": 1, "reposAffected": 1,
+                       "byOwner": {"devops": {"fixes": 1, "review": 0},
+                                   "developer": {"fixes": 0, "review": 0}}},
+            "actions": [], "shapes": [], "rootsUnscannable": [],
+            "catalog": [{"vendor": f"V{i}", "verdict": "UNAUDITED", "callSites": 30 - i}
+                        for i in range(n)]}
+
+
+def _payload_with_unreadable(roots):
+    p = _payload_with_unaudited(0)
+    p["rootsUnscannable"] = roots
+    return p
+
+
+def test_full_lists_every_unaudited_vendor_not_just_three():
+    """A CI log is read later by someone who cannot ask for the rest, so `…and 16 more` is a
+    dead end there. In chat the reader is present and three is enough."""
+    facts = _facts(_payload_with_unaudited(24))
+    brief = chat_summary.render(facts)
+    full = chat_summary.render(facts, full=True)
+    assert "and 21 more" in brief
+    assert "more unaudited" not in full
+    assert full.count("0 findings there is not evidence of health") == 24
+
+
+def test_full_lists_every_unreadable_root():
+    roots = [{"root": f"https://g/example-org/repo-{i}", "reason": "reset"} for i in range(5)]
+    facts = _facts(_payload_with_unreadable(roots))
+    assert "more unreadable" in chat_summary.render(facts)
+    assert "more unreadable" not in chat_summary.render(facts, full=True)
+    assert chat_summary.render(facts, full=True).count("COULD NOT BE READ") == 5
+
+
+def test_brief_is_the_default_and_unchanged():
+    """Every existing caller gets exactly today's block."""
+    facts = _facts(_payload_with_unaudited(24))
+    assert chat_summary.render(facts) == chat_summary.render(facts, full=False)
