@@ -1621,6 +1621,11 @@ def _cmd_chat_summary(args) -> int:
         pass
 
     print(chat_summary.render(digest.summary_facts(payload, leads=leads)))
+    # Exit 4 on a scan that read nothing — the same code `run` uses for "nothing scanned /
+    # source unreachable". The block says so in words now, but anything that pipes this needs
+    # the status too, and a 0 here is what let a failed scan read as a finished one.
+    if not (payload.get("counts") or {}).get("reposScanned"):
+        return 4
     return 0
 
 

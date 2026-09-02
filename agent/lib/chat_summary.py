@@ -63,12 +63,25 @@ def render(f: dict) -> str:
     # one nobody wrote, and this section is the product's thesis: 0 findings for an unaudited
     # vendor is not evidence of health.
     L += ["", "What this scan could NOT see"]
-    if not f["unaudited"] and not f["unknown_repos"]:
+    unreadable = f.get("unreadable") or []
+    # Roots that could not be read are named FIRST and unconditionally — they are the reason a
+    # scan covers less than it appears to, and on a zero-repo scan they are the explanation.
+    for r in unreadable[:3]:
+        name = (r.get("root") or "").rstrip("/").rsplit("/", 1)[-1] or r.get("root", "")
+        L.append(f"  • {name} COULD NOT BE READ — {r.get('reason') or 'no reason recorded'}")
+    if len(unreadable) > 3:
+        L.append(f"  • …and {len(unreadable) - 3} more unreadable root(s)")
+
+    # "every repo read" is a CLAIM, and it is false when no repo was read. An empty scan used to
+    # satisfy the `nothing to report` branch and print that reassuring sentence.
+    if not f.get("repos_scanned"):
+        L.append("  • NOTHING — no repository was read at all, so this scan proves nothing")
+    elif not f["unaudited"] and not f["unknown_repos"] and not unreadable:
         L.append("  • nothing — every vendor CURRENT, every repo read")
     else:
         for v in f["unaudited"][:3]:
-            L.append(f"  • {v['vendor']} UNAUDITED, {v['call_sites']} call-site(s) — "
-                     f"0 findings there is not evidence of health")
+            L.append(f"  • {v['vendor']} {v.get('verdict') or 'UNAUDITED'}, "
+                     f"{v['call_sites']} call-site(s) — 0 findings there is not evidence of health")
         if len(f["unaudited"]) > 3:
             L.append(f"  • …and {len(f['unaudited']) - 3} more unaudited vendor(s)")
         if f["unknown_repos"]:
@@ -81,6 +94,16 @@ def render(f: dict) -> str:
     if f["leads"] is not None:
         L += ["", f"AI pass: {f['leads']} lead(s) raised above — leads, not findings; "
                   f"nothing entered drift.json"]
+
+    # A scan that read NOTHING never says "complete". `run` already refuses this state with
+    # exit 4 and "this is NOT a clean result" — and this block used to contradict it on the very
+    # same state, printing "every repo read · Scan complete" over zero repositories. A user hit
+    # exactly that on 2026-09-02. The emptiest possible scan is the one case a summary must not
+    # render as a clean bill.
+    if not f.get("repos_scanned"):
+        L += ["", "✗ Scanned 0 repositories — this is NOT a clean result. Nothing was audited.",
+              "  Point the scan at a git checkout (or a folder containing one) and re-run."]
+        return "\n".join(L)
 
     L += ["", "Scan complete. Reports: drift.md · summary.html · dashboard.html · drift.json",
           "Weekly scheduling, cleanup and blind-spot absorption are available — just ask."]

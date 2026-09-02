@@ -113,3 +113,59 @@ def test_the_urgent_line_names_the_kind_of_death_correctly():
         {"kind": "sunset", "ref": "eBay", "unit": "svcs.ebay.com", "date": "2025-02-05",
          "status": "DEPRECATED", "file_count": 4, "finding_count": 4}]}
     assert "retires" in _render(sunset)
+
+
+# ── a scan that read nothing ────────────────────────────────────────────────────────────────
+# FOUND BY A USER, 2026-09-02. `run` refused correctly — "✗ scanned 0 repositories — this is NOT
+# a clean result", exit 4 — and then chat-summary on the same state printed:
+#
+#     🔴 0 to fix · 🟠 0 to review · across 0 of 0 repos
+#     What this scan could NOT see
+#       • nothing — every vendor CURRENT, every repo read
+#     Scan complete.
+#
+# "every repo read" when zero were read, and "Scan complete" when nothing ran. The block that
+# exists to say `cannot see != clean` was rendering the emptiest possible scan as a clean bill.
+
+from agent.lib import digest
+
+
+def _empty_scan(unscannable=None):
+    return {"generated": "2026-09-02",
+            "counts": {"fixes": 0, "reposScanned": 0, "reposAffected": 0,
+                       "byOwner": {"devops": {"fixes": 0, "review": 0},
+                                   "developer": {"fixes": 0, "review": 0}}},
+            "actions": [], "catalog": [], "shapes": [],
+            "rootsUnscannable": unscannable or []}
+
+
+def test_a_scan_that_read_nothing_is_not_reported_as_complete():
+    out = chat_summary.render(digest.summary_facts(_empty_scan()))
+    assert "Scan complete" not in out
+    assert "every repo read" not in out
+
+
+def test_a_scan_that_read_nothing_says_so_loudly():
+    out = chat_summary.render(digest.summary_facts(_empty_scan()))
+    low = out.lower()
+    assert "0 repositories" in low or "no repositories" in low or "nothing was scanned" in low
+    assert "not a clean" in low
+
+
+def test_an_unreadable_root_is_named_in_what_it_could_not_see():
+    """The fleet case: a repo that failed to clone belongs in this section by definition, and it
+    was never consulted here — so a scan could lose a repo and this block would not mention it."""
+    payload = _empty_scan([{"root": "https://g/example-org/acme-crm",
+                            "reason": "could not clone: Connection reset by peer"}])
+    out = chat_summary.render(digest.summary_facts(payload))
+    assert "acme-crm" in out
+    assert "Connection reset" in out or "could not clone" in out
+
+
+def test_a_partial_scan_still_names_the_repo_it_could_not_read():
+    """Not just the zero case — 51 of 52 read is also a blind spot the reader must see."""
+    payload = _empty_scan([{"root": "https://g/example-org/acme-crm", "reason": "reset"}])
+    payload["counts"]["reposScanned"] = 51
+    out = chat_summary.render(digest.summary_facts(payload))
+    assert "acme-crm" in out
+    assert "Scan complete" in out          # it DID complete; it just did not cover everything

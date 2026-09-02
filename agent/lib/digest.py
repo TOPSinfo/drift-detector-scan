@@ -68,6 +68,16 @@ def summary_facts(payload: dict, *, leads: int | None = None) -> dict:
             (payload.get("catalogDelta") or {}).get("noLongerBlocked") or []),
         "unknown_repos": [s.get("repo") for s in (payload.get("shapes") or [])
                           if s.get("verdict") == "UNKNOWN"],
+        # Roots that could not be READ at all — a failed clone, a bad path. Distinct from an
+        # UNKNOWN shape (read, not understood) and from an unaudited vendor (found, unchecked).
+        # Every summary surface needs it: without it a scan can lose a repo, or read none, and
+        # still render as "every repo read".
+        # git's failure text is multi-line ("Cloning into ...\nfatal: ..."), which breaks a
+        # one-bullet-per-root layout wherever this is rendered. Collapsed once, here, so every
+        # surface gets a single line rather than each re-flattening it.
+        "unreadable": [{"root": r.get("root", ""),
+                        "reason": " ".join((r.get("reason") or "").split())[:200]}
+                       for r in (payload.get("rootsUnscannable") or [])],
         # Injected, never read from disk — see the test that pins this.
         "leads": leads,
     }
