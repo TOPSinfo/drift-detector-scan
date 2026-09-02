@@ -1627,7 +1627,8 @@ def _cmd_chat_summary(args) -> int:
     except (OSError, ValueError):
         pass
 
-    print(chat_summary.render(digest.summary_facts(payload, leads=leads)))
+    print(chat_summary.render(digest.summary_facts(payload, leads=leads),
+                              full=getattr(args, "full", False)))
     # Exit 4 on a scan that read nothing — the same code `run` uses for "nothing scanned /
     # source unreachable". The block says so in words now, but anything that pipes this needs
     # the status too, and a 0 here is what let a failed scan read as a finished one.
@@ -1820,6 +1821,11 @@ def main(argv: list[str]) -> int:
 
     pcs = sub.add_parser("chat-summary")   # the closing block a CLI scan ends with
     pcs.add_argument("--state", required=True)
+    # Verbosity is chosen by WHO reads it: a chat reader is present and can ask for more; a CI
+    # log is read later by someone who cannot. Brief is the default because the interactive case
+    # is the common one.
+    pcs.add_argument("--full", action="store_true",
+                     help="complete blind-spot lists — for a CI log or a -p run")
     pcs.set_defaults(func=_cmd_chat_summary)
 
     pn = sub.add_parser("notify")         # push a one-line summary to a Google Chat webhook
