@@ -4,7 +4,36 @@ All notable changes to the Drift Detector plugin. Dates are YYYY-MM-DD.
 
 ## Unreleased
 
+## v1.1.0 — 2026-09-03
+
 ### Added
+
+- **The scanner says when it is out of date, on every run — not only in `doctor`.** `doctor`
+  has been able to report a stale install since 1.0.0, and nothing ever runs `doctor`: the
+  guided flow does not call it, so a stale install stayed invisible exactly where it mattered,
+  inside the scan whose behaviour it shapes. This release is the worked example — a 1.0.0
+  install would have gone on hitting the leads-gate bug fixed below while believing itself
+  current. The check now runs once per invocation, before the subcommand, and is built to be
+  the quietest guard in the tree: it speaks **only** when the install is behind (current,
+  unparseable and offline are all silence, because a line on every run trains people to ignore
+  the one that matters), writes to **stderr only** — stdout carries `drift.json`, the SBOM and
+  `chat-summary`, which consumers pipe — caches the answer for a day so a 52-repo fleet scan
+  makes at most one request rather than 52, and can neither raise nor change an exit code. Set
+  `DRIFT_NO_UPDATE_CHECK=1` to switch it off for air-gapped CI and byte-reproducibility runs;
+  an always-on check with no off switch is one that gets disabled by deleting the code. It
+  fetches with `curl` and falls back to `urllib` — on evidence, not taste: urllib was observed
+  dying in the TLS handshake against the very URL curl fetched with a 200 in the same second,
+  and `bin/drift-scan`'s doctor block has always used curl for it.
+- **Two runtime rules for the AI plane, pinned by polarity-aware contract tests.** A gate
+  refusal is now **reported and never worked around** — the observed 2026-09-02 run met a
+  refusal by editing the evidence and resubmitting until it passed, turning a real API version
+  into `dated (see file:line)` and shipping a lead less truthful than the one refused. The rule
+  also closes the softer form: offering to fix and resubmit, framed as help, is the same
+  workaround wearing a question mark, and "a new submission with its own evidence" now carries
+  an operational test — going back to the source and reading it again, never retyping the JSON
+  with the refused field blanked. Separately, the AI wait takes the progress cadence a fleet
+  scan already has, now with a real `[n/N] repos cross-checked` signal (N is known because
+  step 1 dispatches one agent per repo) and a stop condition.
 
 - **A vendor-coverage digest for management** (`drift-scan coverage-report`). The scanner has
   always known which detected vendors nobody has audited; it had no way to say so to anyone who
@@ -121,6 +150,22 @@ All notable changes to the Drift Detector plugin. Dates are YYYY-MM-DD.
   signal.
 
 ### Fixed
+
+- **A dated API version was refused as though it were a claim about the future.** The leads
+  gate scans every string field of an AI-proposed integration and refuses any date shape —
+  correctly, because a lead may say *whether* something is retired, never *when*. But Amazon
+  SP-API names its endpoints by date, so `version: "2020-09-04"` is an identifier copied out of
+  the source at a cited `file:line`, asserting nothing. The gate was therefore unable to express
+  a true lead about the product's flagship vendor. `version` now takes a narrow exemption: a
+  **bare ASCII token** and nothing else. Prose in a version field (`retires 2027-03-01`) is
+  still refused, `note` is scanned exactly as before, and the exemption's alphabet is 10
+  characters wide — no sentence, and therefore no claim about when something retires, can ride
+  along inside it. An `endpoint` exemption was attempted and **deliberately withdrawn**: no
+  lexical rule separates a real dated path segment from a claim written to look like one
+  (`/2027-03-01/sunset-per-the-vendor-changelog` is the same shape), and the three attempts are
+  recorded in the code so nobody restores it as a missing feature. Corroborating a dated
+  endpoint against what the deterministic scanner observed is the real fix, and is specced
+  separately.
 
 - **`catalogSummary` never reached `drift.json`.** The absorption counts existed in
   `audit.json` and stopped there, so the canonical contract — which every other surface is a
