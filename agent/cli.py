@@ -14,7 +14,7 @@ import sys
 import time
 
 from agent import inventory_scan as inventory_scan_mod
-from agent.lib import scan_util
+from agent.lib import scan_util, update_check
 
 
 def _capped_jobs(requested: int, command: str = "run") -> int:
@@ -2064,6 +2064,11 @@ def main(argv: list[str]) -> int:
     pis.set_defaults(func=_cmd_inventory_scan)
 
     args = p.parse_args(argv)
+    # Every invocation, not just the AI plane: `doctor` could always say an install was
+    # behind, and nothing ran doctor, so a stale install stayed invisible exactly where it
+    # mattered. Cached for a day, stderr-only, silent unless BEHIND, and it can neither
+    # raise nor change the exit code — see agent/lib/update_check.
+    update_check.run()
     return args.func(args)
 
 
