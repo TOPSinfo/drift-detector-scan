@@ -75,7 +75,7 @@ def test_a_secret_action_conforms_to_the_schema():
     payload = {"schemaVersion": "drift/v1", "generated": "2026-09-04",
                "counts": {"fixes": 0, "sunsets": 0, "eol": 0, "critical": 0, "unaudited": 0,
                          "reposScanned": 1, "reposAffected": 1},
-               "actions": [{"repo": "root-amazon-supplier-software", "ref": "generic-api-key",
+               "actions": [{"repo": "acme-supplier-tools", "ref": "generic-api-key",
                             "kind": "secret", "status": "DEPRECATED"}]}
     jsonschema.validate(instance=payload, schema=_load_schema())
 
@@ -97,7 +97,7 @@ def test_a_secret_actions_real_status_conforms_to_the_schema():
     payload = {"schemaVersion": "drift/v1", "generated": "2026-09-04",
                "counts": {"fixes": 0, "sunsets": 0, "eol": 0, "critical": 0, "unaudited": 0,
                           "secrets": 1, "reposScanned": 1, "reposAffected": 1},
-               "actions": [{"repo": "root-amazon-supplier-software", "ref": "generic-api-key",
+               "actions": [{"repo": "acme-supplier-tools", "ref": "generic-api-key",
                             "kind": "secret", "status": "EXPOSED"}]}
     jsonschema.validate(instance=payload, schema=_load_schema())
 

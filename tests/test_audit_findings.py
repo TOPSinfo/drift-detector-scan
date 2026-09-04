@@ -342,7 +342,7 @@ def _secret_repo(**secret_kwargs):
     secret = {"ruleId": "generic-api-key", "path": "config/feedvisor.php", "line": 5,
              "commit": "a1b2c3d", "fingerprint": "a1b2c3d:config/feedvisor.php:generic-api-key:5"}
     secret.update(secret_kwargs)
-    return {"path": "root-amazon-supplier-software", "secrets": [secret], "endpoints": [], "sdks": []}
+    return {"path": "acme-supplier-tools", "secrets": [secret], "endpoints": [], "sdks": []}
 
 
 def test_secret_finding_shape_matches_other_finding_kinds():
@@ -350,7 +350,7 @@ def test_secret_finding_shape_matches_other_finding_kinds():
     out = _secret_findings(_secret_repo())
     assert len(out) == 1
     f = out[0]
-    assert f["repo"] == "root-amazon-supplier-software"
+    assert f["repo"] == "acme-supplier-tools"
     assert f["kind"] == "secret"
     assert f["ref"] == "generic-api-key"
     assert f["severity"] == "CRITICAL"
