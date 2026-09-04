@@ -28,6 +28,11 @@ instead of reading.</span>
 </div>
 </div>
 
+<div class="dd-announce" markdown>
+<span class="dd-announce__tag">New</span> Now finds **leaked credentials** across your whole
+git history, not just today's files — see [what's new](changelog.md).
+</div>
+
 <div class="dd-grid" markdown>
 <div class="dd-card" markdown>
 ### Finds what scanners miss

@@ -78,6 +78,38 @@
   .dd-hero__title { font-size: 1.9rem; }
 }
 
+/* A single quiet "what's new" pill, not a marketing banner — same visual weight as the
+ * hero eyebrow above it, so a real update reads as a fact stated once, not hype. Update the
+ * text/link when the NEXT thing ships; do not stack a second one underneath it. */
+.dd-announce {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: .5rem;
+  flex-wrap: wrap;
+  font-size: .85rem;
+  line-height: 1.5;
+  width: fit-content;
+  margin: 0 auto 2rem;
+  padding: .5em 1.1em;
+  border: 1px solid var(--md-default-fg-color--lightest);
+  border-radius: 2rem;
+  background: var(--md-code-bg-color);
+  color: var(--md-default-fg-color--light);
+}
+.dd-announce__tag {
+  flex: none;
+  font-size: .62rem;
+  letter-spacing: .1em;
+  text-transform: uppercase;
+  font-weight: 700;
+  color: var(--md-primary-bg-color);
+  background: var(--md-accent-fg-color);
+  border-radius: 1rem;
+  padding: .22em .65em;
+}
+.dd-announce a { color: var(--md-accent-fg-color); font-weight: 600; }
+
 /* Three-up feature row. Auto-fit means it reflows to 1 column on narrow screens with no
  * media query of its own. */
 .dd-grid {
