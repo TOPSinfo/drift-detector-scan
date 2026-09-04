@@ -26,12 +26,18 @@ def test_runner_has_doctor_with_actionable_hint():
 
 
 def test_doctor_reports_whether_gitleaks_is_present():
-    """REGRESSION: gitleaks (secret detection's engine) is required for the feature to do
-    anything, but appears in no README/doc and is not pinned/provisioned like ast-grep —
-    without this, an operator has no way to learn the feature is inert on their machine."""
+    """REGRESSION: doctor's gitleaks check must ask what the scanner will ACTUALLY
+    resolve (mirroring the `engine` line's own `resolve_engine()` call) — a bare
+    `command -v gitleaks` (PATH only) would keep reporting "not found" even after a
+    successful fetch into the venv's bin/, since bin/drift-scan never puts that
+    directory on PATH."""
     body = (_ROOT / "bin" / "drift-scan").read_text()
-    assert "command -v gitleaks" in body
-    assert "gitleaks not found" in body and "UNKNOWN, not zero" in body
+    doctor_block = body[body.index('echo "drift-detector · doctor"'):
+                        body.index("# Freshness.")]
+    assert "_resolve_gitleaks" in doctor_block           # asks the venv's own python
+    assert '"$VENV/bin/python"' in doctor_block.split("_resolve_gitleaks")[0][-200:]
+    assert "gitleaks not found" in doctor_block and "UNKNOWN, not zero" in doctor_block
+    assert "not yet" in doctor_block and "fetched on first scan" in doctor_block
 
 
 def test_runner_self_provisions_gitleaks_like_ast_grep():

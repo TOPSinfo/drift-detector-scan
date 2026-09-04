@@ -63,15 +63,16 @@ def _default_run(args: list) -> str:
     """
     env = {**os.environ, "GIT_CONFIG_COUNT": "1",
            "GIT_CONFIG_KEY_0": "safe.directory", "GIT_CONFIG_VALUE_0": "*"}
-    # mkstemp, not NamedTemporaryFile: VERIFIED AGAINST A REAL BINARY, in this project's
-    # own container image (overlayfs) — reading gitleaks' report back through the SAME
-    # file object this process had open returned empty even though gitleaks logged
-    # "leaks found" and exited 0; re-opening the identical path fresh saw the real
-    # content. gitleaks replaces the file rather than writing into the inode we already
-    # had open. mkstemp only reserves the NAME (the fd is closed immediately below); the
-    # actual read happens through a brand-new open(), which is what worked.
-    fd, report_path = tempfile.mkstemp(prefix="drift-gitleaks-", suffix=".json")
-    os.close(fd)
+    # A private (0700) DIRECTORY, not just a private file: VERIFIED AGAINST A REAL
+    # BINARY, in this project's own container image — gitleaks UNLINKS AND RECREATES
+    # the report file rather than writing into the inode we already had open (see the
+    # reopen comment below), so the new file gets GITLEAKS' OWN create mode (0644
+    # there), not whatever mode this function gave its own tempfile. A `chmod` on the
+    # file does not survive that replacement; a directory's permissions do — for the
+    # duration of every scan, a live credential was sitting in a world-readable file
+    # in the shared temp dir until this was a directory instead of a bare mkstemp.
+    report_dir = tempfile.mkdtemp(prefix="drift-gitleaks-")
+    report_path = os.path.join(report_dir, "report.json")
     try:
         # VERIFIED AGAINST A REAL BINARY, in this project's own container image:
         # `--report-path /dev/stdout` silently produced ZERO bytes even on a scan that
@@ -83,13 +84,15 @@ def _default_run(args: list) -> str:
         if proc.returncode != 0:
             raise subprocess.CalledProcessError(proc.returncode, full_args,
                                                 output=proc.stdout, stderr=proc.stderr)
+        # Re-open the path fresh rather than trusting a handle opened before gitleaks
+        # ran: VERIFIED AGAINST A REAL BINARY — reading back through a file object this
+        # process had open before the subprocess call returned empty even though
+        # gitleaks logged "leaks found" and exited 0 (it replaces the file rather than
+        # writing into the inode we already had open).
         with open(report_path, encoding="utf-8") as fh:
             return fh.read()
     finally:
-        try:
-            os.unlink(report_path)
-        except OSError:
-            pass
+        shutil.rmtree(report_dir, ignore_errors=True)
 
 
 def _failure_message(exc: Exception) -> str:

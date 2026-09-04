@@ -1,4 +1,5 @@
 import json
+import os
 import subprocess
 from pathlib import Path
 
@@ -347,3 +348,34 @@ def test_finding_secrets_is_not_a_tool_error(monkeypatch):
     res = run_secrets_scan("/repo")
     assert res["errors"] == []
     assert [m["ruleId"] for m in res["matches"]] == ["generic-api-key"]
+
+
+def test_default_run_keeps_the_secret_containing_report_private(monkeypatch):
+    """VERIFIED AGAINST A REAL BINARY, in this project's own container image: gitleaks
+    UNLINKS AND RECREATES the report file rather than writing into the existing inode
+    (see the mkstemp/reopen comment above) — so the new file gets GITLEAKS' OWN create
+    mode (0644 there), not whatever mode _default_run's own tempfile started with. For
+    the duration of every scan, that means a live credential sat in a WORLD-READABLE
+    file in the shared temp directory. Putting the report inside a private (0700)
+    directory fixes it — a directory's permissions survive a file being replaced
+    inside it, which is exactly what a `chmod` on the file itself would not."""
+    captured = {}
+
+    def fake_run(args, **kwargs):
+        report_path = args[args.index("--report-path") + 1]
+        report_dir = os.path.dirname(report_path)
+        # checked from INSIDE the fake, before _default_run's own cleanup removes the
+        # directory — this is the mode the report actually sat under during the scan
+        captured["dir_mode_during_scan"] = os.stat(report_dir).st_mode & 0o777
+        captured["dir"] = report_dir
+        # simulate gitleaks' real behavior: it creates the report file itself, with its
+        # OWN default (permissive) create mode — this function never pre-creates it
+        fd = os.open(report_path, os.O_WRONLY | os.O_CREAT, 0o644)
+        os.write(fd, gitleaks_fake.EMPTY.encode())
+        os.close(fd)
+        return _Proc(0, "", "")
+
+    monkeypatch.setattr(secrets_scan.subprocess, "run", fake_run)
+    secrets_scan._default_run(["gitleaks", "detect"])
+    assert oct(captured["dir_mode_during_scan"]) == oct(0o700)
+    assert not os.path.isdir(captured["dir"]), "the private directory must be cleaned up"
