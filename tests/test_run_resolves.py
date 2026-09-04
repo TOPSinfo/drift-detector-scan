@@ -27,8 +27,13 @@ from agent import cli
 from agent import resolve as resolve_mod
 from agent.lib import verify as verify_mod
 from agent.run import run_pipeline
+from tests import gitleaks_fake
 
 _UNRESOLVED_HOST = "listingimages.thirdparty.io"
+
+
+def _no_secrets(args):
+    return gitleaks_fake.EMPTY
 
 
 def _git_init(d, files):
@@ -97,7 +102,8 @@ def _own_domain_verdict(**over):
 
 def _run(root, state, *, resolve=None, http=None):
     return run_pipeline(str(root), str(state), "2026-08-13", run=_url_engine, engine="semgrep",
-                        http=http or (lambda *a, **k: {}), resolve=resolve)
+                        http=http or (lambda *a, **k: {}), resolve=resolve,
+                        secrets_run=_no_secrets)
 
 
 # --------------------------------------------------------------------- sanity: the host IS queued
@@ -357,7 +363,8 @@ def test_apply_succeeds_but_rescan_fails_falls_back_to_scan1s_document(tmp_path,
     monkeypatch.setattr(inv_mod, "write_ruleset", flaky_write_ruleset)
 
     out = run_pipeline(str(root), str(state), "2026-08-13", run=_url_engine, engine="semgrep",
-                       http=lambda *a, **k: {}, resolve=[_vendor_verdict()])
+                       http=lambda *a, **k: {}, resolve=[_vendor_verdict()],
+                       secrets_run=_no_secrets)
 
     assert calls["n"] == 2, "sanity: the re-scan really was attempted (not short-circuited)"
     # the overlay write is NOT undone — apply() had already succeeded before the re-scan blew up

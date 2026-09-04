@@ -32,7 +32,8 @@ def test_scan_repo_assembles_manifests_and_endpoints(tmp_path):
                         }.get(" ".join(args[2:]), "")   # .get -> tolerant of new git_meta calls
 
     record, note = scan_repo(str(tmp_path), "acme/web", 1, _VENDORS, str(rules),
-                             engine="semgrep", run=_fake_opengrep(canned), git=git)
+                             engine="semgrep", run=_fake_opengrep(canned), git=git,
+                             secrets_run=lambda args: gitleaks_fake.EMPTY)
     assert record["id"] == 1 and record["path"] == "acme/web" and record["head_sha"] == "sha1"
     assert record["runtimes"]["php"]["range"] == "^8.2"
     assert "laravel/framework" in record["frameworks"]
@@ -46,7 +47,8 @@ def test_scan_repo_surfaces_boilerplate_as_bucketed_not_dropped(tmp_path):
     write_ruleset(_VENDORS, str(rules))
     canned = astgrep_fake.canned(astgrep_fake.hit("url-literal", "x.php", 1))
     record, _ = scan_repo(str(tmp_path), "r", 1, _VENDORS, str(rules), engine="semgrep",
-                          run=_fake_opengrep(canned), git=lambda a: "")
+                          run=_fake_opengrep(canned), git=lambda a: "",
+                          secrets_run=lambda args: gitleaks_fake.EMPTY)
     eps = record["endpoints"]                                  # a schema host is now SHOWN, bucketed
     assert [e["domain"] for e in eps] == ["www.w3.org"]
     assert eps[0]["hostClass"] == "boilerplate" and not eps[0]["classified"]

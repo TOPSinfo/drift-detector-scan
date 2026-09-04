@@ -2,6 +2,11 @@ import json
 import subprocess
 from pathlib import Path
 from agent.inventory_scan import scan_folder
+from tests import gitleaks_fake
+
+
+def _no_secrets(args):
+    return gitleaks_fake.EMPTY
 
 
 def _git_init(d, files):
@@ -27,7 +32,8 @@ def test_scan_folder_end_to_end(tmp_path):
                              "pay.php": '"https://api.stripe.com/v1/x";\n'})
     state = tmp_path / "state"
     out = scan_folder(str(root), str(state), "2026-07-14",
-                      engine="semgrep", run=lambda args: _canned_stripe("pay.php"))
+                      engine="semgrep", run=lambda args: _canned_stripe("pay.php"),
+                      secrets_run=_no_secrets)
     doc = out["doc"]
     assert doc["scope"]["reposScanned"] == 1
     repo = doc["repos"][0]
@@ -48,9 +54,11 @@ def test_scan_folder_incremental_cache_reused(tmp_path):
         calls["n"] += 1
         return json.dumps([])
 
-    scan_folder(str(root), str(state), "2026-07-14", engine="semgrep", run=counting_run)
+    scan_folder(str(root), str(state), "2026-07-14", engine="semgrep", run=counting_run,
+               secrets_run=_no_secrets)
     assert calls["n"] == 1                                      # scanned once
-    scan_folder(str(root), str(state), "2026-07-21", engine="semgrep", run=counting_run)
+    scan_folder(str(root), str(state), "2026-07-21", engine="semgrep", run=counting_run,
+               secrets_run=_no_secrets)
     assert calls["n"] == 1                                      # unchanged sha -> cache hit, engine NOT re-run
 
 
@@ -62,7 +70,7 @@ def test_scan_folder_discovers_nested_repos(tmp_path):
     root = tmp_path / "repos"
     _git_init(root / "group" / "deep" / "web", {"composer.json": '{"require": {"php": "^8.2"}}'})
     out = scan_folder(str(root), str(tmp_path / "state"), "2026-07-14",
-                      engine="semgrep", run=_empty_run)
+                      engine="semgrep", run=_empty_run, secrets_run=_no_secrets)
     assert [r["path"] for r in out["doc"]["repos"]] == ["group/deep/web"]
 
 
@@ -83,12 +91,21 @@ def test_scan_folder_multiple_roots(tmp_path):
     _git_init(r1 / "web", {"composer.json": '{"require": {"php": "^8.2"}}'})
     _git_init(r2 / "api", {"composer.json": '{"require": {"php": "^8.1"}}'})
     out = scan_folder([str(r1), str(r2)], str(tmp_path / "state"), "2026-07-14",
-                      engine="semgrep", run=_empty_run)
+                      engine="semgrep", run=_empty_run, secrets_run=_no_secrets)
     assert sorted(r["path"] for r in out["doc"]["repos"]) == ["api", "web"]
     assert out["doc"]["scope"]["rootCount"] == 2
 
 
 from agent import cli
+
+
+def _stub_secrets_scan(monkeypatch):
+    """CLI commands never expose a way to inject `secrets_run`, so — like the CLI tests below
+    already stub the ast-grep engine — stub gitleaks at the module-attribute level instead of
+    the real binary this sandbox doesn't have."""
+    import agent.lib.repo_scan as repo_scan_mod
+    monkeypatch.setattr(repo_scan_mod, "run_secrets_scan",
+                        lambda repo_path, **kw: {"matches": [], "errors": []})
 
 
 def test_cli_inventory_scan_writes_json(tmp_path, monkeypatch):
@@ -99,6 +116,7 @@ def test_cli_inventory_scan_writes_json(tmp_path, monkeypatch):
     import agent.inventory_scan as inv
     monkeypatch.setattr(inv.scan_util, "resolve_engine", lambda engine="ast-grep": "ast-grep")
     monkeypatch.setattr(inv.engine_mod, "_default_run", lambda args: _canned_stripe("pay.php"), raising=False)
+    _stub_secrets_scan(monkeypatch)
 
     out_json = tmp_path / "inv.json"
     rc = cli.main(["inventory-scan", "--root", str(root), "--state", str(tmp_path / "state"),
@@ -115,6 +133,7 @@ def test_cli_inventory_scan_repeatable_root(tmp_path, monkeypatch):
     import agent.inventory_scan as inv
     monkeypatch.setattr(inv.scan_util, "resolve_engine", lambda engine="ast-grep": "ast-grep")
     monkeypatch.setattr(inv.engine_mod, "_default_run", _empty_run, raising=False)
+    _stub_secrets_scan(monkeypatch)
 
     out_json = tmp_path / "inv.json"
     rc = cli.main(["inventory-scan", "--root", str(r1), "--root", str(r2),
@@ -236,7 +255,8 @@ def test_scan_folder_error_line_is_adjacent_to_its_repo_at_jobs_one(tmp_path):
 
     msgs = []
     out = scan_folder(str(root), str(tmp_path / "state"), "2026-08-25",
-                      engine="semgrep", run=exploding_run, progress=msgs.append, jobs=1)
+                      engine="semgrep", run=exploding_run, progress=msgs.append, jobs=1,
+                      secrets_run=_no_secrets)
 
     err_idx = [i for i, m in enumerate(msgs) if "⚠ error" in m]
     assert len(err_idx) == 1, msgs

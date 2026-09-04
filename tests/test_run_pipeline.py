@@ -3,6 +3,11 @@ import subprocess
 from pathlib import Path
 
 from agent.run import run_pipeline
+from tests import gitleaks_fake
+
+
+def _no_secrets(args):
+    return gitleaks_fake.EMPTY
 
 
 def _git_init(d, files):
@@ -43,7 +48,8 @@ def test_run_pipeline_writes_all_reports_and_delivers(tmp_path, monkeypatch):
         return {}
 
     out = run_pipeline(str(root), str(state), "2026-07-15",
-                       engine="semgrep", run=_empty_engine, http=fake_http)
+                       engine="semgrep", run=_empty_engine, http=fake_http,
+                       secrets_run=_no_secrets)
 
     for name in ("inventory.json", "audit.json", "dashboard.html", "chart.html",
                  "drift.md", "drift.json"):

@@ -75,7 +75,7 @@ def _apply_resolution(verdicts, now) -> dict:
 
 
 def run_pipeline(roots, state_dir, now, *, pull=False,
-                 engine=None, run=None, git=None, http=None, progress=None,
+                 engine=None, run=None, git=None, secrets_run=None, http=None, progress=None,
                  pull_run=None, gitlab_hosts=frozenset(), resolve=None, jobs=1) -> dict:
     roots = [roots] if isinstance(roots, (str, os.PathLike)) else list(roots)
     os.makedirs(state_dir, exist_ok=True)
@@ -89,8 +89,8 @@ def run_pipeline(roots, state_dir, now, *, pull=False,
     # because THIS run scanned twice — an artifact of the run, not real change between runs.
     prior_ir = ir_store.load_ir(state_dir)
 
-    scan = scan_folder(roots, state_dir, now, engine=engine, run=run, git=git, progress=progress,
-                       jobs=jobs)
+    scan = scan_folder(roots, state_dir, now, engine=engine, run=run, git=git,
+                       secrets_run=secrets_run, progress=progress, jobs=jobs)
     doc, diff = scan["doc"], scan["diff"]
 
     # No-queue resolution (docs/superpowers/specs/2026-08-13-no-queue-design.md): the AI never
@@ -115,7 +115,7 @@ def run_pipeline(roots, state_dir, now, *, pull=False,
             # never a stale drift.json left over from some earlier run, never a traceback.
             try:
                 rescan = scan_folder(roots, state_dir, now, engine=engine, run=run, git=git,
-                                     progress=progress, jobs=jobs)
+                                     secrets_run=secrets_run, progress=progress, jobs=jobs)
             except Exception as exc:   # noqa: BLE001 — any re-scan failure degrades, never blocks
                 resolve_result = {"status": "degraded", "detail": str(exc),
                                   "written": resolve_result["written"],

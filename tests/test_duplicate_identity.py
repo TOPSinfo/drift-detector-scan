@@ -16,6 +16,11 @@ import pytest
 
 from agent.inventory_scan import scan_folder
 from tests import astgrep_fake
+from tests import gitleaks_fake
+
+
+def _no_secrets(args):
+    return gitleaks_fake.EMPTY
 
 # A FIXED identity + date makes two empty commits hash to the same sha, which is what puts the
 # two checkouts on one cache key. The files are written but never `git add`ed, so the commit
@@ -62,7 +67,7 @@ def test_duplicate_identity_repos_report_their_own_content(tmp_path, jobs):
     assert _head(a) == _head(b), "fixture must put both checkouts on the same HEAD sha"
 
     out = scan_folder([str(a_root), str(b_root)], str(tmp_path / "state"), "2026-08-25",
-                      engine="semgrep", run=_engine_for(b), jobs=jobs)
+                      engine="semgrep", run=_engine_for(b), jobs=jobs, secrets_run=_no_secrets)
     repos = out["doc"]["repos"]
     assert [r["path"] for r in repos] == ["web", "web"]
     # B's own file was scanned — it is NOT served A's (endpoint-free) cached record.
@@ -83,13 +88,13 @@ def test_duplicate_identity_repos_never_write_a_shared_cache_file(tmp_path):
                          "pay.php": '"https://api.stripe.com/v1/x";\n'})
     state = tmp_path / "state"
     scan_folder([str(a_root), str(b_root)], str(state), "2026-08-25",
-                engine="semgrep", run=_engine_for(b))
+                engine="semgrep", run=_engine_for(b), secrets_run=_no_secrets)
     cached = list(state.glob("repos_v*/*.json"))
     assert cached == [], f"a colliding identity must not be cached at all; found {cached}"
 
     # ...and a second run still reads each repo's own content rather than a stale record.
     out = scan_folder([str(a_root), str(b_root)], str(state), "2026-08-26",
-                      engine="semgrep", run=_engine_for(b))
+                      engine="semgrep", run=_engine_for(b), secrets_run=_no_secrets)
     assert [len(r["endpoints"]) for r in out["doc"]["repos"]] == [0, 1]
 
 
@@ -105,7 +110,9 @@ def test_a_unique_identity_still_uses_the_cache(tmp_path):
         calls["n"] += 1
         return json.dumps([])
 
-    scan_folder(str(root), str(state), "2026-08-25", engine="semgrep", run=counting)
+    scan_folder(str(root), str(state), "2026-08-25", engine="semgrep", run=counting,
+               secrets_run=_no_secrets)
     assert calls["n"] == 2
-    scan_folder(str(root), str(state), "2026-08-26", engine="semgrep", run=counting)
+    scan_folder(str(root), str(state), "2026-08-26", engine="semgrep", run=counting,
+               secrets_run=_no_secrets)
     assert calls["n"] == 2, "unchanged HEADs must still hit the per-repo cache"

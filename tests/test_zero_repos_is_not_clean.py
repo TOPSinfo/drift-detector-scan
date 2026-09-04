@@ -49,10 +49,16 @@ def test_zero_repos_scanned_exits_4_not_0(tmp_path):
     assert rc == 4, "a scan of zero repos must exit 4 (couldn't verify), not 0 (clean)"
 
 
-def test_a_plain_code_folder_is_now_scanned_not_rejected(tmp_path):
+def test_a_plain_code_folder_is_now_scanned_not_rejected(tmp_path, monkeypatch):
     """The ingestion feature: a folder of code with no .git is scanned as a project,
     finds its endpoints, and exits normally — the case the PM hit, now working."""
     from agent.cli import main
+    # `run --root` never exposes a way to inject `secrets_run`, and this test relies on the
+    # real ast-grep binary — so stub gitleaks at the module-attribute level instead of the
+    # real binary this sandbox doesn't have (mirrors the CLI engine stubs in test_inventory_scan.py).
+    import agent.lib.repo_scan as repo_scan_mod
+    monkeypatch.setattr(repo_scan_mod, "run_secrets_scan",
+                        lambda repo_path, **kw: {"matches": [], "errors": []})
     src = tmp_path / "src"
     src.mkdir()
     (src / "OrdersApi.php").write_text(

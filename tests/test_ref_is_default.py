@@ -83,13 +83,14 @@ def test_a_real_scan_marks_the_repo_as_not_on_its_default(tmp_path):
     resolve_sources -> inventory_scan -> scan_repo -> the repo record, or the report still
     claims every repo is on its default branch."""
     from agent import inventory_scan
-    from tests import astgrep_fake
+    from tests import astgrep_fake, gitleaks_fake
 
     root = tmp_path / "root"
     _repo(root, "develop", name="proj")          # the ROOT holds the checkout, as callers pass it
     out = inventory_scan.scan_folder([(str(root), "develop")],
                                      str(tmp_path / "state"), "2026-08-26",
-                                     engine="semgrep", run=lambda a: astgrep_fake.canned())
+                                     engine="semgrep", run=lambda a: astgrep_fake.canned(),
+                                     secrets_run=lambda a: gitleaks_fake.EMPTY)
     rec = out["doc"]["repos"][0]
     assert rec["ref"] == "develop"
     assert rec["ref_is_default"] is False, (
