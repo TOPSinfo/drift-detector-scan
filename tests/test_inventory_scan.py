@@ -127,6 +127,48 @@ def test_cli_inventory_scan_writes_json(tmp_path, monkeypatch):
     assert doc["repos"][0]["path"] == "web" and doc["unique_apis"] == ["Stripe"]
 
 
+def _stub_secrets_scan_failing(monkeypatch):
+    """Like `_stub_secrets_scan` but forces every repo's secrets signal to fail, exactly as
+    a missing/timed-out gitleaks does — so this test's pass/fail does not depend on whether
+    gitleaks happens to be installed on the machine running the suite."""
+    import agent.lib.repo_scan as repo_scan_mod
+    monkeypatch.setattr(repo_scan_mod, "run_secrets_scan",
+                        lambda repo_path, **kw: {"matches": [],
+                                                  "errors": [{"message": "gitleaks missing",
+                                                             "path": repo_path}]})
+
+
+def test_cli_inventory_scan_summary_reports_secrets_errors(tmp_path, monkeypatch, capsys):
+    """The `inventory-scan` one-line summary already counted `reposErrored` but said
+    nothing about `coverage.secretsErrors` — a repo whose secrets signal failed printed a
+    summary line indistinguishable from one where it succeeded and found nothing."""
+    root = tmp_path / "repos"
+    _git_init(root / "web", {"composer.json": '{"require": {"php": "^8.2"}}'})
+    import agent.inventory_scan as inv
+    monkeypatch.setattr(inv.scan_util, "resolve_engine", lambda engine="ast-grep": "ast-grep")
+    monkeypatch.setattr(inv.engine_mod, "_default_run", _empty_run, raising=False)
+    _stub_secrets_scan_failing(monkeypatch)
+
+    rc = cli.main(["inventory-scan", "--root", str(root), "--state", str(tmp_path / "state"),
+                   "--out-json", str(tmp_path / "i.json"), "--now", "2026-07-14"])
+    assert rc == 0
+    out = capsys.readouterr().out
+    assert "1 secrets error" in out
+
+
+def test_cli_inventory_scan_summary_silent_when_no_secrets_errors(tmp_path, monkeypatch):
+    root = tmp_path / "repos"
+    _git_init(root / "web", {"composer.json": '{"require": {"php": "^8.2"}}'})
+    import agent.inventory_scan as inv
+    monkeypatch.setattr(inv.scan_util, "resolve_engine", lambda engine="ast-grep": "ast-grep")
+    monkeypatch.setattr(inv.engine_mod, "_default_run", _empty_run, raising=False)
+    _stub_secrets_scan(monkeypatch)
+
+    rc = cli.main(["inventory-scan", "--root", str(root), "--state", str(tmp_path / "state"),
+                   "--out-json", str(tmp_path / "i.json"), "--now", "2026-07-14"])
+    assert rc == 0
+
+
 def test_cli_inventory_scan_repeatable_root(tmp_path, monkeypatch):
     r1, r2 = tmp_path / "a", tmp_path / "b"
     _git_init(r1 / "web", {"composer.json": '{"require": {"php": "^8.2"}}'})
@@ -303,14 +345,14 @@ def test_a_clean_secrets_scan_leaves_the_coverage_error_list_empty(tmp_path):
     assert out["doc"]["coverage"]["secretsErrors"] == []
 
 
-def test_a_repo_whose_secrets_scan_failed_is_not_cached_as_clean(tmp_path):
-    """`_scan_one_inner` used to call `save_repo_cache` unconditionally, even when
-    `note["secretsErrors"]` was non-empty — so a gitleaks timeout on run 1 got cached as
-    `secrets: [], no errors`, and run 2 on the SAME unchanged HEAD silently served that
-    stale-clean record forever, with the original failure erased. A cache HIT always
-    returns `secretsErrors: []` for that repo (scan_folder's `cached is not None` branch),
-    so a non-empty list on the second call proves the repo was actually re-scanned rather
-    than served from cache."""
+def test_a_repo_whose_secrets_scan_failed_still_gets_cached(tmp_path):
+    """A secrets-scan failure must no longer disable this repo's ENTIRE cache. The old
+    mechanism (skip `save_repo_cache` whenever `note["secretsErrors"]` was non-empty) meant
+    that on any machine without gitleaks, EVERY repo's cache write was skipped, EVERY run —
+    silently disabling the whole per-repo incremental cache fleet-wide. The fix carries the
+    error state WITH the record (`repo_scan.scan_repo` now sets
+    `record["secretsErrors"]`) instead of refusing to write it, so caching is unconditional
+    and safe again."""
     root = tmp_path / "repos"
     _git_init(root / "web", {"composer.json": '{"require": {"php": "^8.2"}}'})
     state = tmp_path / "state"
@@ -318,12 +360,69 @@ def test_a_repo_whose_secrets_scan_failed_is_not_cached_as_clean(tmp_path):
     def broken_gitleaks(args):
         raise FileNotFoundError(2, "No such file or directory", "gitleaks")
 
+    scan_folder(str(root), str(state), "2026-07-14",
+               engine="semgrep", run=_empty_run, secrets_run=broken_gitleaks)
+
+    cached_files = list(state.glob("repos_v*/*.json"))
+    assert cached_files, ("a secrets-scan failure must still write the per-repo cache — "
+                          "only the old, unsafe mechanism skipped this")
+    saved = json.loads(cached_files[0].read_text())
+    assert saved.get("secretsErrors"), (
+        "the cached record must carry its own secretsErrors state, not omit it")
+
+
+def test_cache_hit_replays_the_remembered_secrets_failure(tmp_path):
+    """The important behavioral proof: a cache HIT on a repo whose secrets scan previously
+    failed must (a) actually be a cache hit (the ast-grep engine is NOT re-invoked) and
+    (b) still report the remembered failure — never silently reset to a false 'clean'
+    because a cache hit used to hardcode `secretsErrors: []` regardless of history."""
+    root = tmp_path / "repos"
+    _git_init(root / "web", {"composer.json": '{"require": {"php": "^8.2"}}'})
+    state = tmp_path / "state"
+    calls = {"n": 0}
+
+    def counting_run(args):
+        calls["n"] += 1
+        return json.dumps([])
+
+    def broken_gitleaks(args):
+        raise FileNotFoundError(2, "No such file or directory", "gitleaks")
+
     out1 = scan_folder(str(root), str(state), "2026-07-14",
-                       engine="semgrep", run=_empty_run, secrets_run=broken_gitleaks)
+                       engine="semgrep", run=counting_run, secrets_run=broken_gitleaks)
     assert [e["repo"] for e in out1["doc"]["coverage"]["secretsErrors"]] == ["web"]
+    assert calls["n"] == 1
+
+    # second scan of the SAME unchanged HEAD: this must be a genuine cache HIT (the engine
+    # must not re-run) — secrets_run is deliberately still `broken_gitleaks` so a real
+    # re-scan would ALSO report the failure, which would make this test pass for the wrong
+    # reason; `counting_run` not incrementing is what proves the record was served from cache.
+    out2 = scan_folder(str(root), str(state), "2026-07-21",
+                       engine="semgrep", run=counting_run, secrets_run=broken_gitleaks)
+    assert calls["n"] == 1, "a cache hit must not re-invoke the scan engine"
+    assert [e["repo"] for e in out2["doc"]["coverage"]["secretsErrors"]] == ["web"], (
+        "the cached record must carry its secretsErrors state so a cache hit replays the "
+        "SAME failure, rather than resetting it to a false 'clean'")
+
+
+def test_a_clean_secrets_scan_still_caches_and_replays_correctly(tmp_path):
+    """No regression on the happy path: a repo whose secrets scan SUCCEEDED must still be
+    cached (as before) and a later cache hit must still replay `secretsErrors: []`."""
+    root = tmp_path / "repos"
+    _git_init(root / "web", {"composer.json": '{"require": {"php": "^8.2"}}'})
+    state = tmp_path / "state"
+    calls = {"n": 0}
+
+    def counting_run(args):
+        calls["n"] += 1
+        return json.dumps([])
+
+    out1 = scan_folder(str(root), str(state), "2026-07-14",
+                       engine="semgrep", run=counting_run, secrets_run=_no_secrets)
+    assert out1["doc"]["coverage"]["secretsErrors"] == []
+    assert calls["n"] == 1
 
     out2 = scan_folder(str(root), str(state), "2026-07-21",
-                       engine="semgrep", run=_empty_run, secrets_run=broken_gitleaks)
-    assert [e["repo"] for e in out2["doc"]["coverage"]["secretsErrors"]] == ["web"], (
-        "a cache hit would have returned secretsErrors: [] for 'web' — this repo must be "
-        "re-scanned every time its secrets signal previously failed, not served stale")
+                       engine="semgrep", run=counting_run, secrets_run=_no_secrets)
+    assert calls["n"] == 1, "unchanged HEAD must still be served from cache"
+    assert out2["doc"]["coverage"]["secretsErrors"] == []

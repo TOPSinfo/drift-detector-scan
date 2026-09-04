@@ -213,8 +213,14 @@ def scan_folder(root, state_dir, now, *, engine=None, run=None, git=None, secret
             _p(f"{tag}  cached (HEAD unchanged)")
             cached = {**cached, "id": i + 1}
             cached["shape"] = _shape_of(abs_, name, cached, rule_kinds, attestations)
-            # a cache hit re-uses the record whole; nothing ran, so nothing failed
-            return {"record": cached, "unparsed": [], "secretsErrors": []}
+            # a cache hit re-uses the record whole; nothing ran, so replay whatever
+            # secretsErrors the record was saved WITH — a repo cached after a gitleaks
+            # failure carries that failure forward on every hit, rather than resetting to a
+            # false "clean" (`.get` tolerates a pre-existing cache saved before this key
+            # existed, which is safe here: under the old logic, anything that WAS cached
+            # already had an empty secretsErrors, or it would never have been written).
+            return {"record": cached, "unparsed": [],
+                    "secretsErrors": cached.get("secretsErrors", [])}
         _p(f"{tag}  scan: git · manifests · AST endpoints" +
            ("  (uncached: duplicate repo name across roots)" if name in ambiguous else ""))
         record, note = scan_repo(abs_, name, i + 1, vendors, rules_path,
@@ -223,11 +229,17 @@ def scan_folder(root, state_dir, now, *, engine=None, run=None, git=None, secret
                                  configured_branch=source_branch.get(abs_))
         record["sourceKind"] = source_kind.get(abs_, "local-git")
         record["shape"] = _shape_of(abs_, name, record, rule_kinds, attestations)
-        # A secrets-scan failure (gitleaks missing/timed out/crashed) must not be cached as
-        # `secrets: [], no errors` — a cache HIT never re-runs anything (see above), so
-        # caching a failed secrets signal would serve that stale "clean" record forever on
-        # every re-scan of the same unchanged HEAD, erasing the original failure for good.
-        if cacheable and not note["secretsErrors"]:
+        # A secrets-scan failure (gitleaks missing/timed out/crashed) now travels WITH the
+        # cached record (`record["secretsErrors"]`, set in repo_scan.scan_repo) rather than
+        # being a reason to skip the write. That makes this cache write safe to be
+        # unconditional again: a later cache HIT replays the record's own secretsErrors (see
+        # above), so a failed secrets signal is remembered forever exactly like a successful
+        # one's results, instead of being erased back to a false "clean". Skipping the write
+        # here (the previous fix) had a real fleet-wide cost: gitleaks is an optional,
+        # unpinned, un-preflighted dependency, so on any machine without it, EVERY repo's
+        # secrets scan fails, EVERY run, which used to mean this line never executed at all —
+        # silently disabling the ENTIRE per-repo cache, not just its secrets signal.
+        if cacheable:
             ir_store.save_repo_cache(state_dir, name, sha, record, rules_sig)
         return {"record": record, "unparsed": note["unparsed"],
                 "secretsErrors": note["secretsErrors"]}

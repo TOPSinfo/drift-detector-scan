@@ -44,6 +44,11 @@ def scan_repo(repo_abs, repo_name, repo_id, vendors, rules_path, *,
     record["privateSources"] = private_sources.detect(repo_abs)   # what we can't see (say so)
     record["residue"] = scanned_eps["residue"]
     record["secrets"] = secrets["matches"]
+    # The error state travels WITH the record (not just in the sibling `note` dict) so a
+    # cache write can be unconditional: a cache HIT replays `record["secretsErrors"]`
+    # verbatim, which is what lets `_scan_one_inner` cache a failed secrets signal safely
+    # instead of refusing to write the cache at all (see its comment).
+    record["secretsErrors"] = secrets["errors"]
     return record, {"unparsed": unparsed, "engineErrors": scan["errors"],
                     "secretsErrors": secrets["errors"]}
 
