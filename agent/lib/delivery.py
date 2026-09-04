@@ -195,7 +195,7 @@ def _when(a: dict) -> str:
     return d
 
 
-_EMOJI_ORDER = ("🚨", "☣️", "🛡️", "⏳", "⚠️")
+_EMOJI_ORDER = ("🔑", "🚨", "☣️", "🛡️", "⏳", "⚠️")
 
 
 def _emoji(a: dict) -> str:
@@ -203,6 +203,8 @@ def _emoji(a: dict) -> str:
     state at a glance, without reading the body. Pure function of already-computed fields
     (status/kind/worst) — no wall-clock, no date-math here (the pipeline already resolved
     past-due-ness into `status`)."""
+    if a.get("kind") == "secret":
+        return "🔑"
     if a.get("kind") == "sunset":
         return "🚨" if (a.get("status") == "DEPRECATED" and a.get("date")) else "⏳"
     if a.get("kind") == "eol":
