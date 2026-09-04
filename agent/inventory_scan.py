@@ -223,7 +223,11 @@ def scan_folder(root, state_dir, now, *, engine=None, run=None, git=None, secret
                                  configured_branch=source_branch.get(abs_))
         record["sourceKind"] = source_kind.get(abs_, "local-git")
         record["shape"] = _shape_of(abs_, name, record, rule_kinds, attestations)
-        if cacheable:
+        # A secrets-scan failure (gitleaks missing/timed out/crashed) must not be cached as
+        # `secrets: [], no errors` — a cache HIT never re-runs anything (see above), so
+        # caching a failed secrets signal would serve that stale "clean" record forever on
+        # every re-scan of the same unchanged HEAD, erasing the original failure for good.
+        if cacheable and not note["secretsErrors"]:
             ir_store.save_repo_cache(state_dir, name, sha, record, rules_sig)
         return {"record": record, "unparsed": note["unparsed"],
                 "secretsErrors": note["secretsErrors"]}

@@ -301,3 +301,29 @@ def test_a_clean_secrets_scan_leaves_the_coverage_error_list_empty(tmp_path):
     out = scan_folder(str(root), str(tmp_path / "state"), "2026-07-14",
                       engine="semgrep", run=_empty_run, secrets_run=_no_secrets)
     assert out["doc"]["coverage"]["secretsErrors"] == []
+
+
+def test_a_repo_whose_secrets_scan_failed_is_not_cached_as_clean(tmp_path):
+    """`_scan_one_inner` used to call `save_repo_cache` unconditionally, even when
+    `note["secretsErrors"]` was non-empty — so a gitleaks timeout on run 1 got cached as
+    `secrets: [], no errors`, and run 2 on the SAME unchanged HEAD silently served that
+    stale-clean record forever, with the original failure erased. A cache HIT always
+    returns `secretsErrors: []` for that repo (scan_folder's `cached is not None` branch),
+    so a non-empty list on the second call proves the repo was actually re-scanned rather
+    than served from cache."""
+    root = tmp_path / "repos"
+    _git_init(root / "web", {"composer.json": '{"require": {"php": "^8.2"}}'})
+    state = tmp_path / "state"
+
+    def broken_gitleaks(args):
+        raise FileNotFoundError(2, "No such file or directory", "gitleaks")
+
+    out1 = scan_folder(str(root), str(state), "2026-07-14",
+                       engine="semgrep", run=_empty_run, secrets_run=broken_gitleaks)
+    assert [e["repo"] for e in out1["doc"]["coverage"]["secretsErrors"]] == ["web"]
+
+    out2 = scan_folder(str(root), str(state), "2026-07-21",
+                       engine="semgrep", run=_empty_run, secrets_run=broken_gitleaks)
+    assert [e["repo"] for e in out2["doc"]["coverage"]["secretsErrors"]] == ["web"], (
+        "a cache hit would have returned secretsErrors: [] for 'web' — this repo must be "
+        "re-scanned every time its secrets signal previously failed, not served stale")
