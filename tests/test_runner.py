@@ -34,6 +34,20 @@ def test_doctor_reports_whether_gitleaks_is_present():
     assert "gitleaks not found" in body and "UNKNOWN, not zero" in body
 
 
+def test_runner_self_provisions_gitleaks_like_ast_grep():
+    """gitleaks is optional (unlike ast-grep — a missing gitleaks degrades secret
+    detection to UNKNOWN, never fails the scan), but a user should not have to install
+    it by hand any more than they install ast-grep by hand: pin a version, verify its
+    published checksum before trusting it (same discipline as AST_GREP_VERSION), and
+    place it next to ast-grep in the venv's bin/ where secrets_scan._resolve_gitleaks
+    looks for it."""
+    body = (_ROOT / "bin" / "drift-scan").read_text()
+    assert "GITLEAKS_VERSION" in body
+    assert "gitleaks/gitleaks/releases" in body
+    assert "checksums.txt" in body and "sha256sum -c" in body
+    assert '"$VENV/bin/gitleaks"' in body
+
+
 def _runner_case_line() -> str:
     runner = (_ROOT / "bin" / "drift-scan").read_text()
     return next(l for l in runner.splitlines() if l.strip().startswith("audit|run|"))

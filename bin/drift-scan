@@ -206,8 +206,54 @@ if [ ! -x "$VENV/bin/ast-grep" ]; then
   fi
 fi
 
+# ---------- fetch the gitleaks secret-detection engine (optional, static binary) ----------
+# Unlike ast-grep, gitleaks is OPTIONAL: agent.lib.secrets_scan degrades a missing/failing
+# binary to a per-repo secretsError (secrets count reads UNKNOWN, not zero) rather than
+# failing the scan — so every step below is best-effort and NEVER exits non-zero on its
+# own account. A short --max-time bounds the network calls so a machine with no route to
+# GitHub (or one that has simply chosen not to install gitleaks) doesn't pay a hang on
+# every single scan, only a few seconds.
+if [ ! -x "$VENV/bin/gitleaks" ]; then
+  _os_gl="$(uname -s)"; _arch_gl="$(uname -m)"
+  case "$_os_gl:$_arch_gl" in
+    Linux:x86_64)   _asset_gl="linux_x64.tar.gz" ;;
+    Linux:aarch64)  _asset_gl="linux_arm64.tar.gz" ;;
+    Darwin:arm64)   _asset_gl="darwin_arm64.tar.gz" ;;
+    Darwin:x86_64)  _asset_gl="darwin_x64.tar.gz" ;;
+    *)              _asset_gl="" ;;
+  esac
+  if [ -n "$_asset_gl" ] && command -v curl >/dev/null 2>&1 && command -v tar >/dev/null 2>&1 \
+     && command -v sha256sum >/dev/null 2>&1; then
+    # PINNED, not "latest" — same determinism argument as AST_GREP_VERSION above, and a
+    # wrong or missing checksum fails the fetch rather than installing unverified code
+    # (see docs/drift-absorb.md's binary-provenance rule). Bump deliberately.
+    GITLEAKS_VERSION="${DRIFT_GITLEAKS_VERSION:-8.30.1}"
+    _asset_name_gl="gitleaks_${GITLEAKS_VERSION}_${_asset_gl}"
+    _rel_gl="https://api.github.com/repos/gitleaks/gitleaks/releases/tags/v${GITLEAKS_VERSION}"
+    _api_gl="$(curl -fsSL --max-time 10 "$_rel_gl" 2>/dev/null)"
+    _url_gl="$(printf '%s' "$_api_gl" | grep -o "\"browser_download_url\": \"[^\"]*${_asset_name_gl}\"" | cut -d'"' -f4)"
+    _sums_url_gl="$(printf '%s' "$_api_gl" | grep -o '"browser_download_url": "[^"]*_checksums.txt"' | cut -d'"' -f4)"
+    if [ -n "$_url_gl" ] && [ -n "$_sums_url_gl" ]; then
+      _tmp_gl=$(mktemp -d)
+      if curl -fsSL --max-time 30 -o "$_tmp_gl/gitleaks.tar.gz" "$_url_gl" \
+         && curl -fsSL --max-time 10 -o "$_tmp_gl/checksums.txt" "$_sums_url_gl" \
+         && ( cd "$_tmp_gl" \
+              && grep " ${_asset_name_gl}\$" checksums.txt | sha256sum -c - >/dev/null 2>&1 ) \
+         && tar -xzf "$_tmp_gl/gitleaks.tar.gz" -C "$_tmp_gl" gitleaks 2>/dev/null \
+         && [ -f "$_tmp_gl/gitleaks" ]; then
+        mv "$_tmp_gl/gitleaks" "$VENV/bin/gitleaks" && chmod +x "$VENV/bin/gitleaks"
+      else
+        echo "drift-detector: gitleaks fetch or checksum verification failed — secret " \
+             "detection will report UNKNOWN until it is installed manually." >&2
+      fi
+      rm -rf "$_tmp_gl"
+    fi
+  fi
+fi
+
 # Run from the caller's cwd (so relative paths resolve), with the agent package on the
-# import path. The venv's python finds ast-grep next to it
-# (agent.lib.scan_util.resolve_engine checks dirname(sys.executable)).
+# import path. The venv's python finds ast-grep and gitleaks next to it
+# (agent.lib.scan_util.resolve_engine / agent.lib.secrets_scan._resolve_gitleaks check
+# dirname(sys.executable)).
 exec env PYTHONSAFEPATH=1 PYTHONPATH="$ROOT${PYTHONPATH:+:$PYTHONPATH}" \
   "$VENV/bin/python" -m agent.cli "$SUB" "$@"
