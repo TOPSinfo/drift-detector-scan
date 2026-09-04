@@ -274,6 +274,15 @@ def test_no_couldnt_scan_section_when_everything_was_read():
     assert "Couldn't scan" not in out
 
 
+def test_summary_table_shows_exposed_credentials_count():
+    """`counts.secrets` (Task 8) already renders as its own "### Exposed credentials" table
+    (prior fix round, Fix 5), but the Summary tile table above it had no row at all for it —
+    a reader scanning the summary alone had no signal a leaked credential was found."""
+    p = _payload(counts={**_payload()["counts"], "secrets": 3})
+    out = md.render_markdown(p, "2026-07-21")
+    assert "| Exposed credentials | 3 |" in out
+
+
 def test_a_pipe_in_an_unscannable_reason_is_escaped():
     p = _payload(rootsUnscannable=[{"root": "https://git.x/a", "reason": "bad | reason"}],
                  counts={**_payload()["counts"], "unscannable": 1})

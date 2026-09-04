@@ -80,7 +80,10 @@ def test_no_exposed_credentials_section_when_there_are_no_secrets():
         {"kind": "cve", "ref": "composer/acme/x", "unit": None, "owner": "devops",
          "status": "DEPRECATED", "date": None, "fix_version": "1.2.3", "finding_count": 1,
          "files": [{"loc": "composer.json:1"}]}]), "2026-09-04")
-    assert "Exposed credentials" not in out
+    # narrowed to the FINDINGS section specifically: the Summary table (a later fix) always
+    # carries an "Exposed credentials" row, 0 included, same as every other summary tile —
+    # what must still not render with zero secrets is the per-finding table itself.
+    assert "### Exposed credentials" not in out
 
 
 # ── Fix 7: the delivered body must not misdescribe a leak ─────────────────────────

@@ -172,6 +172,9 @@ def render_markdown(payload: dict, now: str) -> str:
     L.append("")
     summary_rows = [
         ["Fixes needed (action-required)", counts.get("fixes", 0)],
+        # Tier 0 — no network call, no date, a fact about the repo's own git history — so it
+        # sits right under the action-required headline rather than among the dated tiers.
+        ["Exposed credentials", counts.get("secrets", 0)],
         ["Vendor API sunsets", counts.get("sunsets", 0)],
         ["— of which already retired (past-due)", counts.get("pastDue", 0)],
         ["Runtime/framework EOL", counts.get("eol", 0)],
