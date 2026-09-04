@@ -13,7 +13,28 @@ never repeat the live value into a second document.
 from __future__ import annotations
 
 import json
+import os
+import shutil
 import subprocess
+import sys
+
+
+def _resolve_gitleaks() -> str:
+    """Locate the gitleaks binary. Mirrors agent.lib.scan_util.resolve_engine's PATH-then-
+    venv-bin lookup for ast-grep: bin/drift-scan downloads gitleaks into the venv's bin/,
+    next to the venv's own python, and a bare `subprocess.run(["gitleaks", ...])` relying
+    on PATH alone would never find it there.
+
+    Unlike resolve_engine, this never raises: gitleaks is OPTIONAL — a repo's secrets
+    scan degrading to UNKNOWN is fine, a whole scan refusing to run is not. When gitleaks
+    can't be found anywhere, the bare name is returned so the resulting
+    FileNotFoundError still flows through run_secrets_scan's own fault isolation below.
+    """
+    p = shutil.which("gitleaks")
+    if p:
+        return p
+    cand = os.path.join(os.path.dirname(sys.executable), "gitleaks")
+    return cand if os.path.exists(cand) else "gitleaks"
 
 
 def _default_run(args: list) -> str:
@@ -48,8 +69,8 @@ def _failure_message(exc: Exception) -> str:
 def run_secrets_scan(repo_path: str, *, run=_default_run) -> dict:
     errors = []
     try:
-        out = run(["gitleaks", "detect", "--source", repo_path, "--report-format", "json",
-                   "--report-path", "/dev/stdout", "--exit-code", "0", "--no-banner"])
+        out = run([_resolve_gitleaks(), "detect", "--source", repo_path, "--report-format",
+                   "json", "--report-path", "/dev/stdout", "--exit-code", "0", "--no-banner"])
     except (OSError, subprocess.SubprocessError) as exc:
         # FAULT ISOLATION. A missing binary (FileNotFoundError), an unrunnable one, a
         # timeout or a non-zero exit is a failure of THIS signal — it must not propagate,

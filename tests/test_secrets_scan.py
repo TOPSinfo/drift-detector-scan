@@ -44,6 +44,47 @@ def test_run_secrets_scan_never_carries_the_matched_secret_text():
     assert "sk_live_abc123REDACTME" not in dumped
 
 
+def test_resolve_gitleaks_finds_it_next_to_the_python_interpreter(tmp_path, monkeypatch):
+    """Mirrors agent.lib.scan_util.resolve_engine's lookup for ast-grep: bin/drift-scan
+    downloads gitleaks into the venv's bin/, next to the venv's python — a bare
+    subprocess.run(["gitleaks", ...]) relying on PATH alone would never find it there."""
+    monkeypatch.setattr(secrets_scan.shutil, "which", lambda name: None)
+    fake_bin = tmp_path / "gitleaks"
+    fake_bin.write_text("#!/bin/sh\n")
+    monkeypatch.setattr(secrets_scan.sys, "executable", str(tmp_path / "python"))
+    assert secrets_scan._resolve_gitleaks() == str(fake_bin)
+
+
+def test_resolve_gitleaks_prefers_path_over_the_venv(monkeypatch):
+    monkeypatch.setattr(secrets_scan.shutil, "which", lambda name: "/usr/local/bin/gitleaks")
+    assert secrets_scan._resolve_gitleaks() == "/usr/local/bin/gitleaks"
+
+
+def test_resolve_gitleaks_falls_back_to_the_bare_name_when_not_found_anywhere(
+        tmp_path, monkeypatch):
+    """gitleaks is OPTIONAL (unlike ast-grep) — when it can't be found anywhere, this must
+    still return a usable command, not raise. run_secrets_scan's own fault isolation turns
+    the resulting FileNotFoundError into a per-repo secretsError, not a crashed scan."""
+    monkeypatch.setattr(secrets_scan.shutil, "which", lambda name: None)
+    monkeypatch.setattr(secrets_scan.sys, "executable", str(tmp_path / "python"))
+    assert secrets_scan._resolve_gitleaks() == "gitleaks"
+
+
+def test_run_secrets_scan_invokes_the_resolved_binary_path_not_a_bare_name(
+        tmp_path, monkeypatch):
+    fake_bin = tmp_path / "gitleaks"
+    fake_bin.write_text("#!/bin/sh\n")
+    monkeypatch.setattr(secrets_scan, "_resolve_gitleaks", lambda: str(fake_bin))
+    seen = {}
+
+    def fake_run(args):
+        seen["args"] = args
+        return gitleaks_fake.EMPTY
+
+    run_secrets_scan("/repo", run=fake_run)
+    assert seen["args"][0] == str(fake_bin)
+
+
 def test_run_secrets_scan_on_a_clean_repo_returns_no_matches():
     res = run_secrets_scan("/repo", run=lambda args: gitleaks_fake.EMPTY)
     assert res == {"matches": [], "errors": []}
