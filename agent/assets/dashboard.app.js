@@ -151,7 +151,8 @@
           {plane:"supply", title:"Supply chain", tiles:[
             {key:"critical",label:"Critical",n:c.critical,sev:"crit"},
             {key:"fixes",label:"Fixes",n:this.supplyFixes},
-            {key:"eol",label:"EOL",n:c.eol}]},
+            {key:"eol",label:"EOL",n:c.eol},
+            {key:"secrets",label:"Secrets",n:c.secrets,sev:"crit"}]},
           {plane:"drift", title:"Vendor drift", tiles:[
             {key:"detected",label:"Detected",n:c.detected},
             {key:"sunsets",label:"Sunsets",n:c.sunsets},
@@ -718,6 +719,7 @@
           if(f==="critical")  return a.worst==="CRITICAL";
           if(f==="fixes")     return a.status==="DEPRECATED";
           if(f==="eol")       return a.kind==="eol";
+          if(f==="secrets")   return a.kind==="secret";
           if(f==="devops")    return a.owner==="devops";               // the two delivery streams
           if(f==="developer") return a.owner==="developer";
           if(f==="sunsets")   return a.kind==="sunset";
