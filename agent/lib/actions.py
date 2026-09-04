@@ -65,6 +65,17 @@ def _sunset_unit(f) -> str:
     return f.get("operation") or f.get("path") or f.get("domain") or f.get("version") or ""
 
 
+def secret_unit(f) -> str:
+    """The thing that leaked: WHERE it leaked — "path:line", as `files[0]` already carries it
+    (agent/audit.py::_secret_findings). A secret's `ref` is the gitleaks RULE id, which is a
+    category, not a credential: five `generic-api-key` hits in a repo are five keys to rotate
+    at five sites, not one job. Public because findings_state.fingerprint needs the identical
+    signal — an action's identity and a finding's identity must not disagree about what
+    "one leak" means."""
+    files = f.get("files") or []
+    return (str(files[0]) if files else "") or f.get("path") or ""
+
+
 def _group_key(f):
     """A group is ONE JOB.
 
@@ -76,9 +87,16 @@ def _group_key(f):
     tile reading `Sunsets 1` — the operation axis was in the data and thrown away at the
     last step, which is precisely the "it skipped my call" complaint this release exists
     to answer.
+
+    For a SECRET it is (repo, rule, leak-site), for the same reason: `ref` is the gitleaks
+    rule id, so keying on it collapsed twenty leaked keys across twenty files into one
+    action — and `files` is then capped at _MAX_FILES, so fourteen of those call-sites
+    disappeared from every rendered surface. Each credential is its own rotation.
     """
     if f.get("kind") == "sunset":
         return (f["repo"], f["ref"], _sunset_unit(f))
+    if f.get("kind") == "secret":
+        return (f["repo"], f["ref"], secret_unit(f))
     return (f["repo"], f["ref"])
 
 
@@ -114,8 +132,11 @@ def build_actions(findings: list) -> list:
             "refKind": worst_f.get("refKind"),
             "owner": owners.owner({"kind": kind, "refKind": worst_f.get("refKind")}),
             # what is actually retiring — the row label is "eBay GetCategoryFeatures",
-            # not a bare "eBay" repeated down twelve identical-looking rows.
-            "unit": _sunset_unit(worst_f) if kind == "sunset" else None,
+            # not a bare "eBay" repeated down twelve identical-looking rows. For a secret it
+            # is the leak site, so five rows of the same rule are five distinguishable rows
+            # (and five distinct delivery.action_fingerprint issues), not one repeated label.
+            "unit": (_sunset_unit(worst_f) if kind == "sunset" else
+                     secret_unit(worst_f) if kind == "secret" else None),
             # the retirement/EOL date, as its own field so a table can show a clean date
             # column instead of parsing it back out of the recommendation prose
             "date": worst_f.get("date"),

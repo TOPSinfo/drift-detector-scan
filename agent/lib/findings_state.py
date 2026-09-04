@@ -12,6 +12,7 @@ import hashlib
 import json
 import os
 
+from agent.lib import actions as actions_mod
 from agent.lib.actions import build_actions
 
 STATE_NAME = "findings-state.json"
@@ -26,6 +27,14 @@ def fingerprint(f: dict) -> str:
         ident = f"{f.get('ref')}|{f.get('version')}"       # a specific API version's retirement
         if f.get("domain"):                                # domain-scoped: keep hosts distinct
             ident += f"|{f.get('domain')}"
+    elif kind == "secret":
+        # ONE LEAKED CREDENTIAL, not one gitleaks rule. `ref` is the rule id, so falling
+        # through to it merged every `generic-api-key` hit in a repo: fixing 4 of 5 showed
+        # nothing resolved, and baselining one accepted false positive muted every current
+        # AND future leak of that rule there. `secret_unit` is the leak's "path:line" — the
+        # same signal actions._group_key uses, so a finding and its action agree on what
+        # "one leak" is. Version-independent by construction (a secret has no version).
+        ident = actions_mod.secret_unit(f)
     else:                                                   # eol: the product line
         ident = f.get("ref", "")
     raw = f"{f.get('repo')}|{kind}|{f.get('ref')}|{ident}"
