@@ -332,6 +332,7 @@ def check_md_matches_payload(md_text: str, payload: dict) -> None:
                   "— of which already retired (past-due)": counts.get("pastDue", 0),
                   "Runtime/framework EOL": counts.get("eol", 0),
                   "Fixes needed (action-required)": counts.get("fixes", 0),
+                  "Exposed credentials": counts.get("secrets", 0),
                   "Vendors with an unchecked retirement list": counts.get("unaudited", 0),
                   "— of which blocked (need access, not effort)": counts.get("blocked", 0)}
         for label, expected in checks.items():

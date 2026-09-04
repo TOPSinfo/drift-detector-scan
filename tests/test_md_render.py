@@ -174,6 +174,21 @@ def test_parity_catches_an_unescaped_pipe_truncation():
         check_md_matches_payload(broken, _payload())
 
 
+def test_parity_catches_an_exposed_credentials_number_that_drifts():
+    """The 'Exposed credentials' Summary row (counts.get("secrets", 0)) must be checked by
+    check_md_matches_payload like every other tile — otherwise a leaked-credential count
+    could silently disagree between drift.md and drift.json with nothing catching it."""
+    import pytest
+    from agent.lib.verify import check_md_matches_payload, Violation
+    p = _payload(counts={**_payload()["counts"], "secrets": 3})
+    out = md.render_markdown(p, "2026-07-21")
+    assert "| Exposed credentials | 3 |" in out
+    tampered = out.replace("| Exposed credentials | 3 |", "| Exposed credentials | 0 |")
+    with pytest.raises(Violation) as e:
+        check_md_matches_payload(tampered, p)
+    assert e.value.check == "md-summary-parity"
+
+
 def test_parity_catches_two_identical_findings_rows():
     import pytest
     from agent.lib.verify import check_md_matches_payload, Violation
