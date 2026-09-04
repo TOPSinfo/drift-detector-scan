@@ -9,6 +9,8 @@ tests/test_repos_errored_surfaced.py's shape for `reposErrored`.
 """
 import subprocess
 
+import pytest
+
 from agent.cli import main
 
 
@@ -21,10 +23,24 @@ def _git_init(d, files):
                     "--allow-empty", "-q", "-am", "init"], cwd=d, check=True)
 
 
-def test_a_missing_gitleaks_binary_is_warned_about_on_stderr(tmp_path, capsys):
-    """`run --root` never exposes a way to inject `secrets_run`, and gitleaks is not
-    installed in this sandbox — so a plain `run` already exercises the real failure path
-    (secrets_scan.py's FileNotFoundError branch) without any stubbing."""
+@pytest.fixture
+def secrets_failing(monkeypatch):
+    """Force the secrets scan to fail, exactly as a missing/timed-out gitleaks does —
+    injected the same way tests/test_repos_errored_surfaced.py's `exploding` fixture
+    injects an engine failure, so this test's own pass/fail does not depend on whether
+    gitleaks happens to be installed on the machine running the suite."""
+    import agent.inventory_scan as inv
+    real = inv.scan_repo
+
+    def scan_repo(abs_, name, *a, **kw):
+        kw["secrets_run"] = lambda args: (_ for _ in ()).throw(
+            FileNotFoundError("gitleaks"))
+        return real(abs_, name, *a, **kw)
+    monkeypatch.setattr(inv, "scan_repo", scan_repo)
+
+
+def test_a_missing_gitleaks_binary_is_warned_about_on_stderr(tmp_path, capsys,
+                                                              secrets_failing):
     root = tmp_path / "repos"
     _git_init(root / "web", {"composer.json": '{"require": {"php": "^8.2"}}'})
 
