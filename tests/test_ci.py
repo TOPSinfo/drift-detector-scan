@@ -23,19 +23,68 @@ def test_fail_on_deprecated_exit_code(monkeypatch, tmp_path):
 
 
 def test_fail_on_deprecated_does_not_gate_on_exposed_secrets_but_says_so(monkeypatch, tmp_path, capsys):
-    """Whether --fail-on-deprecated should ALSO fail on EXPOSED secrets is a deliberate,
-    separate policy decision (out of scope here) — but the gate staying silent about
-    un-muted EXPOSED findings it does not check is not: a CI log that says nothing implies
-    there was nothing to say."""
+    """--fail-on-deprecated and --fail-on-exposed are deliberately SEPARATE flags (a
+    leaked credential is a different risk class than an overdue API migration, and a CI
+    pipeline already using --fail-on-deprecated should not start failing on secrets the
+    moment this feature ships) — but the gate staying silent about un-muted EXPOSED
+    findings it does not check is not: a CI log that says nothing implies there was
+    nothing to say."""
     import agent.run as run_mod
     monkeypatch.setattr(run_mod, "run_pipeline", lambda *a, **k: {
         "scope": {"reposScanned": 1},
         "auditCounts": {"DEPRECATED": 0, "REVIEW": 0, "EXPOSED": 2}, "delivered": []})
     rc = cli.main(_run_args(tmp_path, "--fail-on-deprecated"))
     err = capsys.readouterr().err
-    assert rc == 0, "EXPOSED alone must not trip the gate — that is a separate policy decision"
+    assert rc == 0, "EXPOSED alone must not trip the gate — that is --fail-on-exposed's job"
     assert "2 EXPOSED" in err
     assert "not gated by --fail-on-deprecated" in err
+    assert "--fail-on-exposed" in err
+
+
+def test_fail_on_exposed_exit_code(monkeypatch, tmp_path):
+    """--fail-on-exposed is its own opt-in gate, distinct from --fail-on-deprecated, with
+    its own exit code so a caller can tell which gate tripped."""
+    import agent.run as run_mod
+
+    def counts(exposed, dep=0):
+        return lambda *a, **k: {"scope": {"reposScanned": 1},
+                                "auditCounts": {"DEPRECATED": dep, "REVIEW": 0,
+                                                "EXPOSED": exposed}, "delivered": []}
+
+    monkeypatch.setattr(run_mod, "run_pipeline", counts(2))
+    assert cli.main(_run_args(tmp_path, "--fail-on-exposed")) == 7      # gate trips
+
+    monkeypatch.setattr(run_mod, "run_pipeline", counts(0))
+    assert cli.main(_run_args(tmp_path, "--fail-on-exposed")) == 0      # no secrets -> passes
+
+    monkeypatch.setattr(run_mod, "run_pipeline", counts(3))
+    assert cli.main(_run_args(tmp_path)) == 0                           # no flag -> never fails
+
+
+def test_fail_on_exposed_does_not_gate_on_deprecated_findings(monkeypatch, tmp_path):
+    """--fail-on-exposed is scoped to secrets only — a DEPRECATED finding with no
+    secrets must not trip it (that is --fail-on-deprecated's job)."""
+    import agent.run as run_mod
+    monkeypatch.setattr(run_mod, "run_pipeline", lambda *a, **k: {
+        "scope": {"reposScanned": 1},
+        "auditCounts": {"DEPRECATED": 5, "REVIEW": 0, "EXPOSED": 0}, "delivered": []})
+    assert cli.main(_run_args(tmp_path, "--fail-on-exposed")) == 0
+
+
+def test_both_gates_can_be_set_together(monkeypatch, tmp_path):
+    """A DEPRECATED finding trips --fail-on-deprecated first (exit 3) when both flags
+    are set and only a deprecated finding exists; with only an EXPOSED finding, only
+    --fail-on-exposed trips (exit 7)."""
+    import agent.run as run_mod
+    monkeypatch.setattr(run_mod, "run_pipeline", lambda *a, **k: {
+        "scope": {"reposScanned": 1},
+        "auditCounts": {"DEPRECATED": 1, "REVIEW": 0, "EXPOSED": 0}, "delivered": []})
+    assert cli.main(_run_args(tmp_path, "--fail-on-deprecated", "--fail-on-exposed")) == 3
+
+    monkeypatch.setattr(run_mod, "run_pipeline", lambda *a, **k: {
+        "scope": {"reposScanned": 1},
+        "auditCounts": {"DEPRECATED": 0, "REVIEW": 0, "EXPOSED": 1}, "delivered": []})
+    assert cli.main(_run_args(tmp_path, "--fail-on-deprecated", "--fail-on-exposed")) == 7
 
 
 def test_gate_fails_distinctly_when_sources_unreachable(monkeypatch, tmp_path):

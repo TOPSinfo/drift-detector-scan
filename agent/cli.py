@@ -292,12 +292,21 @@ def _cmd_run(args) -> int:
             print(f"✗ gate: {c['DEPRECATED']} DEPRECATED finding(s) (excluding muted) — failing (exit 3)",
                   file=sys.stderr)
             return 3
-        # Whether --fail-on-deprecated should ALSO fail on a leaked credential is a separate
-        # policy decision, not made here — but staying silent about the gap would let a CI
-        # log with un-muted EXPOSED findings and no other signal read as fully clean.
-        if c.get("EXPOSED", 0) > 0:
-            print(f"ℹ {c['EXPOSED']} EXPOSED secret finding(s) exist but are not gated by "
-                  f"--fail-on-deprecated", file=sys.stderr)
+    if getattr(args, "fail_on_exposed", False):
+        if c.get("EXPOSED", 0) > 0:        # gate on the raw signal: ANY exposed secret fails
+            print(f"✗ gate: {c['EXPOSED']} EXPOSED secret finding(s) (excluding muted) — "
+                  f"failing (exit 7)", file=sys.stderr)
+            return 7
+    elif getattr(args, "fail_on_deprecated", False) and c.get("EXPOSED", 0) > 0:
+        # --fail-on-deprecated and --fail-on-exposed are DELIBERATELY separate flags (a
+        # leaked credential is a different risk class than an overdue API migration, and
+        # a pipeline already using --fail-on-deprecated should not start failing on
+        # secrets the moment this feature ships) — but staying silent about the gap
+        # would let a CI log with un-muted EXPOSED findings and no other signal read as
+        # fully clean.
+        print(f"ℹ {c['EXPOSED']} EXPOSED secret finding(s) exist but are not gated by "
+              f"--fail-on-deprecated — pass --fail-on-exposed too if leaked credentials "
+              f"should fail this build", file=sys.stderr)
     return resolve_rc
 
 
@@ -1863,6 +1872,10 @@ def main(argv: list[str]) -> int:
                          "600s timeout and it gets counted errored, which serial would not.")
     pr.add_argument("--fail-on-deprecated", action="store_true",
                     help="exit 3 if any un-muted DEPRECATED finding (CI gate)")
+    pr.add_argument("--fail-on-exposed", action="store_true",
+                    help="exit 7 if any un-muted EXPOSED secret finding (CI gate) — "
+                         "separate from --fail-on-deprecated, a leaked credential is a "
+                         "different risk class than an overdue API migration")
     pr.add_argument("--resolve",
                     help="verdicts.json from an AI resolution pass (or `resolve --apply`'s own "
                          "resolution.json) — gate it, apply it, and RE-SCAN so drift.json comes "
