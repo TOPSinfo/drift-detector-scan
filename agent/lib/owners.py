@@ -2,9 +2,10 @@
 
 FINDING owners — who fixes a drift.json finding in a scanned repo (a PURE function of the
 record; verify recomputes it):
-  - **DevOps** owns the platform: package vulnerabilities (a manifest/lockfile bump) and
-    **runtime** end-of-life (a base-image / language upgrade). Delivered as ISSUES (a ticket
-    to action).
+  - **DevOps** owns the platform: package vulnerabilities (a manifest/lockfile bump),
+    **runtime** end-of-life (a base-image / language upgrade), and **exposed credentials**
+    (revoke + reissue with the vendor, then move the value into the secret store). Delivered
+    as ISSUES (a ticket to action).
   - **Developer** owns the application: vendor API sunsets (integration code) and
     **framework** end-of-life — a Laravel 8→11 or Django LTS jump is app-code migration,
     not an infra bump. Delivered as MRs (code they contribute to their own repo).
@@ -34,6 +35,13 @@ def owner(record: dict) -> str:
     """'devops' | 'developer' for a finding or an action. Total and deterministic."""
     kind = record.get("kind")
     if kind == "cve":
+        return DEVOPS
+    if kind == "secret":
+        # a leaked credential ends only when it is REVOKED and reissued with the vendor, in
+        # the secret store / vendor console — removing it from source does not un-leak a value
+        # already in git history. That is platform work, and it must happen whether or not the
+        # app code is ever touched. Stated explicitly because falling through to `developer`
+        # would have been an accident, not a decision.
         return DEVOPS
     if kind == "eol":
         # runtimes (php, node, python) are DevOps; frameworks (laravel, django) are the

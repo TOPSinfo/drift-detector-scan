@@ -224,6 +224,13 @@ def _emoji_worst(acts: list) -> str:
     return "⚠️"
 
 
+def _first_site(a: dict) -> str:
+    f0 = next(iter(a.get("files") or []), None)
+    if f0 is None:
+        return ""
+    return f0.get("loc", "") if isinstance(f0, dict) else str(f0)
+
+
 def _sites_md(a: dict) -> list:
     lines = []
     for f in (a.get("files") or [])[:12]:
@@ -391,14 +398,34 @@ def migrations_md(repo: str, actions: list, links: dict | None = None) -> str:
 
 
 def devops_repo_body(repo: str, actions: list, links: dict | None = None) -> str:
-    """Per-repo DevOps issue body: bundles package vulnerabilities and runtime EOL findings,
-    idempotent via marker. Mirrors migrations_md but for DevOps stream."""
+    """Per-repo DevOps issue body: bundles package vulnerabilities, runtime EOL and exposed
+    credentials, idempotent via marker. Mirrors migrations_md but for DevOps stream."""
     fp = repo_fingerprint(repo, "devops")
-    out = ["# Platform upkeep — Drift Detector", "",
-           "Package vulnerabilities and runtime end-of-life for this repo. Bump the "
-           "manifest/lockfile or base image; this list is regenerated each scan.", "",
-           marker(fp), ""]
+    intro = ("Package vulnerabilities and runtime end-of-life for this repo. Bump the "
+             "manifest/lockfile or base image; this list is regenerated each scan.")
+    if any(a.get("kind") == "secret" for a in actions):
+        intro = ("Package vulnerabilities, runtime end-of-life and exposed credentials for "
+                 "this repo. Bump the manifest/lockfile or base image; ROTATE anything listed "
+                 "under exposed credentials. This list is regenerated each scan.")
+    out = ["# Platform upkeep — Drift Detector", "", intro, "", marker(fp), ""]
     for a in actions:
+        if a.get("kind") == "secret":
+            # A leaked credential is not a version to bump and not a date to migrate before —
+            # the stock "· retires <date>" / manifest framing above would misdescribe it as an
+            # upgrade. It has no deadline because it is already live: the exposure ends when
+            # the value is revoked at the vendor, and removing it from source does not
+            # un-leak a value that is already in git history.
+            out.append(f"## Exposed credential: {a.get('ref')} — {a.get('status')}")
+            site = _sunset_unit(a) or _first_site(a)
+            if site:
+                out.append(f"Leaked at `{site}` — already in git history.")
+            if a.get("recommendation"):
+                out.append(a["recommendation"])
+            sites = _sites_md(a)
+            if sites:
+                out += ["", "Leak site(s):", *sites]
+            out.append("")
+            continue
         out.append(f"## {_label_of(a)} — {a.get('status')}"
                    + (f" · retires {a['date']}" if a.get("date") else ""))
         if a.get("recommendation"):
