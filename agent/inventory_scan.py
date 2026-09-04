@@ -101,8 +101,8 @@ def _rollup_coverage(coverage: dict, repos: list, *, discovered_count: int) -> N
     coverage["shapes"] = [r["shape"] for r in repos if r.get("shape")]
 
 
-def scan_folder(root, state_dir, now, *, engine=None, run=None, git=None, progress=None,
-                jobs=1) -> dict:
+def scan_folder(root, state_dir, now, *, engine=None, run=None, git=None, secrets_run=None,
+                progress=None, jobs=1) -> dict:
     # `root` may be a single path or a list of roots; discovery is recursive.
     roots = [root] if isinstance(root, (str, os.PathLike)) else list(root)
     # A root is either a bare path/url or a (path_or_url, branch|None) pair since a fleet entry
@@ -160,7 +160,12 @@ def scan_folder(root, state_dir, now, *, engine=None, run=None, git=None, progre
     # tell "no rules for this language" apart from "looked and found nothing"
     rule_kinds = rule_kinds_by_language(vendors)
     attestations = shapes.load_attestations(state_dir)
-    coverage = {"reposScanned": 0, "reposErrored": [], "manifestsUnparsed": []}
+    # `secretsErrors` is the secrets engine's own failures, per repo. It is a SEPARATE list from
+    # reposErrored on purpose: a missing/failing gitleaks costs the repo its secrets signal only,
+    # never its ast-grep/manifest/CVE results — but it must still be said out loud, or a fleet
+    # where gitleaks never ran reports zero secrets and looks clean.
+    coverage = {"reposScanned": 0, "reposErrored": [], "manifestsUnparsed": [],
+                "secretsErrors": []}
     # Repo identities collide ACROSS roots. `discover_repos` guarantees collision-free
     # identities only within ONE call, and `resolve_sources` calls it once per root — so two
     # roots that each contain a `web/` both yield the identity `"web"`. `ir_store._repo_path`
@@ -208,18 +213,36 @@ def scan_folder(root, state_dir, now, *, engine=None, run=None, git=None, progre
             _p(f"{tag}  cached (HEAD unchanged)")
             cached = {**cached, "id": i + 1}
             cached["shape"] = _shape_of(abs_, name, cached, rule_kinds, attestations)
-            return {"record": cached, "unparsed": []}
+            # a cache hit re-uses the record whole; nothing ran, so replay whatever
+            # secretsErrors the record was saved WITH — a repo cached after a gitleaks
+            # failure carries that failure forward on every hit, rather than resetting to a
+            # false "clean" (`.get` tolerates a pre-existing cache saved before this key
+            # existed, which is safe here: under the old logic, anything that WAS cached
+            # already had an empty secretsErrors, or it would never have been written).
+            return {"record": cached, "unparsed": [],
+                    "secretsErrors": cached.get("secretsErrors", [])}
         _p(f"{tag}  scan: git · manifests · AST endpoints" +
            ("  (uncached: duplicate repo name across roots)" if name in ambiguous else ""))
         record, note = scan_repo(abs_, name, i + 1, vendors, rules_path,
-                                 engine=engine, run=run, git=git,
+                                 engine=engine, run=run, git=git, secrets_run=secrets_run,
                                  idiom_instances=idiom_instances,
                                  configured_branch=source_branch.get(abs_))
         record["sourceKind"] = source_kind.get(abs_, "local-git")
         record["shape"] = _shape_of(abs_, name, record, rule_kinds, attestations)
+        # A secrets-scan failure (gitleaks missing/timed out/crashed) now travels WITH the
+        # cached record (`record["secretsErrors"]`, set in repo_scan.scan_repo) rather than
+        # being a reason to skip the write. That makes this cache write safe to be
+        # unconditional again: a later cache HIT replays the record's own secretsErrors (see
+        # above), so a failed secrets signal is remembered forever exactly like a successful
+        # one's results, instead of being erased back to a false "clean". Skipping the write
+        # here (the previous fix) had a real fleet-wide cost: gitleaks is an optional,
+        # unpinned, un-preflighted dependency, so on any machine without it, EVERY repo's
+        # secrets scan fails, EVERY run, which used to mean this line never executed at all —
+        # silently disabling the ENTIRE per-repo cache, not just its secrets signal.
         if cacheable:
             ir_store.save_repo_cache(state_dir, name, sha, record, rules_sig)
-        return {"record": record, "unparsed": note["unparsed"]}
+        return {"record": record, "unparsed": note["unparsed"],
+                "secretsErrors": note["secretsErrors"]}
 
     # The fold below runs in INPUT order, never completion order: `repos`, `reposErrored` and
     # `manifestsUnparsed` are all order-sensitive, and the whole --jobs guarantee is that a
@@ -232,6 +255,7 @@ def scan_folder(root, state_dir, now, *, engine=None, run=None, git=None, progre
             continue
         repos.append(out["record"])
         coverage["manifestsUnparsed"] += [{"repo": name, **u} for u in out["unparsed"]]
+        coverage["secretsErrors"] += [{"repo": name, **e} for e in out.get("secretsErrors", [])]
 
     # SDK profiles: for a wrapper whose vendor+version live behind constants (the
     # `sdk-only-no-callsite` blind spot), inject synthetic endpoints read from its OWN source

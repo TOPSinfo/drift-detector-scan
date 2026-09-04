@@ -9,11 +9,12 @@ Deterministic: results + rules sorted, no timestamps in the payload.
 from __future__ import annotations
 
 SARIF_VERSION = "2.1.0"
-_LEVEL = {"DEPRECATED": "error", "REVIEW": "warning"}
+_LEVEL = {"DEPRECATED": "error", "EXPOSED": "error", "REVIEW": "warning"}
 _RULES = {
     "cve": ("drift-cve", "Known vulnerability (OSV)"),
     "sunset": ("drift-vendor-sunset", "Retired or retiring vendor API"),
     "eol": ("drift-eol", "End-of-life runtime or framework"),
+    "secret": ("drift-secret", "Exposed credential"),
 }
 _INFO_URI = "https://github.com/TOPSinfo/drift-detector-scan"
 

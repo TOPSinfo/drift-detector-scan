@@ -67,9 +67,15 @@ def _cmd_inventory_scan(args) -> int:
     with open(args.out_json, "w", encoding="utf-8") as fh:
         json.dump(out["doc"], fh, ensure_ascii=False, indent=2, sort_keys=True)
     d = out["doc"]
+    # A repo whose secrets signal failed (gitleaks missing/timed out/crashed) is not a repo
+    # that scanned clean of leaked credentials — `reposErrored`'s count was already in this
+    # line; a failed secrets scan is a narrower, non-fatal failure of the SAME shape and must
+    # not be the one thing this summary says nothing about.
+    n_secrets_errs = len(d["coverage"].get("secretsErrors", []))
+    secrets_bit = f" · {n_secrets_errs} secrets error(s)" if n_secrets_errs else ""
     print(f"✓ {len(d['repos'])} repos · {len(d.get('unique_apis', []))} APIs · "
           f"{len(d.get('unique_packages', []))} packages · "
-          f"{len(d['coverage']['reposErrored'])} errors · {dt:.1f}s")
+          f"{len(d['coverage']['reposErrored'])} errors{secrets_bit} · {dt:.1f}s")
     return 0
 
 
@@ -98,8 +104,17 @@ def _cmd_audit(args) -> int:
         with open(args.out_html, "w", encoding="utf-8") as fh:
             fh.write(render_dashboard(doc, audit, args.now))
     c = audit["counts"]
-    print(f"✓ audit: 🔴 {c.get('DEPRECATED', 0)} action-required · 🟠 {c.get('REVIEW', 0)} review · "
-          f"across {c.get('reposAffected', 0)} repos")
+    print(f"✓ audit: 🔴 {c.get('DEPRECATED', 0)} action-required · 🔑 {c.get('EXPOSED', 0)} "
+          f"exposed · 🟠 {c.get('REVIEW', 0)} review · across {c.get('reposAffected', 0)} repos")
+    # `doc` (inventory.json, via --in) carries coverage.secretsErrors from the scan stage —
+    # a repo whose secrets signal failed there means the EXPOSED count just printed is
+    # potentially incomplete for it, not a proven-clean zero. Mirrors how `_cmd_run` warns
+    # about osvErrors/eolErrors: 'couldn't check' must never read as 'clean'.
+    secrets_errored = (doc.get("coverage", {}) or {}).get("secretsErrors") or []
+    if secrets_errored:
+        print(f"⚠ secrets scan failed for {len(secrets_errored)} repo(s) during the prior "
+              f"scan — the exposed-credentials count above may be incomplete for them.",
+              file=sys.stderr)
     return 0
 
 
@@ -207,6 +222,18 @@ def _cmd_run(args) -> int:
     for u in (out.get("rootsUnscannable") or []):
         print(f"⚠ skipped: {u['reason']}", file=sys.stderr)
 
+    # A repo whose SECRETS signal failed to collect (gitleaks missing/timed out/crashed) is
+    # not a repo that came back clean of leaked credentials — its ast-grep/manifest/CVE
+    # results are still good, so this warns rather than aborting the run (unlike the
+    # reposErrored-at-100% case above, which does exit 4).
+    secrets_errored = out.get("secretsErrors") or []
+    if secrets_errored:
+        names = [e.get("repo", "?") for e in secrets_errored]
+        head, rest = names[:8], max(0, len(names) - 8)
+        print(f"⚠ secrets scan failed for {len(secrets_errored)} repo(s): "
+              f"{', '.join(head)}{f' (+{rest} more)' if rest else ''} — their secrets count "
+              f"is UNKNOWN, not zero.", file=sys.stderr)
+
     # Distinct, non-zero exit codes for the non-clean `--resolve` outcomes: without these an
     # automated caller had no way to tell "resolved" from "refused" short of scraping stderr —
     # `run` exited 0 either way. Separate from (and checked before) the --fail-on-deprecated
@@ -265,6 +292,12 @@ def _cmd_run(args) -> int:
             print(f"✗ gate: {c['DEPRECATED']} DEPRECATED finding(s) (excluding muted) — failing (exit 3)",
                   file=sys.stderr)
             return 3
+        # Whether --fail-on-deprecated should ALSO fail on a leaked credential is a separate
+        # policy decision, not made here — but staying silent about the gap would let a CI
+        # log with un-muted EXPOSED findings and no other signal read as fully clean.
+        if c.get("EXPOSED", 0) > 0:
+            print(f"ℹ {c['EXPOSED']} EXPOSED secret finding(s) exist but are not gated by "
+                  f"--fail-on-deprecated", file=sys.stderr)
     return resolve_rc
 
 

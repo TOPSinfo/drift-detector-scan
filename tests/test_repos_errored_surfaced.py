@@ -35,6 +35,12 @@ def exploding(monkeypatch):
         def scan_repo(abs_, name, *a, **kw):
             if name in names:
                 raise RuntimeError("engine timed out after 600s")
+            # `run --root` never exposes a way to inject `secrets_run`, and this file relies on
+            # the real ast-grep binary — so stub gitleaks (not present in this sandbox) rather
+            # than let the surviving repos hit the real binary. `kw["secrets_run"]` is already
+            # present (inventory_scan.py's own call always names it) but None, so `setdefault`
+            # would not touch it — override the falsy value explicitly instead.
+            kw["secrets_run"] = kw.get("secrets_run") or (lambda args: "[]")
             return real(abs_, name, *a, **kw)
         monkeypatch.setattr(inv, "scan_repo", scan_repo)
     return make

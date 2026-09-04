@@ -11,6 +11,11 @@ import json
 import subprocess
 
 from agent.run import run_pipeline
+from tests import gitleaks_fake
+
+
+def _no_secrets(args):
+    return gitleaks_fake.EMPTY
 
 
 def _git_init(d, files):
@@ -50,7 +55,8 @@ def test_run_pipeline_embeds_leads_and_adhoc_blobs_when_present(tmp_path, monkey
     _write_json(state / "adhoc.json", {"schema": "drift-adhoc/v1", "claims": []})
 
     run_pipeline(str(root), str(state), "2026-07-15",
-                 engine="semgrep", run=_empty_engine, http=lambda *a, **k: {})
+                 engine="semgrep", run=_empty_engine, http=lambda *a, **k: {},
+                 secrets_run=_no_secrets)
 
     html = (state / "dashboard.html").read_text()
     assert 'id="leads-data"' in html
@@ -64,7 +70,8 @@ def test_run_pipeline_hides_ai_tiers_when_documents_absent(tmp_path, monkeypatch
     root, state = _run(tmp_path, monkeypatch)
 
     run_pipeline(str(root), str(state), "2026-07-15",
-                 engine="semgrep", run=_empty_engine, http=lambda *a, **k: {})
+                 engine="semgrep", run=_empty_engine, http=lambda *a, **k: {},
+                 secrets_run=_no_secrets)
 
     html = (state / "dashboard.html").read_text()
     assert 'id="leads-data"' not in html
@@ -79,7 +86,8 @@ def test_run_pipeline_hides_ai_tier_when_document_is_corrupt(tmp_path, monkeypat
     _write_json(state / "adhoc.json", {"schema": "drift-adhoc/v1", "claims": []})
 
     out = run_pipeline(str(root), str(state), "2026-07-15",
-                       engine="semgrep", run=_empty_engine, http=lambda *a, **k: {})
+                       engine="semgrep", run=_empty_engine, http=lambda *a, **k: {},
+                       secrets_run=_no_secrets)
 
     assert out is not None                        # the scan completed, it did not raise
     html = (state / "dashboard.html").read_text()
@@ -97,7 +105,8 @@ def test_run_pipeline_hides_ai_tier_when_document_has_invalid_utf8(tmp_path, mon
     _write_json(state / "adhoc.json", {"schema": "drift-adhoc/v1", "claims": []})
 
     out = run_pipeline(str(root), str(state), "2026-07-15",
-                       engine="semgrep", run=_empty_engine, http=lambda *a, **k: {})
+                       engine="semgrep", run=_empty_engine, http=lambda *a, **k: {},
+                       secrets_run=_no_secrets)
 
     assert out is not None                        # the scan completed, it did not raise
     html = (state / "dashboard.html").read_text()
@@ -122,7 +131,8 @@ def test_the_certified_blob_is_byte_identical_with_and_without_ai_blobs(tmp_path
 
     root, state_plain = _run(tmp_path, monkeypatch)
     run_pipeline(str(root), str(state_plain), "2026-07-15",
-                 engine="semgrep", run=_empty_engine, http=lambda *a, **k: {})
+                 engine="semgrep", run=_empty_engine, http=lambda *a, **k: {},
+                 secrets_run=_no_secrets)
     plain = (state_plain / "dashboard.html").read_text()
 
     state_ai = tmp_path / "state-ai"
@@ -130,7 +140,8 @@ def test_the_certified_blob_is_byte_identical_with_and_without_ai_blobs(tmp_path
     _write_json(state_ai / "leads.json", {"schema": "drift-leads/v1", "repos": []})
     _write_json(state_ai / "adhoc.json", {"schema": "drift-adhoc/v1", "claims": []})
     run_pipeline(str(root), str(state_ai), "2026-07-15",
-                 engine="semgrep", run=_empty_engine, http=lambda *a, **k: {})
+                 engine="semgrep", run=_empty_engine, http=lambda *a, **k: {},
+                 secrets_run=_no_secrets)
     withai = (state_ai / "dashboard.html").read_text()
 
     assert certified(plain) == certified(withai)

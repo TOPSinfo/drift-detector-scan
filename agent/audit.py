@@ -157,6 +157,32 @@ def _lifecycle_findings(repo: dict, now: str) -> list:
     return out
 
 
+def _secret_findings(repo: dict) -> list:
+    """Findings for hardcoded credentials gitleaks found in this repo.
+
+    Tier 0: no network call, no vendor catalog, no date — strictly more deterministic than
+    the OSV/EOL/sunset tiers, which all depend on an external source of truth this repo does
+    not control. A secret finding needs none of that; it is a fact about the repo's own git
+    history. Never carries the matched secret's actual value (see secrets_scan.py) — `detail`
+    says only where, never what."""
+    path, out = repo.get("path"), []
+    for s in repo.get("secrets", []):
+        loc = f"{s.get('path')}:{s.get('line')}"
+        out.append({
+            "repo": path, "kind": "secret", "ref": s.get("ruleId"), "version": None,
+            "domain": None, "operation": None, "path": s.get("path"),
+            "status": "EXPOSED", "severity": "CRITICAL",
+            "detail": f"Hardcoded credential ({s.get('ruleId')}) at {loc} "
+                      f"(commit {s.get('commit', '')[:12]}) — rotate with the vendor; "
+                      f"removing it from source does not un-leak a value already in git history.",
+            "date": None, "source_url": None, "tier": 0,
+            "recommendation": "Rotate the credential with its vendor, then remove it from "
+                              "source and read it from the environment instead.",
+            "files": [loc],
+        })
+    return out
+
+
 _UNSET = object()      # lets `osv_batch=None` MEAN "no batching", distinct from "not specified"
 
 
@@ -287,6 +313,7 @@ def audit_inventory(doc: dict, now: str, *, http=None,
         # --- endpoints -> vendor-sunset catalog (the code-level layer) ---
         findings.extend(_sunset_findings(r, sun_index, now))
         findings.extend(_lifecycle_findings(r, now))       # computed (Shopify &c.)
+        findings.extend(_secret_findings(r))               # gitleaks (Tier 0, no network)
 
     # stamp the delivery owner on every finding (devops = packages+runtimes,
     # developer = API sunsets+frameworks) so both the two-queue report and the two issue
@@ -332,6 +359,10 @@ def audit_inventory(doc: dict, now: str, *, http=None,
     counts = {
         "DEPRECATED": sum(1 for f in findings if f["status"] == "DEPRECATED"),
         "REVIEW": sum(1 for f in findings if f["status"] == "REVIEW"),
+        # a leaked credential (`_secret_findings`, Tier 0) is stamped "EXPOSED", a THIRD
+        # status neither DEPRECATED nor REVIEW — without its own bucket it was tallied
+        # nowhere, so a repo with a live leak and nothing else reported action-required: 0.
+        "EXPOSED": sum(1 for f in findings if f["status"] == "EXPOSED"),
         "reposAffected": len({f["repo"] for f in findings}),
     }
     return {"generated": now, "findings": findings, "counts": counts, "coverage": coverage}

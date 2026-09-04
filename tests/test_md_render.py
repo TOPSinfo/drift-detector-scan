@@ -174,6 +174,21 @@ def test_parity_catches_an_unescaped_pipe_truncation():
         check_md_matches_payload(broken, _payload())
 
 
+def test_parity_catches_an_exposed_credentials_number_that_drifts():
+    """The 'Exposed credentials' Summary row (counts.get("secrets", 0)) must be checked by
+    check_md_matches_payload like every other tile — otherwise a leaked-credential count
+    could silently disagree between drift.md and drift.json with nothing catching it."""
+    import pytest
+    from agent.lib.verify import check_md_matches_payload, Violation
+    p = _payload(counts={**_payload()["counts"], "secrets": 3})
+    out = md.render_markdown(p, "2026-07-21")
+    assert "| Exposed credentials | 3 |" in out
+    tampered = out.replace("| Exposed credentials | 3 |", "| Exposed credentials | 0 |")
+    with pytest.raises(Violation) as e:
+        check_md_matches_payload(tampered, p)
+    assert e.value.check == "md-summary-parity"
+
+
 def test_parity_catches_two_identical_findings_rows():
     import pytest
     from agent.lib.verify import check_md_matches_payload, Violation
@@ -272,6 +287,15 @@ def test_unscannable_roots_are_surfaced_high_in_the_report():
 def test_no_couldnt_scan_section_when_everything_was_read():
     out = md.render_markdown(_payload(), "2026-07-21")
     assert "Couldn't scan" not in out
+
+
+def test_summary_table_shows_exposed_credentials_count():
+    """`counts.secrets` (Task 8) already renders as its own "### Exposed credentials" table
+    (prior fix round, Fix 5), but the Summary tile table above it had no row at all for it —
+    a reader scanning the summary alone had no signal a leaked credential was found."""
+    p = _payload(counts={**_payload()["counts"], "secrets": 3})
+    out = md.render_markdown(p, "2026-07-21")
+    assert "| Exposed credentials | 3 |" in out
 
 
 def test_a_pipe_in_an_unscannable_reason_is_escaped():

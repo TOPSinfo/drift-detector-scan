@@ -172,6 +172,9 @@ def render_markdown(payload: dict, now: str) -> str:
     L.append("")
     summary_rows = [
         ["Fixes needed (action-required)", counts.get("fixes", 0)],
+        # Tier 0 — no network call, no date, a fact about the repo's own git history — so it
+        # sits right under the action-required headline rather than among the dated tiers.
+        ["Exposed credentials", counts.get("secrets", 0)],
         ["Vendor API sunsets", counts.get("sunsets", 0)],
         ["— of which already retired (past-due)", counts.get("pastDue", 0)],
         ["Runtime/framework EOL", counts.get("eol", 0)],
@@ -243,11 +246,19 @@ def render_markdown(payload: dict, now: str) -> str:
     _C_SUN = ["Repo", "API", "Status", "Retires", "Call-sites", "First call-site"]
     _C_EOL = ["Repo", "Component", "Status", "EOL", "Call-sites", "First call-site"]
     _C_CVE = ["Repo", "Package", "Status", "Fix", "Call-sites", "First call-site"]
+    # A leaked credential has no package and no deadline: the label is the gitleaks rule plus
+    # the leak site, and the "when" column falls back to "—" through the shared renderer,
+    # because there is no date to state and this tool does not invent one.
+    _C_SEC = ["Repo", "Rule", "Status", "Detected", "Call-sites", "First call-site"]
     # each queue is the work ONE team owns; sub-categories keep the kind-specific columns.
     # The eol split mirrors owners.owner(): refKind runtime -> DevOps, else Developer, so no
-    # eol action can fall between the two tables.
+    # eol action can fall between the two tables. EVERY action kind must match some predicate
+    # here — a kind that matches none renders in no table at all, which is how `secret`
+    # (the most urgent thing the scanner produces) was invisible in the primary view.
     queues = (
-        ("devops", "DevOps queue — packages & runtimes", (
+        ("devops", "DevOps queue — packages, runtimes & credentials", (
+            # first: an exposed credential is live and unbounded, unlike a dated retirement
+            ("Exposed credentials", _C_SEC, lambda a: a.get("kind") == "secret", False),
             ("Package vulnerabilities", _C_CVE, lambda a: a.get("kind") == "cve", False),
             ("Runtime end-of-life", _C_EOL,
              lambda a: a.get("kind") == "eol" and a.get("refKind") == "runtime", False),

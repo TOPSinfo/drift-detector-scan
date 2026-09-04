@@ -4,6 +4,11 @@ import json
 import subprocess
 
 from agent.run import run_pipeline
+from tests import gitleaks_fake
+
+
+def _no_secrets(args):
+    return gitleaks_fake.EMPTY
 
 
 def _git_init(d, files):
@@ -42,9 +47,9 @@ def test_serial_and_parallel_scans_produce_identical_artifacts(tmp_path, monkeyp
     parallel_state = tmp_path / "parallel"
 
     run_pipeline([root], str(serial_state), "2026-08-25",
-                 run=_empty_engine, http=_no_network, jobs=1)
+                 run=_empty_engine, http=_no_network, jobs=1, secrets_run=_no_secrets)
     run_pipeline([root], str(parallel_state), "2026-08-25",
-                 run=_empty_engine, http=_no_network, jobs=4)
+                 run=_empty_engine, http=_no_network, jobs=4, secrets_run=_no_secrets)
 
     for artifact in ("drift.json", "audit.json", "drift.md"):
         assert (serial_state / artifact).read_bytes() == (parallel_state / artifact).read_bytes(), \

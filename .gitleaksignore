@@ -1,0 +1,26 @@
+# .gitleaksignore — fingerprints intentionally excluded from secret scanning.
+#
+# Format: one gitleaks Fingerprint per line, in the form `commit:file:rule:line`. gitleaks
+# reads this file itself when its --source (or --repo-path) is this repo's own root — nothing
+# in agent/lib/secrets_scan.py needs to know this file exists; see
+# tests/test_secrets_scan.py::test_run_secrets_scan_does_not_need_to_know_about_gitleaksignore.
+#
+# Why this file exists: tests/fixtures/** intentionally contains fake-looking secrets to
+# exercise the scanner itself (drift-detector-scan is a scanner whose own test suite has to
+# plant credential-shaped strings to prove the engine finds them). Left unaddressed, those
+# fixtures would surface as findings every time this repo scans itself in CI. This file exists
+# ONLY to silence that self-inflicted noise — it must NEVER be used to suppress a real,
+# unrotated leak, in this repo or (obviously) in any fleet repo this tool scans on someone
+# else's behalf; a real key sitting in a vendored file elsewhere is still a real leak.
+#
+# STATUS: placeholder, not yet populated. This sandbox has no gitleaks binary (confirmed in
+# Task 1 of the secret-detection plan), so no real gitleaks fingerprints could be computed here
+# — this file intentionally contains ZERO fingerprint rows rather than fabricated ones that
+# would only look like real scan output.
+#
+# TODO (needs a live gitleaks binary): run `gitleaks detect --source . --report-format json`
+# against this repo, confirm every hit is under tests/fixtures/, and copy those hits'
+# `Fingerprint` values in below, one per line, e.g.:
+#   <commit>:tests/fixtures/<path>:<rule-id>:<line>
+# Do not add a row for any hit outside tests/fixtures/ — that would be a real finding, not
+# scanner noise, and belongs in drift.json instead of being silenced here.

@@ -25,6 +25,15 @@ def test_runner_has_doctor_with_actionable_hint():
     assert "astral.sh/uv/install.sh" in body                    # exact uv install remediation
 
 
+def test_doctor_reports_whether_gitleaks_is_present():
+    """REGRESSION: gitleaks (secret detection's engine) is required for the feature to do
+    anything, but appears in no README/doc and is not pinned/provisioned like ast-grep —
+    without this, an operator has no way to learn the feature is inert on their machine."""
+    body = (_ROOT / "bin" / "drift-scan").read_text()
+    assert "command -v gitleaks" in body
+    assert "gitleaks not found" in body and "UNKNOWN, not zero" in body
+
+
 def _runner_case_line() -> str:
     runner = (_ROOT / "bin" / "drift-scan").read_text()
     return next(l for l in runner.splitlines() if l.strip().startswith("audit|run|"))

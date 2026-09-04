@@ -4,6 +4,7 @@ import sys
 import pytest
 
 from agent.inventory_scan import scan_folder
+from tests import gitleaks_fake
 
 _ENGINE = (shutil.which("opengrep") or shutil.which("semgrep")
            or next((p for p in [os.path.join(os.path.dirname(sys.executable), n)
@@ -15,7 +16,8 @@ _CORPUS = ("/tmp/claude-1000/-home-tops-Projects-tops-deprication-agent/"
 @pytest.mark.skipif(_ENGINE is None or not os.path.isdir(_CORPUS),
                     reason="no engine or no cloned corpus")
 def test_live_scan_marketplace_repos(tmp_path):
-    out = scan_folder(_CORPUS, str(tmp_path / "state"), "2026-07-14", engine=_ENGINE)
+    out = scan_folder(_CORPUS, str(tmp_path / "state"), "2026-07-14", engine=_ENGINE,
+                      secrets_run=lambda a: gitleaks_fake.EMPTY)
     doc = out["doc"]
     assert doc["scope"]["reposScanned"] >= 10                  # the 12 cloned repos
     # these SDK repos hard-code marketplace endpoints -> real APIs detected

@@ -33,6 +33,23 @@ def test_lifecycle_new_then_persist_then_resolve(tmp_path):
     assert a2["counts"] == {**a2["counts"], "new": 1, "resolved": 1}
 
 
+def _secret(repo="r", rule="generic-api-key", loc="config/keys.php:5"):
+    return {"repo": repo, "kind": "secret", "ref": rule, "path": "config/keys.php",
+            "files": [loc], "status": "EXPOSED", "severity": "CRITICAL", "detail": "x",
+            "source_url": None, "tier": 0, "recommendation": "rotate"}
+
+
+def test_exposed_secrets_are_tallied_in_the_recomputed_counts(tmp_path):
+    """`audit["counts"]` is recomputed here from `active` after new/resolved/muted tracking —
+    the same DEPRECATED/REVIEW-only bucket bug as agent/audit.py's, one level up: an EXPOSED
+    finding survived to `active` but was tallied nowhere."""
+    state = str(tmp_path)
+    audit = {"findings": [_secret(), _cve("r", "axios", "G1")]}
+    fs.apply_lifecycle(audit, state, "2026-07-01")
+    assert audit["counts"]["EXPOSED"] == 1
+    assert audit["counts"]["DEPRECATED"] == 1
+
+
 def test_muted_findings_excluded_from_counts(tmp_path):
     state = str(tmp_path)
     f = _cve("r", "axios", "G1")

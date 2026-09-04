@@ -65,6 +65,63 @@ def test_an_endpoint_carrying_own_infra_reason_conforms_to_the_schema():
     jsonschema.validate(instance=payload, schema=_load_schema())
 
 
+def test_a_secret_action_conforms_to_the_schema():
+    """kind: "secret" (Task 3, gitleaks-detected credentials, agent/audit.py's
+    _secret_findings) is a real action kind audit_inventory can now produce. drift.json is
+    'the ONE contract' per this repo's CLAUDE.md, so a kind the code produces that the
+    published schema's `actions[].kind` enum does not list would be a real defect, not a
+    cosmetic gap — this proves the schema actually names it."""
+    jsonschema = pytest.importorskip("jsonschema")
+    payload = {"schemaVersion": "drift/v1", "generated": "2026-09-04",
+               "counts": {"fixes": 0, "sunsets": 0, "eol": 0, "critical": 0, "unaudited": 0,
+                         "reposScanned": 1, "reposAffected": 1},
+               "actions": [{"repo": "root-amazon-supplier-software", "ref": "generic-api-key",
+                            "kind": "secret", "status": "DEPRECATED"}]}
+    jsonschema.validate(instance=payload, schema=_load_schema())
+
+
+def test_schema_admits_the_exposed_action_status():
+    """Structural half, asserted without jsonschema so it runs even where that test-only
+    dependency is absent: the status enum is CLOSED, and "EXPOSED" is what a secret action
+    actually carries."""
+    s = _load_schema()
+    assert "EXPOSED" in s["properties"]["actions"]["items"]["properties"]["status"]["enum"]
+
+
+def test_a_secret_actions_real_status_conforms_to_the_schema():
+    """The status a secret action ACTUALLY carries is "EXPOSED" (agent/audit.py sets it,
+    actions.build_actions now preserves it through the rollup instead of flattening it to
+    REVIEW). A status the code emits that the closed enum does not list makes every real
+    drift.json with a leaked credential in it fail validation."""
+    jsonschema = pytest.importorskip("jsonschema")
+    payload = {"schemaVersion": "drift/v1", "generated": "2026-09-04",
+               "counts": {"fixes": 0, "sunsets": 0, "eol": 0, "critical": 0, "unaudited": 0,
+                          "secrets": 1, "reposScanned": 1, "reposAffected": 1},
+               "actions": [{"repo": "root-amazon-supplier-software", "ref": "generic-api-key",
+                            "kind": "secret", "status": "EXPOSED"}]}
+    jsonschema.validate(instance=payload, schema=_load_schema())
+
+
+def test_schema_declares_the_secrets_tile_count():
+    """`counts.secrets` is written by dashboard_render and checked by verify's tile-vs-table
+    invariant, but the published contract listed every OTHER count individually and not this
+    one — the same gap the `kind` enum had, one object over."""
+    s = _load_schema()
+    prop = s["properties"]["counts"]["properties"]["secrets"]
+    assert prop["type"] == "integer" and prop["minimum"] == 0
+    assert "credential" in prop["description"].lower()
+
+
+def test_schema_rejects_a_negative_secrets_count():
+    jsonschema = pytest.importorskip("jsonschema")
+    bad = {"schemaVersion": "drift/v1", "generated": "2026-09-04",
+           "counts": {"fixes": 0, "sunsets": 0, "eol": 0, "critical": 0, "unaudited": 0,
+                      "secrets": -1, "reposScanned": 1, "reposAffected": 0},
+           "actions": []}
+    with pytest.raises(jsonschema.ValidationError):
+        jsonschema.validate(instance=bad, schema=_load_schema())
+
+
 def test_schema_rejects_a_bad_status_enum():
     """Proof the schema actually constrains — an action with an invalid status fails."""
     jsonschema = pytest.importorskip("jsonschema")

@@ -100,6 +100,15 @@ def sunset_unit(f: dict) -> str:
     return f.get("operation") or f.get("path") or f.get("domain") or f.get("version") or ""
 
 
+def secret_unit(f: dict) -> str:
+    """The leak's location, "path:line". Re-derived here rather than imported from
+    actions.secret_unit for the same reason sunset_unit above is: verify must be able to
+    DISAGREE with the code that built the payload. Importing the grouping function would make
+    the independent recount a tautology — it would reproduce the very bug it is looking for."""
+    files = f.get("files") or []
+    return (str(files[0]) if files else "") or f.get("path") or ""
+
+
 def check_owner_split(payload: dict) -> None:
     """The delivery owner is a DERIVED field, re-checked here so the two issue streams and
     the two report queues can never disagree with drift.json.
@@ -121,16 +130,23 @@ def check_owner_split(payload: dict) -> None:
                             f"refKind={a.get('refKind')!r} derives {want!r} — the stream "
                             f"routing disagrees with the data")
     by_owner = (payload.get("counts") or {}).get("byOwner") or {}
-    for status_key, status in (("fixes", "DEPRECATED"), ("review", "REVIEW")):
+    # The two buckets PARTITION the actions: action-required (the deadline has passed —
+    # DEPRECATED for a dated thing, EXPOSED for a leaked credential) and everything else.
+    # Spelled out here rather than imported so verify can disagree with the renderer, but
+    # stated as a partition so no status can fall between the buckets and be counted nowhere.
+    for status_key, required in (("fixes", True), ("review", False)):
+        label = "action-required" if required else "not action-required"
         summed = sum((by_owner.get(o) or {}).get(status_key, 0) for o in owners.OWNERS)
-        total = sum(1 for a in actions if a.get("status") == status)
+        total = sum(1 for a in actions
+                    if (a.get("status") in ("DEPRECATED", "EXPOSED")) is required)
         if summed != total:
             raise Violation("owner-count-parity",
                             f"per-owner {status_key} sum to {summed} but {total} actions are "
-                            f"{status} — a queue is miscounting")
+                            f"{label} — a queue is miscounting")
         for o in owners.OWNERS:
             got = (by_owner.get(o) or {}).get(status_key, 0)
-            exp = sum(1 for a in actions if a.get("owner") == o and a.get("status") == status)
+            exp = sum(1 for a in actions if a.get("owner") == o
+                      and (a.get("status") in ("DEPRECATED", "EXPOSED")) is required)
             if got != exp:
                 raise Violation("owner-count-parity",
                                 f"counts.byOwner.{o}.{status_key}={got} but its filter yields "
@@ -154,6 +170,7 @@ def check_tile_counts(payload: dict, findings: list) -> None:
                           if a["kind"] == "sunset" and a.get("status") == "DEPRECATED"
                           and a.get("date")]),
              ("eol", [a for a in actions if a["kind"] == "eol"]),
+             ("secrets", [a for a in actions if a["kind"] == "secret"]),
              ("private", payload.get("private", [])),
              # the panel lists vendors nobody has checked; CURRENT ones are not rows
              ("unaudited", [r for r in payload.get("catalog", [])
@@ -172,6 +189,20 @@ def check_tile_counts(payload: dict, findings: list) -> None:
                         f"tile says {counts.get('sunsets')} sunsets but the findings hold "
                         f"{len(expected)} distinct (repo, vendor, operation|host) jobs — "
                         f"retirements are being merged, hiding dead calls behind one row")
+
+    # same independent path for secrets: one job per (repo, rule, leak-site). A secret's `ref`
+    # is the gitleaks RULE id, so a grouping that keys on it alone merges every leak of that
+    # rule in a repo into one action — and because `counts` is computed from `actions`, the
+    # tile agrees with the collapsed table and both under-report together. Five leaked keys
+    # showing as one row is five rotations the reader will not do.
+    expected_secrets = {(f["repo"], f["ref"], secret_unit(f))
+                        for f in findings if f.get("kind") == "secret"}
+    if counts.get("secrets", 0) != len(expected_secrets):
+        raise Violation("secret-grouping",
+                        f"tile says {counts.get('secrets')} secrets but the findings hold "
+                        f"{len(expected_secrets)} distinct (repo, rule, leak-site) "
+                        f"credentials — leaks are being merged behind one row, and each one "
+                        f"is its own rotation")
 
 
 def check_row_labels_distinct(payload: dict) -> None:
@@ -301,6 +332,7 @@ def check_md_matches_payload(md_text: str, payload: dict) -> None:
                   "— of which already retired (past-due)": counts.get("pastDue", 0),
                   "Runtime/framework EOL": counts.get("eol", 0),
                   "Fixes needed (action-required)": counts.get("fixes", 0),
+                  "Exposed credentials": counts.get("secrets", 0),
                   "Vendors with an unchecked retirement list": counts.get("unaudited", 0),
                   "— of which blocked (need access, not effort)": counts.get("blocked", 0)}
         for label, expected in checks.items():

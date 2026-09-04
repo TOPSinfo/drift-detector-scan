@@ -50,6 +50,22 @@ def test_output_is_byte_identical():
     assert a == b
 
 
+def test_an_exposed_secret_becomes_an_error_result_with_its_own_rule():
+    """A leaked credential is at least as urgent as a DEPRECATED sunset — SARIF's ceiling
+    severity is 'error', and it must not fall back to the generic 'drift-finding' rule,
+    which would make it indistinguishable from every other unclassified finding kind."""
+    audit = {"findings": [{"repo": "team/web", "kind": "secret", "ref": "generic-api-key",
+                           "status": "EXPOSED", "detail": "Hardcoded credential",
+                           "recommendation": "rotate with the vendor",
+                           "files": ["config/feedvisor.php:5"]}]}
+    doc = sarif.build_sarif(audit)
+    res = doc["runs"][0]["results"][0]
+    assert res["ruleId"] == "drift-secret"
+    assert res["level"] == "error"                         # EXPOSED -> error, never "note"
+    rule_ids = {r["id"] for r in doc["runs"][0]["tool"]["driver"]["rules"]}
+    assert "drift-secret" in rule_ids
+
+
 def test_bare_string_call_sites_are_handled_too():
     """Real findings carry `files` as bare 'path:line' strings, not only {loc: ...} dicts."""
     audit = {"findings": [{"repo": "r", "kind": "sunset", "ref": "eBay", "status": "DEPRECATED",

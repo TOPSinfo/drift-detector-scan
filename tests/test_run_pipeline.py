@@ -3,6 +3,11 @@ import subprocess
 from pathlib import Path
 
 from agent.run import run_pipeline
+from tests import gitleaks_fake
+
+
+def _no_secrets(args):
+    return gitleaks_fake.EMPTY
 
 
 def _git_init(d, files):
@@ -43,7 +48,8 @@ def test_run_pipeline_writes_all_reports_and_delivers(tmp_path, monkeypatch):
         return {}
 
     out = run_pipeline(str(root), str(state), "2026-07-15",
-                       engine="semgrep", run=_empty_engine, http=fake_http)
+                       engine="semgrep", run=_empty_engine, http=fake_http,
+                       secrets_run=_no_secrets)
 
     for name in ("inventory.json", "audit.json", "dashboard.html", "chart.html",
                  "drift.md", "drift.json"):
@@ -63,8 +69,30 @@ def test_run_pipeline_pull_invokes_git_per_repo(tmp_path, monkeypatch):
     pulled = []
     run_pipeline(str(root), str(tmp_path / "state"), "2026-07-15", pull=True,
                  engine="semgrep", run=_empty_engine, http=lambda *a, **k: {},
-                 pull_run=pulled.append)
+                 pull_run=pulled.append, secrets_run=_no_secrets)
     assert sorted(Path(p).name for p in pulled) == ["a", "b"]
+
+
+def test_run_pipeline_surfaces_secrets_errors(tmp_path, monkeypatch):
+    """`secretsErrors` is computed by inventory_scan.py's sweep but, before this fix, never
+    left `doc["coverage"]` — run_pipeline's returned dict had no such key, so the CLI could
+    never warn about it. Mirrors `reposErrored`'s existing wiring in run.py."""
+    root = tmp_path / "repos"
+    _git_init(root / "web", {"composer.json": "{}"})
+    _git_init(root / "api", {"composer.json": "{}"})
+    import agent.audit as audit_mod
+    monkeypatch.setattr(audit_mod.eol, "check", lambda *a, **k: None)
+
+    def secrets_run(args):
+        if "api" in " ".join(args):
+            raise FileNotFoundError(2, "No such file or directory", "gitleaks")
+        return gitleaks_fake.EMPTY
+
+    out = run_pipeline(str(root), str(tmp_path / "state"), "2026-07-15",
+                       engine="semgrep", run=_empty_engine, http=lambda *a, **k: {},
+                       secrets_run=secrets_run)
+    assert [e["repo"] for e in out["secretsErrors"]] == ["api"]
+    assert "gitleaks" in out["secretsErrors"][0]["message"]
 
 
 def test_run_pipeline_writes_dashboard_html(tmp_path, monkeypatch):
@@ -74,7 +102,8 @@ def test_run_pipeline_writes_dashboard_html(tmp_path, monkeypatch):
     import agent.audit as audit_mod
     monkeypatch.setattr(audit_mod.eol, "check", _fake_eol)
     run_pipeline(str(root), str(state), "2026-07-15",
-                 engine="semgrep", run=_empty_engine, http=lambda *a, **k: {})
+                 engine="semgrep", run=_empty_engine, http=lambda *a, **k: {},
+                 secrets_run=_no_secrets)
     dash = state / "dashboard.html"
     assert dash.exists()
     assert dash.read_text().startswith("<!doctype html>")

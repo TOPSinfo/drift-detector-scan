@@ -2,6 +2,11 @@ import json
 import subprocess
 from pathlib import Path
 from agent.inventory_scan import scan_folder
+from tests import gitleaks_fake
+
+
+def _no_secrets(args):
+    return gitleaks_fake.EMPTY
 
 
 def _git_init(d, files):
@@ -26,7 +31,7 @@ def test_scan_returns_diff_vs_prior_ir(tmp_path):
     state = tmp_path / "state"
 
     run1 = scan_folder(str(root), str(state), "2026-07-14", engine="semgrep",
-                       run=lambda a: _canned(None))
+                       run=lambda a: _canned(None), secrets_run=_no_secrets)
     assert run1["diff"]["changes"] == [] and run1["diff"]["reposAdded"] == ["web"]  # first run: baseline
 
     # bump axios + a NEW commit (so head_sha changes -> cache miss -> re-scan)
@@ -35,7 +40,7 @@ def test_scan_returns_diff_vs_prior_ir(tmp_path):
                     "-q", "-am", "bump"], cwd=web, check=True)
 
     run2 = scan_folder(str(root), str(state), "2026-07-21", engine="semgrep",
-                       run=lambda a: _canned(None))
+                       run=lambda a: _canned(None), secrets_run=_no_secrets)
     ch = run2["diff"]["changes"][0]
     assert ch["repo"] == "web"
     assert {"eco": "npm", "pkg": "axios", "from": "^1.6", "to": "^1.7"} in ch["sdkVersionChanges"]

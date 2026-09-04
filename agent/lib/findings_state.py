@@ -12,6 +12,7 @@ import hashlib
 import json
 import os
 
+from agent.lib import actions as actions_mod
 from agent.lib.actions import build_actions
 
 STATE_NAME = "findings-state.json"
@@ -26,6 +27,14 @@ def fingerprint(f: dict) -> str:
         ident = f"{f.get('ref')}|{f.get('version')}"       # a specific API version's retirement
         if f.get("domain"):                                # domain-scoped: keep hosts distinct
             ident += f"|{f.get('domain')}"
+    elif kind == "secret":
+        # ONE LEAKED CREDENTIAL, not one gitleaks rule. `ref` is the rule id, so falling
+        # through to it merged every `generic-api-key` hit in a repo: fixing 4 of 5 showed
+        # nothing resolved, and baselining one accepted false positive muted every current
+        # AND future leak of that rule there. `secret_unit` is the leak's "path:line" — the
+        # same signal actions._group_key uses, so a finding and its action agree on what
+        # "one leak" is. Version-independent by construction (a secret has no version).
+        ident = actions_mod.secret_unit(f)
     else:                                                   # eol: the product line
         ident = f.get("ref", "")
     raw = f"{f.get('repo')}|{kind}|{f.get('ref')}|{ident}"
@@ -111,6 +120,10 @@ def apply_lifecycle(audit: dict, state_dir: str, now: str) -> dict:
     audit["counts"] = {
         "DEPRECATED": sum(1 for f in active if f["status"] == "DEPRECATED"),
         "REVIEW": sum(1 for f in active if f["status"] == "REVIEW"),
+        # a leaked credential is stamped "EXPOSED", a third status neither DEPRECATED nor
+        # REVIEW — same bucket-of-three as agent/audit.py's own `counts`, recomputed here
+        # from `active` after new/resolved/muted tracking.
+        "EXPOSED": sum(1 for f in active if f["status"] == "EXPOSED"),
         "reposAffected": len({f["repo"] for f in active}),
         "new": len(new), "resolved": len(resolved), "muted": len(muted),
     }

@@ -2,6 +2,11 @@ import json
 import subprocess
 from pathlib import Path
 from agent.inventory_scan import scan_folder
+from tests import gitleaks_fake
+
+
+def _no_secrets(args):
+    return gitleaks_fake.EMPTY
 
 
 def _git_init(d, files):
@@ -27,7 +32,8 @@ def test_scan_folder_end_to_end(tmp_path):
                              "pay.php": '"https://api.stripe.com/v1/x";\n'})
     state = tmp_path / "state"
     out = scan_folder(str(root), str(state), "2026-07-14",
-                      engine="semgrep", run=lambda args: _canned_stripe("pay.php"))
+                      engine="semgrep", run=lambda args: _canned_stripe("pay.php"),
+                      secrets_run=_no_secrets)
     doc = out["doc"]
     assert doc["scope"]["reposScanned"] == 1
     repo = doc["repos"][0]
@@ -48,9 +54,11 @@ def test_scan_folder_incremental_cache_reused(tmp_path):
         calls["n"] += 1
         return json.dumps([])
 
-    scan_folder(str(root), str(state), "2026-07-14", engine="semgrep", run=counting_run)
+    scan_folder(str(root), str(state), "2026-07-14", engine="semgrep", run=counting_run,
+               secrets_run=_no_secrets)
     assert calls["n"] == 1                                      # scanned once
-    scan_folder(str(root), str(state), "2026-07-21", engine="semgrep", run=counting_run)
+    scan_folder(str(root), str(state), "2026-07-21", engine="semgrep", run=counting_run,
+               secrets_run=_no_secrets)
     assert calls["n"] == 1                                      # unchanged sha -> cache hit, engine NOT re-run
 
 
@@ -62,7 +70,7 @@ def test_scan_folder_discovers_nested_repos(tmp_path):
     root = tmp_path / "repos"
     _git_init(root / "group" / "deep" / "web", {"composer.json": '{"require": {"php": "^8.2"}}'})
     out = scan_folder(str(root), str(tmp_path / "state"), "2026-07-14",
-                      engine="semgrep", run=_empty_run)
+                      engine="semgrep", run=_empty_run, secrets_run=_no_secrets)
     assert [r["path"] for r in out["doc"]["repos"]] == ["group/deep/web"]
 
 
@@ -71,7 +79,8 @@ def test_scan_folder_progress_callback(tmp_path):
     _git_init(root / "web", {"composer.json": '{"require": {"php": "^8.2"}}'})
     msgs = []
     scan_folder(str(root), str(tmp_path / "state"), "2026-07-14",
-                engine="semgrep", run=_empty_run, progress=msgs.append)
+                engine="semgrep", run=_empty_run, progress=msgs.append,
+                secrets_run=_no_secrets)
     assert any("resolving sources" in m for m in msgs)
     assert any("1 project(s) resolved" in m for m in msgs)
     assert any("web" in m and "scan:" in m for m in msgs)       # per-repo phase line
@@ -83,12 +92,21 @@ def test_scan_folder_multiple_roots(tmp_path):
     _git_init(r1 / "web", {"composer.json": '{"require": {"php": "^8.2"}}'})
     _git_init(r2 / "api", {"composer.json": '{"require": {"php": "^8.1"}}'})
     out = scan_folder([str(r1), str(r2)], str(tmp_path / "state"), "2026-07-14",
-                      engine="semgrep", run=_empty_run)
+                      engine="semgrep", run=_empty_run, secrets_run=_no_secrets)
     assert sorted(r["path"] for r in out["doc"]["repos"]) == ["api", "web"]
     assert out["doc"]["scope"]["rootCount"] == 2
 
 
 from agent import cli
+
+
+def _stub_secrets_scan(monkeypatch):
+    """CLI commands never expose a way to inject `secrets_run`, so — like the CLI tests below
+    already stub the ast-grep engine — stub gitleaks at the module-attribute level instead of
+    the real binary this sandbox doesn't have."""
+    import agent.lib.repo_scan as repo_scan_mod
+    monkeypatch.setattr(repo_scan_mod, "run_secrets_scan",
+                        lambda repo_path, **kw: {"matches": [], "errors": []})
 
 
 def test_cli_inventory_scan_writes_json(tmp_path, monkeypatch):
@@ -99,6 +117,7 @@ def test_cli_inventory_scan_writes_json(tmp_path, monkeypatch):
     import agent.inventory_scan as inv
     monkeypatch.setattr(inv.scan_util, "resolve_engine", lambda engine="ast-grep": "ast-grep")
     monkeypatch.setattr(inv.engine_mod, "_default_run", lambda args: _canned_stripe("pay.php"), raising=False)
+    _stub_secrets_scan(monkeypatch)
 
     out_json = tmp_path / "inv.json"
     rc = cli.main(["inventory-scan", "--root", str(root), "--state", str(tmp_path / "state"),
@@ -108,6 +127,48 @@ def test_cli_inventory_scan_writes_json(tmp_path, monkeypatch):
     assert doc["repos"][0]["path"] == "web" and doc["unique_apis"] == ["Stripe"]
 
 
+def _stub_secrets_scan_failing(monkeypatch):
+    """Like `_stub_secrets_scan` but forces every repo's secrets signal to fail, exactly as
+    a missing/timed-out gitleaks does — so this test's pass/fail does not depend on whether
+    gitleaks happens to be installed on the machine running the suite."""
+    import agent.lib.repo_scan as repo_scan_mod
+    monkeypatch.setattr(repo_scan_mod, "run_secrets_scan",
+                        lambda repo_path, **kw: {"matches": [],
+                                                  "errors": [{"message": "gitleaks missing",
+                                                             "path": repo_path}]})
+
+
+def test_cli_inventory_scan_summary_reports_secrets_errors(tmp_path, monkeypatch, capsys):
+    """The `inventory-scan` one-line summary already counted `reposErrored` but said
+    nothing about `coverage.secretsErrors` — a repo whose secrets signal failed printed a
+    summary line indistinguishable from one where it succeeded and found nothing."""
+    root = tmp_path / "repos"
+    _git_init(root / "web", {"composer.json": '{"require": {"php": "^8.2"}}'})
+    import agent.inventory_scan as inv
+    monkeypatch.setattr(inv.scan_util, "resolve_engine", lambda engine="ast-grep": "ast-grep")
+    monkeypatch.setattr(inv.engine_mod, "_default_run", _empty_run, raising=False)
+    _stub_secrets_scan_failing(monkeypatch)
+
+    rc = cli.main(["inventory-scan", "--root", str(root), "--state", str(tmp_path / "state"),
+                   "--out-json", str(tmp_path / "i.json"), "--now", "2026-07-14"])
+    assert rc == 0
+    out = capsys.readouterr().out
+    assert "1 secrets error" in out
+
+
+def test_cli_inventory_scan_summary_silent_when_no_secrets_errors(tmp_path, monkeypatch):
+    root = tmp_path / "repos"
+    _git_init(root / "web", {"composer.json": '{"require": {"php": "^8.2"}}'})
+    import agent.inventory_scan as inv
+    monkeypatch.setattr(inv.scan_util, "resolve_engine", lambda engine="ast-grep": "ast-grep")
+    monkeypatch.setattr(inv.engine_mod, "_default_run", _empty_run, raising=False)
+    _stub_secrets_scan(monkeypatch)
+
+    rc = cli.main(["inventory-scan", "--root", str(root), "--state", str(tmp_path / "state"),
+                   "--out-json", str(tmp_path / "i.json"), "--now", "2026-07-14"])
+    assert rc == 0
+
+
 def test_cli_inventory_scan_repeatable_root(tmp_path, monkeypatch):
     r1, r2 = tmp_path / "a", tmp_path / "b"
     _git_init(r1 / "web", {"composer.json": '{"require": {"php": "^8.2"}}'})
@@ -115,6 +176,7 @@ def test_cli_inventory_scan_repeatable_root(tmp_path, monkeypatch):
     import agent.inventory_scan as inv
     monkeypatch.setattr(inv.scan_util, "resolve_engine", lambda engine="ast-grep": "ast-grep")
     monkeypatch.setattr(inv.engine_mod, "_default_run", _empty_run, raising=False)
+    _stub_secrets_scan(monkeypatch)
 
     out_json = tmp_path / "inv.json"
     rc = cli.main(["inventory-scan", "--root", str(r1), "--root", str(r2),
@@ -236,7 +298,8 @@ def test_scan_folder_error_line_is_adjacent_to_its_repo_at_jobs_one(tmp_path):
 
     msgs = []
     out = scan_folder(str(root), str(tmp_path / "state"), "2026-08-25",
-                      engine="semgrep", run=exploding_run, progress=msgs.append, jobs=1)
+                      engine="semgrep", run=exploding_run, progress=msgs.append, jobs=1,
+                      secrets_run=_no_secrets)
 
     err_idx = [i for i, m in enumerate(msgs) if "⚠ error" in m]
     assert len(err_idx) == 1, msgs
@@ -249,3 +312,117 @@ def test_scan_folder_error_line_is_adjacent_to_its_repo_at_jobs_one(tmp_path):
     assert any("ccc" in m for m in msgs[err_idx[0] + 1:]), msgs
     # the fold still records it, in input order, exactly once
     assert [e["repo"] for e in out["doc"]["coverage"]["reposErrored"]] == ["bbb"]
+
+
+def test_a_gitleaks_failure_is_isolated_to_the_secrets_signal_and_surfaced_in_coverage(tmp_path):
+    """Two halves of the same seam bug: a broken gitleaks must (a) not cost the repo its
+    otherwise-successful ast-grep/manifest results, and (b) not vanish. `repo_scan` has always
+    computed `note["secretsErrors"]`; nothing carried it into `coverage`, so a run where the
+    secrets engine failed on every repo reported zero secrets and said nothing about it — a
+    false "clean" for the whole fleet."""
+    root = tmp_path / "repos"
+    _git_init(root / "web", {"composer.json": '{"require": {"php": "^8.2"}}',
+                             "pay.php": '"https://api.stripe.com/v1/x";\n'})
+
+    def broken_gitleaks(args):
+        raise FileNotFoundError(2, "No such file or directory", "gitleaks")
+
+    out = scan_folder(str(root), str(tmp_path / "state"), "2026-07-14",
+                      engine="semgrep", run=lambda a: _canned_stripe("pay.php"),
+                      secrets_run=broken_gitleaks)
+    cov = out["doc"]["coverage"]
+    assert cov["reposErrored"] == []                                  # (a) isolated
+    assert out["doc"]["repos"][0]["endpoints"][0]["techKey"] == "api:stripe"
+    assert [e["repo"] for e in cov["secretsErrors"]] == ["web"]       # (b) surfaced
+    assert "gitleaks" in cov["secretsErrors"][0]["message"]
+
+
+def test_a_clean_secrets_scan_leaves_the_coverage_error_list_empty(tmp_path):
+    root = tmp_path / "repos"
+    _git_init(root / "web", {"composer.json": '{"require": {"php": "^8.2"}}'})
+    out = scan_folder(str(root), str(tmp_path / "state"), "2026-07-14",
+                      engine="semgrep", run=_empty_run, secrets_run=_no_secrets)
+    assert out["doc"]["coverage"]["secretsErrors"] == []
+
+
+def test_a_repo_whose_secrets_scan_failed_still_gets_cached(tmp_path):
+    """A secrets-scan failure must no longer disable this repo's ENTIRE cache. The old
+    mechanism (skip `save_repo_cache` whenever `note["secretsErrors"]` was non-empty) meant
+    that on any machine without gitleaks, EVERY repo's cache write was skipped, EVERY run —
+    silently disabling the whole per-repo incremental cache fleet-wide. The fix carries the
+    error state WITH the record (`repo_scan.scan_repo` now sets
+    `record["secretsErrors"]`) instead of refusing to write it, so caching is unconditional
+    and safe again."""
+    root = tmp_path / "repos"
+    _git_init(root / "web", {"composer.json": '{"require": {"php": "^8.2"}}'})
+    state = tmp_path / "state"
+
+    def broken_gitleaks(args):
+        raise FileNotFoundError(2, "No such file or directory", "gitleaks")
+
+    scan_folder(str(root), str(state), "2026-07-14",
+               engine="semgrep", run=_empty_run, secrets_run=broken_gitleaks)
+
+    cached_files = list(state.glob("repos_v*/*.json"))
+    assert cached_files, ("a secrets-scan failure must still write the per-repo cache — "
+                          "only the old, unsafe mechanism skipped this")
+    saved = json.loads(cached_files[0].read_text())
+    assert saved.get("secretsErrors"), (
+        "the cached record must carry its own secretsErrors state, not omit it")
+
+
+def test_cache_hit_replays_the_remembered_secrets_failure(tmp_path):
+    """The important behavioral proof: a cache HIT on a repo whose secrets scan previously
+    failed must (a) actually be a cache hit (the ast-grep engine is NOT re-invoked) and
+    (b) still report the remembered failure — never silently reset to a false 'clean'
+    because a cache hit used to hardcode `secretsErrors: []` regardless of history."""
+    root = tmp_path / "repos"
+    _git_init(root / "web", {"composer.json": '{"require": {"php": "^8.2"}}'})
+    state = tmp_path / "state"
+    calls = {"n": 0}
+
+    def counting_run(args):
+        calls["n"] += 1
+        return json.dumps([])
+
+    def broken_gitleaks(args):
+        raise FileNotFoundError(2, "No such file or directory", "gitleaks")
+
+    out1 = scan_folder(str(root), str(state), "2026-07-14",
+                       engine="semgrep", run=counting_run, secrets_run=broken_gitleaks)
+    assert [e["repo"] for e in out1["doc"]["coverage"]["secretsErrors"]] == ["web"]
+    assert calls["n"] == 1
+
+    # second scan of the SAME unchanged HEAD: this must be a genuine cache HIT (the engine
+    # must not re-run) — secrets_run is deliberately still `broken_gitleaks` so a real
+    # re-scan would ALSO report the failure, which would make this test pass for the wrong
+    # reason; `counting_run` not incrementing is what proves the record was served from cache.
+    out2 = scan_folder(str(root), str(state), "2026-07-21",
+                       engine="semgrep", run=counting_run, secrets_run=broken_gitleaks)
+    assert calls["n"] == 1, "a cache hit must not re-invoke the scan engine"
+    assert [e["repo"] for e in out2["doc"]["coverage"]["secretsErrors"]] == ["web"], (
+        "the cached record must carry its secretsErrors state so a cache hit replays the "
+        "SAME failure, rather than resetting it to a false 'clean'")
+
+
+def test_a_clean_secrets_scan_still_caches_and_replays_correctly(tmp_path):
+    """No regression on the happy path: a repo whose secrets scan SUCCEEDED must still be
+    cached (as before) and a later cache hit must still replay `secretsErrors: []`."""
+    root = tmp_path / "repos"
+    _git_init(root / "web", {"composer.json": '{"require": {"php": "^8.2"}}'})
+    state = tmp_path / "state"
+    calls = {"n": 0}
+
+    def counting_run(args):
+        calls["n"] += 1
+        return json.dumps([])
+
+    out1 = scan_folder(str(root), str(state), "2026-07-14",
+                       engine="semgrep", run=counting_run, secrets_run=_no_secrets)
+    assert out1["doc"]["coverage"]["secretsErrors"] == []
+    assert calls["n"] == 1
+
+    out2 = scan_folder(str(root), str(state), "2026-07-21",
+                       engine="semgrep", run=counting_run, secrets_run=_no_secrets)
+    assert calls["n"] == 1, "unchanged HEAD must still be served from cache"
+    assert out2["doc"]["coverage"]["secretsErrors"] == []

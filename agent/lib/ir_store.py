@@ -11,7 +11,16 @@ from pathlib import Path
 # Per-repo cache schema. BUMP when the record shape changes so pre-upgrade caches are
 # invalidated (a stale cache without new fields would silently under-report — e.g. a repo
 # scanned before privateSources/versionSource existed would look "clean").
-_CACHE_SCHEMA = 9      # 8->9: cache key now folds in the RULESET signature (vendors + idioms) so
+_CACHE_SCHEMA = 11     # 10->11: for commits 133de9c..4db48b4 of the secret-detection branch,
+                       # v10 records could carry a FAILED secrets scan (`secrets: []`, no
+                       # `secretsErrors` key at all) written unconditionally — indistinguishable
+                       # from a repo actually checked and found clean. Any state dir populated
+                       # during that window must not be trusted; bump past it so those entries
+                       # miss and re-scan instead of being served as a silent false clean.
+                       # 9->10: records gained `secrets` (gitleaks matches). A record cached before
+                       # this feature has no such key, so a repo served from it reports zero
+                       # secrets — indistinguishable from a repo that really has none
+                       # 8->9: cache key now folds in the RULESET signature (vendors + idioms) so
                        # adding/absorbing an idiom re-scans instead of serving a stale record
                        # 7->8: residue gained pathConstants + path-constant endpoint attribution
                        # 6->7: endpoints/files/residue now canonically sorted (determinism
