@@ -270,3 +270,34 @@ def test_scan_folder_error_line_is_adjacent_to_its_repo_at_jobs_one(tmp_path):
     assert any("ccc" in m for m in msgs[err_idx[0] + 1:]), msgs
     # the fold still records it, in input order, exactly once
     assert [e["repo"] for e in out["doc"]["coverage"]["reposErrored"]] == ["bbb"]
+
+
+def test_a_gitleaks_failure_is_isolated_to_the_secrets_signal_and_surfaced_in_coverage(tmp_path):
+    """Two halves of the same seam bug: a broken gitleaks must (a) not cost the repo its
+    otherwise-successful ast-grep/manifest results, and (b) not vanish. `repo_scan` has always
+    computed `note["secretsErrors"]`; nothing carried it into `coverage`, so a run where the
+    secrets engine failed on every repo reported zero secrets and said nothing about it — a
+    false "clean" for the whole fleet."""
+    root = tmp_path / "repos"
+    _git_init(root / "web", {"composer.json": '{"require": {"php": "^8.2"}}',
+                             "pay.php": '"https://api.stripe.com/v1/x";\n'})
+
+    def broken_gitleaks(args):
+        raise FileNotFoundError(2, "No such file or directory", "gitleaks")
+
+    out = scan_folder(str(root), str(tmp_path / "state"), "2026-07-14",
+                      engine="semgrep", run=lambda a: _canned_stripe("pay.php"),
+                      secrets_run=broken_gitleaks)
+    cov = out["doc"]["coverage"]
+    assert cov["reposErrored"] == []                                  # (a) isolated
+    assert out["doc"]["repos"][0]["endpoints"][0]["techKey"] == "api:stripe"
+    assert [e["repo"] for e in cov["secretsErrors"]] == ["web"]       # (b) surfaced
+    assert "gitleaks" in cov["secretsErrors"][0]["message"]
+
+
+def test_a_clean_secrets_scan_leaves_the_coverage_error_list_empty(tmp_path):
+    root = tmp_path / "repos"
+    _git_init(root / "web", {"composer.json": '{"require": {"php": "^8.2"}}'})
+    out = scan_folder(str(root), str(tmp_path / "state"), "2026-07-14",
+                      engine="semgrep", run=_empty_run, secrets_run=_no_secrets)
+    assert out["doc"]["coverage"]["secretsErrors"] == []

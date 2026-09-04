@@ -160,7 +160,12 @@ def scan_folder(root, state_dir, now, *, engine=None, run=None, git=None, secret
     # tell "no rules for this language" apart from "looked and found nothing"
     rule_kinds = rule_kinds_by_language(vendors)
     attestations = shapes.load_attestations(state_dir)
-    coverage = {"reposScanned": 0, "reposErrored": [], "manifestsUnparsed": []}
+    # `secretsErrors` is the secrets engine's own failures, per repo. It is a SEPARATE list from
+    # reposErrored on purpose: a missing/failing gitleaks costs the repo its secrets signal only,
+    # never its ast-grep/manifest/CVE results — but it must still be said out loud, or a fleet
+    # where gitleaks never ran reports zero secrets and looks clean.
+    coverage = {"reposScanned": 0, "reposErrored": [], "manifestsUnparsed": [],
+                "secretsErrors": []}
     # Repo identities collide ACROSS roots. `discover_repos` guarantees collision-free
     # identities only within ONE call, and `resolve_sources` calls it once per root — so two
     # roots that each contain a `web/` both yield the identity `"web"`. `ir_store._repo_path`
@@ -208,7 +213,8 @@ def scan_folder(root, state_dir, now, *, engine=None, run=None, git=None, secret
             _p(f"{tag}  cached (HEAD unchanged)")
             cached = {**cached, "id": i + 1}
             cached["shape"] = _shape_of(abs_, name, cached, rule_kinds, attestations)
-            return {"record": cached, "unparsed": []}
+            # a cache hit re-uses the record whole; nothing ran, so nothing failed
+            return {"record": cached, "unparsed": [], "secretsErrors": []}
         _p(f"{tag}  scan: git · manifests · AST endpoints" +
            ("  (uncached: duplicate repo name across roots)" if name in ambiguous else ""))
         record, note = scan_repo(abs_, name, i + 1, vendors, rules_path,
@@ -219,7 +225,8 @@ def scan_folder(root, state_dir, now, *, engine=None, run=None, git=None, secret
         record["shape"] = _shape_of(abs_, name, record, rule_kinds, attestations)
         if cacheable:
             ir_store.save_repo_cache(state_dir, name, sha, record, rules_sig)
-        return {"record": record, "unparsed": note["unparsed"]}
+        return {"record": record, "unparsed": note["unparsed"],
+                "secretsErrors": note["secretsErrors"]}
 
     # The fold below runs in INPUT order, never completion order: `repos`, `reposErrored` and
     # `manifestsUnparsed` are all order-sensitive, and the whole --jobs guarantee is that a
@@ -232,6 +239,7 @@ def scan_folder(root, state_dir, now, *, engine=None, run=None, git=None, secret
             continue
         repos.append(out["record"])
         coverage["manifestsUnparsed"] += [{"repo": name, **u} for u in out["unparsed"]]
+        coverage["secretsErrors"] += [{"repo": name, **e} for e in out.get("secretsErrors", [])]
 
     # SDK profiles: for a wrapper whose vendor+version live behind constants (the
     # `sdk-only-no-callsite` blind spot), inject synthetic endpoints read from its OWN source
