@@ -44,6 +44,113 @@ def test_run_secrets_scan_never_carries_the_matched_secret_text():
     assert "sk_live_abc123REDACTME" not in dumped
 
 
+def test_default_run_reads_the_report_from_a_real_temp_file(monkeypatch):
+    """VERIFIED AGAINST A REAL BINARY, in this project's own container image:
+    `--report-path /dev/stdout` silently produced ZERO bytes on a scan that found a real
+    leak — no error, no log line, exit 0. A real temp file is the fix; this pins that
+    `_default_run` actually asks gitleaks to write to one and reads it back, rather than
+    trusting proc.stdout."""
+    seen = {}
+
+    def fake_run(args, **kwargs):
+        seen["args"] = args
+        idx = args.index("--report-path")
+        seen["report_path"] = args[idx + 1]
+        assert seen["report_path"] != "/dev/stdout"
+        Path(seen["report_path"]).write_text(gitleaks_fake.canned(
+            gitleaks_fake.hit("generic-api-key", "x.php", 1)))
+        return _Proc(0, "", "")
+
+    monkeypatch.setattr(secrets_scan.subprocess, "run", fake_run)
+    out = secrets_scan._default_run(["gitleaks", "detect"])
+    assert json.loads(out)[0]["RuleID"] == "generic-api-key"
+
+
+def test_default_run_declares_the_repo_a_safe_git_directory_without_touching_global_config(
+        monkeypatch):
+    """VERIFIED AGAINST A REAL BINARY, in this project's own container image: gitleaks
+    shells out to `git`, which refuses a repo it doesn't own ("detected dubious
+    ownership") whenever the scanned tree's UID differs from the running process's —
+    exactly a CI runner mounting a host-owned checkout into a container. git silently
+    logs an ERR line and reports "0 commits scanned" / "no leaks found", exit 0 — a
+    false clean. GIT_CONFIG_* env vars (git's own per-invocation mechanism, no global
+    config file written) fix it; verified live against a real deliberately-broken-
+    ownership repo before this test was written."""
+    seen = {}
+
+    def fake_run(args, **kwargs):
+        seen["env"] = kwargs.get("env") or {}
+        Path(args[args.index("--report-path") + 1]).write_text(gitleaks_fake.EMPTY)
+        return _Proc(0, "", "")
+
+    monkeypatch.setattr(secrets_scan.subprocess, "run", fake_run)
+    secrets_scan._default_run(["gitleaks", "detect"])
+    assert seen["env"].get("GIT_CONFIG_COUNT") == "1"
+    assert seen["env"].get("GIT_CONFIG_KEY_0") == "safe.directory"
+    assert seen["env"].get("GIT_CONFIG_VALUE_0") == "*"
+
+
+def test_a_plain_folder_without_git_gets_the_no_git_flag(tmp_path):
+    """VERIFIED AGAINST A REAL GITLEAKS 8.30.1 BINARY: `detect` on a directory with no
+    `.git`, without `--no-git`, silently returns `[]` at exit 0 — no warning, no error,
+    nothing. This scanner explicitly supports scanning a plain code folder (see
+    tests/test_zero_repos_is_not_clean.py's PM-reported ingestion feature) — without this
+    flag, secret detection provided ZERO signal for that entire use case and looked
+    clean while doing it, which is worse than an error."""
+    seen = {}
+
+    def fake_run(args):
+        seen["args"] = args
+        return gitleaks_fake.EMPTY
+
+    run_secrets_scan(str(tmp_path), run=fake_run)          # tmp_path has no .git
+    assert "--no-git" in seen["args"]
+
+
+def test_a_real_git_repo_does_not_get_the_no_git_flag(tmp_path):
+    """VERIFIED AGAINST A REAL BINARY: --no-git on an actual git repo silently drops
+    HISTORY scanning — gitleaks' whole value-add over a plain grep (module docstring:
+    "scans a repo's git history, not just the working tree"). Must only apply to a path
+    that genuinely has no .git, never unconditionally."""
+    (tmp_path / ".git").mkdir()
+    seen = {}
+
+    def fake_run(args):
+        seen["args"] = args
+        return gitleaks_fake.EMPTY
+
+    run_secrets_scan(str(tmp_path), run=fake_run)
+    assert "--no-git" not in seen["args"]
+
+
+def test_a_no_git_scans_absolute_file_path_is_normalized_to_repo_relative(tmp_path):
+    """VERIFIED AGAINST A REAL BINARY: in --no-git mode, gitleaks' `File` field is
+    reported relative to whatever --source was given — since repo_scan.py always passes
+    an ABSOLUTE repo_abs, that means an absolute path leaking local filesystem structure
+    into inventory.json/drift.json/GitLab issues, and disagreeing with git-mode
+    gitleaks' own convention (always repo-relative, regardless of how --source was
+    given). Normalize to repo-relative, matching every other path in this tool."""
+    abs_path = str(tmp_path / "secret.php")
+
+    def fake_run(args):
+        return gitleaks_fake.canned(gitleaks_fake.hit("generic-api-key", abs_path, 5))
+
+    res = run_secrets_scan(str(tmp_path), run=fake_run)
+    assert res["matches"][0]["path"] == "secret.php"
+
+
+def test_a_git_mode_relative_file_path_is_left_alone(tmp_path):
+    """git-mode gitleaks already reports repo-relative paths regardless of --source —
+    must not be mangled by relativizing a path that was never absolute."""
+    (tmp_path / ".git").mkdir()
+
+    def fake_run(args):
+        return gitleaks_fake.canned(gitleaks_fake.hit("generic-api-key", "src/a.php", 5))
+
+    res = run_secrets_scan(str(tmp_path), run=fake_run)
+    assert res["matches"][0]["path"] == "src/a.php"
+
+
 def test_resolve_gitleaks_finds_it_next_to_the_python_interpreter(tmp_path, monkeypatch):
     """Mirrors agent.lib.scan_util.resolve_engine's lookup for ast-grep: bin/drift-scan
     downloads gitleaks into the venv's bin/, next to the venv's python — a bare
@@ -226,9 +333,17 @@ def test_finding_secrets_is_not_a_tool_error(monkeypatch):
     """`--exit-code 0` is passed deliberately (Task 1) so gitleaks FINDING secrets exits 0
     instead of its native 1. The non-zero guard must not undo that distinction: a successful
     run that found something is matches, not errors."""
-    monkeypatch.setattr(secrets_scan.subprocess, "run",
-                        lambda *a, **k: _Proc(0, gitleaks_fake.canned(
-                            gitleaks_fake.hit("generic-api-key", "x.php", 1)), ""))
+    def fake_run(args, **k):
+        # _default_run reads gitleaks' report back from a real temp file (VERIFIED
+        # AGAINST A REAL BINARY: --report-path /dev/stdout produced nothing in this
+        # project's own container image) — write the canned report to whatever path it
+        # asked gitleaks to write to, standing in for gitleaks actually doing so.
+        report_path = args[args.index("--report-path") + 1]
+        Path(report_path).write_text(gitleaks_fake.canned(
+            gitleaks_fake.hit("generic-api-key", "x.php", 1)))
+        return _Proc(0, "", "")
+
+    monkeypatch.setattr(secrets_scan.subprocess, "run", fake_run)
     res = run_secrets_scan("/repo")
     assert res["errors"] == []
     assert [m["ruleId"] for m in res["matches"]] == ["generic-api-key"]

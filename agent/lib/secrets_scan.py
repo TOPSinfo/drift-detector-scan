@@ -17,6 +17,7 @@ import os
 import shutil
 import subprocess
 import sys
+import tempfile
 
 
 def _resolve_gitleaks() -> str:
@@ -46,12 +47,49 @@ def _default_run(args: list) -> str:
     cannot read — a plain code folder with no `.git`, which this scanner explicitly
     supports — exits non-zero with EMPTY stdout, and returning that bare stdout made a
     failed scan indistinguishable from a clean one. "Cannot see" is not "clean".
+
+    VERIFIED AGAINST A REAL BINARY, in this project's own container image: gitleaks
+    shells out to the real `git`, which refuses a repo it doesn't own — "detected
+    dubious ownership" — whenever the scanned tree's UID differs from the running
+    process's, exactly the case of a CI runner mounting a host-owned checkout into a
+    container. That failure does NOT raise: git logs an ERR line, gitleaks reports "0
+    commits scanned" and "no leaks found", and exits 0 — a silent false clean, worse
+    than the /dev/stdout bug below because it produces a validly-empty report. Setting
+    `safe.directory=*` via git's own GIT_CONFIG_* env-var mechanism (git >=2.31, no
+    global config file touched, scoped to this one subprocess) fixes it; every ast-grep-
+    engine-adjacent `git` invocation elsewhere in this codebase (agent.lib.scan_util's
+    git_meta, notably) has the SAME exposure and is NOT fixed by this — flagged
+    separately, out of this module's scope.
     """
-    proc = subprocess.run(args, capture_output=True, text=True, timeout=300)
-    if proc.returncode != 0:
-        raise subprocess.CalledProcessError(proc.returncode, args,
-                                            output=proc.stdout, stderr=proc.stderr)
-    return proc.stdout
+    env = {**os.environ, "GIT_CONFIG_COUNT": "1",
+           "GIT_CONFIG_KEY_0": "safe.directory", "GIT_CONFIG_VALUE_0": "*"}
+    # mkstemp, not NamedTemporaryFile: VERIFIED AGAINST A REAL BINARY, in this project's
+    # own container image (overlayfs) — reading gitleaks' report back through the SAME
+    # file object this process had open returned empty even though gitleaks logged
+    # "leaks found" and exited 0; re-opening the identical path fresh saw the real
+    # content. gitleaks replaces the file rather than writing into the inode we already
+    # had open. mkstemp only reserves the NAME (the fd is closed immediately below); the
+    # actual read happens through a brand-new open(), which is what worked.
+    fd, report_path = tempfile.mkstemp(prefix="drift-gitleaks-", suffix=".json")
+    os.close(fd)
+    try:
+        # VERIFIED AGAINST A REAL BINARY, in this project's own container image:
+        # `--report-path /dev/stdout` silently produced ZERO bytes even on a scan that
+        # found a real leak — no error, no log line about it, exit 0. A real temp file
+        # is gitleaks' own documented, portable report mechanism; /dev/stdout is not.
+        full_args = [*args, "--report-path", report_path]
+        proc = subprocess.run(full_args, capture_output=True, text=True, timeout=300,
+                              env=env)
+        if proc.returncode != 0:
+            raise subprocess.CalledProcessError(proc.returncode, full_args,
+                                                output=proc.stdout, stderr=proc.stderr)
+        with open(report_path, encoding="utf-8") as fh:
+            return fh.read()
+    finally:
+        try:
+            os.unlink(report_path)
+        except OSError:
+            pass
 
 
 def _failure_message(exc: Exception) -> str:
@@ -68,9 +106,19 @@ def _failure_message(exc: Exception) -> str:
 
 def run_secrets_scan(repo_path: str, *, run=_default_run) -> dict:
     errors = []
+    args = [_resolve_gitleaks(), "detect", "--source", repo_path, "--report-format", "json",
+            "--exit-code", "0", "--no-banner"]
+    if not os.path.exists(os.path.join(repo_path, ".git")):
+        # VERIFIED AGAINST A REAL GITLEAKS 8.30.1 BINARY: `detect` on a directory with no
+        # `.git`, without this flag, silently returns `[]` at exit 0 — no warning, no
+        # error. This scanner explicitly supports a plain code folder with no `.git` (see
+        # test_zero_repos_is_not_clean.py's PM-reported ingestion feature); without
+        # --no-git that entire use case got zero secret-scanning signal and looked
+        # clean while doing it. Never add this for a real repo — it silently drops
+        # gitleaks' git-HISTORY scan, the module's whole reason to exist over a plain grep.
+        args.append("--no-git")
     try:
-        out = run([_resolve_gitleaks(), "detect", "--source", repo_path, "--report-format",
-                   "json", "--report-path", "/dev/stdout", "--exit-code", "0", "--no-banner"])
+        out = run(args)
     except (OSError, subprocess.SubprocessError) as exc:
         # FAULT ISOLATION. A missing binary (FileNotFoundError), an unrunnable one, a
         # timeout or a non-zero exit is a failure of THIS signal — it must not propagate,
@@ -92,10 +140,24 @@ def run_secrets_scan(repo_path: str, *, run=_default_run) -> dict:
                        "path": repo_path})
     matches = [{
         "ruleId": m.get("RuleID", ""),
-        "path": m.get("File", ""),
+        "path": _relativize(m.get("File", ""), repo_path),
         "line": m.get("StartLine", -1),
         "commit": m.get("Commit", ""),
-        "fingerprint": m.get("Fingerprint", ""),
+        "fingerprint": _relativize(m.get("Fingerprint", ""), repo_path),
         # deliberately no "secret"/"match" key — see module docstring
     } for m in data]
     return {"matches": matches, "errors": errors}
+
+
+def _relativize(value: str, repo_path: str) -> str:
+    """VERIFIED AGAINST A REAL BINARY: in --no-git mode (a plain folder with no .git),
+    gitleaks reports `File`/`Fingerprint` relative to whatever `--source` was given — and
+    repo_scan.py always passes an ABSOLUTE repo_abs, so that means an absolute path
+    leaking local filesystem structure into inventory.json/drift.json/GitLab issues. Git
+    mode always reports repo-relative paths regardless of --source, so this only ever
+    fires for the --no-git branch; a value that isn't an absolute path under repo_path is
+    left untouched (e.g. Fingerprint's non-path segments, or a value from an older
+    cached record shape)."""
+    if value.startswith(repo_path.rstrip(os.sep) + os.sep):
+        return os.path.relpath(value, repo_path)
+    return value
