@@ -9,11 +9,12 @@ from agent.lib.engine import run_scan
 from agent.lib.endpoints import build_endpoints, scan_endpoints
 from agent.lib.superset import to_superset_repo
 from agent.lib import lockfile, private_sources, sdk_clients
+from agent.lib.secrets_scan import run_secrets_scan
 
 
 def scan_repo(repo_abs, repo_name, repo_id, vendors, rules_path, *,
               engine, run, git=_default_git, idiom_instances=None,
-              configured_branch=None):
+              configured_branch=None, secrets_run=None):
     meta = git_meta(repo_abs, run=git, configured_branch=configured_branch)
     meta.update({"id": repo_id, "path": repo_name, "provenance": {"engine": "ast-grep"}})
 
@@ -36,11 +37,15 @@ def scan_repo(repo_abs, repo_name, repo_id, vendors, rules_path, *,
                                  sdk_vendors=sdk_vendors)
     endpoints = [e for e in scanned_eps["endpoints"] if e.get("domain")]
 
+    secrets = run_secrets_scan(repo_abs, run=secrets_run) if secrets_run else run_secrets_scan(repo_abs)
+
     record = to_superset_repo(meta, partitioned, endpoints)
     _annotate_resolved(record, repo_abs)
     record["privateSources"] = private_sources.detect(repo_abs)   # what we can't see (say so)
     record["residue"] = scanned_eps["residue"]
-    return record, {"unparsed": unparsed, "engineErrors": scan["errors"]}
+    record["secrets"] = secrets["matches"]
+    return record, {"unparsed": unparsed, "engineErrors": scan["errors"],
+                    "secretsErrors": secrets["errors"]}
 
 
 def _annotate_resolved(record, repo_abs):
