@@ -121,7 +121,8 @@
             "enum": [
               "sunset",
               "eol",
-              "cve"
+              "cve",
+              "secret"
             ]
           },
           "refKind": {

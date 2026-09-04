@@ -65,6 +65,21 @@ def test_an_endpoint_carrying_own_infra_reason_conforms_to_the_schema():
     jsonschema.validate(instance=payload, schema=_load_schema())
 
 
+def test_a_secret_action_conforms_to_the_schema():
+    """kind: "secret" (Task 3, gitleaks-detected credentials, agent/audit.py's
+    _secret_findings) is a real action kind audit_inventory can now produce. drift.json is
+    'the ONE contract' per this repo's CLAUDE.md, so a kind the code produces that the
+    published schema's `actions[].kind` enum does not list would be a real defect, not a
+    cosmetic gap — this proves the schema actually names it."""
+    jsonschema = pytest.importorskip("jsonschema")
+    payload = {"schemaVersion": "drift/v1", "generated": "2026-09-04",
+               "counts": {"fixes": 0, "sunsets": 0, "eol": 0, "critical": 0, "unaudited": 0,
+                         "reposScanned": 1, "reposAffected": 1},
+               "actions": [{"repo": "root-amazon-supplier-software", "ref": "generic-api-key",
+                            "kind": "secret", "status": "DEPRECATED"}]}
+    jsonschema.validate(instance=payload, schema=_load_schema())
+
+
 def test_schema_rejects_a_bad_status_enum():
     """Proof the schema actually constrains — an action with an invalid status fails."""
     jsonschema = pytest.importorskip("jsonschema")
