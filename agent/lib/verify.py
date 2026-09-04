@@ -100,6 +100,15 @@ def sunset_unit(f: dict) -> str:
     return f.get("operation") or f.get("path") or f.get("domain") or f.get("version") or ""
 
 
+def secret_unit(f: dict) -> str:
+    """The leak's location, "path:line". Re-derived here rather than imported from
+    actions.secret_unit for the same reason sunset_unit above is: verify must be able to
+    DISAGREE with the code that built the payload. Importing the grouping function would make
+    the independent recount a tautology — it would reproduce the very bug it is looking for."""
+    files = f.get("files") or []
+    return (str(files[0]) if files else "") or f.get("path") or ""
+
+
 def check_owner_split(payload: dict) -> None:
     """The delivery owner is a DERIVED field, re-checked here so the two issue streams and
     the two report queues can never disagree with drift.json.
@@ -154,6 +163,7 @@ def check_tile_counts(payload: dict, findings: list) -> None:
                           if a["kind"] == "sunset" and a.get("status") == "DEPRECATED"
                           and a.get("date")]),
              ("eol", [a for a in actions if a["kind"] == "eol"]),
+             ("secrets", [a for a in actions if a["kind"] == "secret"]),
              ("private", payload.get("private", [])),
              # the panel lists vendors nobody has checked; CURRENT ones are not rows
              ("unaudited", [r for r in payload.get("catalog", [])
@@ -172,6 +182,20 @@ def check_tile_counts(payload: dict, findings: list) -> None:
                         f"tile says {counts.get('sunsets')} sunsets but the findings hold "
                         f"{len(expected)} distinct (repo, vendor, operation|host) jobs — "
                         f"retirements are being merged, hiding dead calls behind one row")
+
+    # same independent path for secrets: one job per (repo, rule, leak-site). A secret's `ref`
+    # is the gitleaks RULE id, so a grouping that keys on it alone merges every leak of that
+    # rule in a repo into one action — and because `counts` is computed from `actions`, the
+    # tile agrees with the collapsed table and both under-report together. Five leaked keys
+    # showing as one row is five rotations the reader will not do.
+    expected_secrets = {(f["repo"], f["ref"], secret_unit(f))
+                        for f in findings if f.get("kind") == "secret"}
+    if counts.get("secrets", 0) != len(expected_secrets):
+        raise Violation("secret-grouping",
+                        f"tile says {counts.get('secrets')} secrets but the findings hold "
+                        f"{len(expected_secrets)} distinct (repo, rule, leak-site) "
+                        f"credentials — leaks are being merged behind one row, and each one "
+                        f"is its own rotation")
 
 
 def check_row_labels_distinct(payload: dict) -> None:

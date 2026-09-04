@@ -404,6 +404,73 @@ def test_drift_verify_reports_nothing_to_verify_rather_than_passing(tmp_path):
     assert main(["verify", "--state", str(tmp_path)]) == 4
 
 
+# ------------------------------------------------------- the SECRETS tile obeys the rail
+# The secrets tile shipped with NEITHER of the two checks every other tracked kind gets. Both
+# halves are here for the reason the sunset pair exists: `counts` is computed FROM `actions`,
+# so a grouping bug makes the tile and the table agree with each other and be wrong together.
+# Only a recount straight from `findings` can disagree with both.
+
+def _secret_finding(repo="web", rule="generic-api-key", path="config/keys.php", line=5):
+    loc = f"{path}:{line}"
+    return {"repo": repo, "ref": rule, "kind": "secret", "status": "EXPOSED",
+            "severity": "CRITICAL", "path": path, "files": [loc],
+            "recommendation": "Rotate the credential with its vendor."}
+
+
+def _secret_action(repo="web", rule="generic-api-key", unit="config/keys.php:5"):
+    return {"repo": repo, "ref": rule, "kind": "secret", "unit": unit, "status": "EXPOSED",
+            "recommendation": "Rotate the credential with its vendor.", "finding_count": 1}
+
+
+def test_secrets_tile_must_match_its_own_table():
+    """Half one: the number on the tile vs the rows its own filter yields."""
+    bad = {"counts": {"sunsets": 0, "eol": 0, "private": 0, "secrets": 3},
+           "actions": [_secret_action()], "private": []}
+    with pytest.raises(Violation) as e:
+        verify.check_tile_counts(bad, [_secret_finding()])
+    assert e.value.check == "tile-vs-table"
+    assert "secrets" in str(e.value)
+
+
+def test_collapsed_secret_grouping_is_caught_though_tile_and_table_agree():
+    """Half two, and the one that matters: three separate leaked credentials, grouped back
+    onto their shared gitleaks RULE. The tile is computed from the actions, so it says 1 and
+    the table has 1 row — perfectly consistent, and a lie. Two of the three leaks have
+    vanished from the report with nothing to show they were ever there.
+
+    This is the regression guard for actions._group_key: revert the `secret` branch there and
+    a real payload lands in exactly this shape."""
+    findings = [_secret_finding(path="config/keys.php", line=5),
+                _secret_finding(path="app/Feed.php", line=88),
+                _secret_finding(path="deploy/env.php", line=2)]
+    collapsed = {"counts": {"sunsets": 0, "eol": 0, "private": 0, "secrets": 1},
+                 "actions": [_secret_action(unit=None)], "private": []}
+    with pytest.raises(Violation) as e:
+        verify.check_tile_counts(collapsed, findings)
+    assert e.value.check == "secret-grouping"
+    assert "3 distinct" in str(e.value)
+
+
+def test_correctly_grouped_secrets_pass_clean():
+    findings = [_secret_finding(path="config/keys.php", line=5),
+                _secret_finding(path="app/Feed.php", line=88),
+                _secret_finding(path="deploy/env.php", line=2)]
+    ok = {"counts": {"sunsets": 0, "eol": 0, "private": 0, "secrets": 3},
+          "actions": [_secret_action(unit=f["files"][0]) for f in findings],
+          "private": []}
+    verify.check_tile_counts(ok, findings)          # must not raise
+
+
+def test_the_same_leak_site_in_two_repos_counts_twice():
+    """The identity is (repo, rule, site) — two repos leaking at the same relative path are
+    two credentials to rotate, not one."""
+    findings = [_secret_finding(repo="web"), _secret_finding(repo="api")]
+    ok = {"counts": {"sunsets": 0, "eol": 0, "private": 0, "secrets": 2},
+          "actions": [_secret_action(repo="web"), _secret_action(repo="api")],
+          "private": []}
+    verify.check_tile_counts(ok, findings)          # must not raise
+
+
 # ------------------------------------------------------- the UNAUDITED tile obeys the rail
 def test_unaudited_tile_must_match_its_own_panel():
     """The new tile is held to the same rule as every other: the number equals the rows.
