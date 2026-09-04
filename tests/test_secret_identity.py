@@ -90,6 +90,36 @@ def test_a_leak_of_a_different_rule_at_the_same_site_is_its_own_action():
     assert len(actions) == 2
 
 
+# ── ranking: an exposed credential is action-required ─────────────────────────────
+
+def _sunset(repo="r", ref="eBay", operation="GetCategories"):
+    return {"repo": repo, "ref": ref, "kind": "sunset", "operation": operation,
+            "version": None, "domain": None, "status": "DEPRECATED", "severity": "SUNSET",
+            "date": "2025-01-01", "files": ["src/Ebay.php:9"], "recommendation": "migrate"}
+
+
+def test_a_secret_action_keeps_its_exposed_status_through_the_rollup():
+    """The rollup mapped every non-DEPRECATED group to REVIEW, so the audit's "EXPOSED" — the
+    one status that means "this is live right now" — was erased one step after it was set, and
+    every surface downstream read a leaked key as something to get to later."""
+    a = build_actions([_secret()])[0]
+    assert a["status"] == "EXPOSED"
+
+
+def test_a_critical_exposed_secret_outranks_a_lower_severity_deprecated_sunset():
+    """_rank_key's first term is "action-required first", keyed on DEPRECATED alone. A
+    CRITICAL leaked credential never got that boost, so it sorted below a retiring API."""
+    ranked = build_actions([_sunset(), _secret()])
+    assert [a["kind"] for a in ranked] == ["secret", "sunset"]
+
+
+def test_the_boost_does_not_reorder_anything_that_is_not_a_secret():
+    """"EXPOSED" is produced in exactly one place in the whole tree (agent/audit.py's
+    _secret_findings), so no other kind can be touched by widening the term."""
+    ranked = build_actions([_sunset(operation="B"), _sunset(operation="A")])
+    assert [a["unit"] for a in ranked] == ["A", "B"]        # unchanged alphabetical tie-break
+
+
 def test_non_secret_grouping_is_untouched():
     cve = {"repo": "r", "ref": "npm/axios", "kind": "cve", "version": "0.21.1",
            "fixed": "1.16.0", "severity": "HIGH", "status": "DEPRECATED",

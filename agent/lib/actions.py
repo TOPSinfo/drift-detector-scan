@@ -49,9 +49,16 @@ def _command(kind, eco, pkg, fix_version):
 
 def _rank_key(action):
     """Total order: action-required first, then worst severity, then blast radius, then a
-    stable alphabetical tie-break so output is byte-identical across runs."""
+    stable alphabetical tie-break so output is byte-identical across runs.
+
+    EXPOSED is action-required for the same reason DEPRECATED is: the deadline has passed —
+    for a leaked credential it passed the moment it was committed. Keying the boost on
+    DEPRECATED alone put the most urgent thing this scanner can find below a low-severity
+    retiring API in every list this key orders. `EXPOSED` is produced in exactly one place in
+    the tree (agent/audit.py::_secret_findings), so no other kind's order can move.
+    """
     return (
-        0 if action["status"] == "DEPRECATED" else 1,
+        0 if action["status"] in ("DEPRECATED", "EXPOSED") else 1,
         -severity_rank(action["worst"], action["status"]),
         -action["finding_count"],
         action["repo"],
@@ -111,7 +118,17 @@ def build_actions(findings: list) -> list:
         repo, ref = group[0]["repo"], group[0]["ref"]
         # the worst finding drives severity AND supplies the prose fallback
         worst_f = max(group, key=lambda f: severity_rank(f.get("severity"), f.get("status")))
-        status = "DEPRECATED" if any(f.get("status") == "DEPRECATED" for f in group) else "REVIEW"
+        # DEPRECATED wins; otherwise REVIEW — except that a group of EXPOSED findings keeps
+        # EXPOSED. Folding it into REVIEW erased the audit's strongest verdict one step after
+        # it was set: a live leaked credential is not something to look at later, and every
+        # surface below reads this field (_rank_key's action-required boost, the report's
+        # status column, the delivered issue body).
+        if any(f.get("status") == "DEPRECATED" for f in group):
+            status = "DEPRECATED"
+        elif all(f.get("status") == "EXPOSED" for f in group):
+            status = "EXPOSED"
+        else:
+            status = "REVIEW"
         kind = worst_f.get("kind") if len({f.get("kind") for f in group}) == 1 else "cve"
 
         # recommendation must come from whichever finding actually supplied fix_version, so the

@@ -57,6 +57,11 @@
           "minimum": 0,
           "description": "Vendors called but whose retirement list is unchecked (UNAUDITED or STALE)."
         },
+        "secrets": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Hardcoded credentials found in a repo's git history (one per leak site, not per gitleaks rule). A 0 here means gitleaks ran and found nothing; a failed run is reported in coverage.secretsErrors, never as a 0."
+        },
         "apis": {
           "type": "integer",
           "minimum": 0
@@ -147,8 +152,10 @@
           "status": {
             "enum": [
               "DEPRECATED",
-              "REVIEW"
-            ]
+              "REVIEW",
+              "EXPOSED"
+            ],
+            "description": "DEPRECATED = the deadline has passed (action required); REVIEW = dated but not yet due, or unscored; EXPOSED = a live leaked credential, which has no deadline because it passed the moment the value was committed."
           },
           "worst": {
             "type": [
