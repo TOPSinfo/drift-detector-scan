@@ -77,6 +77,16 @@ if [ "${1:-}" = "doctor" ]; then
   else
     echo "  engine      : not yet — provisioned on first scan"
   fi
+  # gitleaks is optional (secret detection degrades gracefully without it — a repo's
+  # secrets count reads UNKNOWN, not zero, per agent/lib/secrets_scan.py), but nothing else
+  # says so, so an operator has no way to learn the feature is inert on their machine short
+  # of reading stderr on a scan they may not be watching. Not pinned/provisioned here
+  # (unlike ast-grep) — this is a presence check only.
+  if command -v gitleaks >/dev/null 2>&1; then
+    echo "  secrets     : gitleaks ($(gitleaks version 2>/dev/null)) — ok"
+  else
+    echo "  secrets     : gitleaks not found — secret detection will report UNKNOWN, not zero"
+  fi
   # Freshness. Network-OPTIONAL by design: a check that fails the run when offline is a check
   # people disable. Offline prints one plain line; it never changes doctor's exit code.
   # Uses system python3, not the venv's, deliberately: freshness_check imports nothing but
