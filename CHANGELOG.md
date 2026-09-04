@@ -4,6 +4,8 @@ All notable changes to the Drift Detector plugin. Dates are YYYY-MM-DD.
 
 ## Unreleased
 
+## v1.2.0 — 2026-09-04
+
 ### Added
 
 - **Hardcoded-credential detection, as a fourth deterministic finding kind alongside CVE/EOL/
