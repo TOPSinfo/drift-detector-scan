@@ -116,9 +116,11 @@
       // sunsets, all CERTIFIED — the moat, with the retirement timeline as its hero) and AI
       // Frontier (SHAPED, gate-validated). One tab strip per plane; SBOM/SARIF live ONLY under
       // Supply Chain so they don't clutter the other two. ----
-      supplyFixes: function(){       // CVE/EOL package upgrades — the Supply Chain slice of "fixes"
+      supplyFixes: function(){       // CVE/EOL/secret action-required — the Supply Chain slice of "fixes"
+        // matches agent/lib/ranking.ACTION_REQUIRED = ("DEPRECATED", "EXPOSED") — the Python
+        // side widened counts.fixes to include a leaked credential, and this tile fell behind.
         return (this.DATA.actions||[]).filter(function(a){
-          return a.status==="DEPRECATED" && a.kind!=="sunset"; }).length;
+          return (a.status==="DEPRECATED" || a.status==="EXPOSED") && a.kind!=="sunset"; }).length;
       },
       // the AI-research tier — what the research loop found in the wild
       hasResearch: function(){ return !!this.RESEARCH; },
@@ -717,7 +719,8 @@
           var label = a.ref + (a.unit ? " " + a.unit : "");
           if(!self.matchesQ((a.repoLabel || a.repo || "") + " " + label)) return false;
           if(f==="critical")  return a.worst==="CRITICAL";
-          if(f==="fixes")     return a.status==="DEPRECATED";
+          // matches ranking.ACTION_REQUIRED (DEPRECATED, EXPOSED) — see supplyFixes above
+          if(f==="fixes")     return a.status==="DEPRECATED" || a.status==="EXPOSED";
           if(f==="eol")       return a.kind==="eol";
           if(f==="secrets")   return a.kind==="secret";
           if(f==="devops")    return a.owner==="devops";               // the two delivery streams
