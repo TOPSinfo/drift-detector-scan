@@ -811,7 +811,8 @@ A measurement instrument for the scanner: run it against real code and see what 
 
 ### Added
 - **Evaluation / regression harness** (`bin/drift-eval`, contributor tool — see
-  [docs/EVAL.md](docs/EVAL.md)). Clones a **pinned** corpus of real public repos grouped by the
+  [docs/EVAL.md](https://github.com/TOPSinfo/drift-detector-scan/blob/master/docs/EVAL.md)).
+  Clones a **pinned** corpus of real public repos grouped by the
   integration they use (`eval/corpus.yaml`), scans them, and scores the scanner: **recall is a
   hard gate** (a repo in `sandbox/ebay/` must detect eBay), plus informational
   noise / version / sunset metrics. Every miss is tagged by a failure-mode enum so the scorecard
@@ -853,7 +854,7 @@ The report you actually act on, plus a visual surface and sharper detection.
 - **Read-only GitLab connector** (`gitlab-sync`). Clone/pull your GitLab fleet with a
   read-only PAT (`read_api` + `read_repository`) into a folder, then scan it — so private
   and in-house wrapper repos get covered. The token is env-only and stripped from every
-  repo's `.git/config`. See [docs/GITLAB.md](docs/GITLAB.md). (No GitLab MCP required.)
+  repo's `.git/config`. (No GitLab MCP required.)
 - **Coverage honesty + `doctor`.** The scan now reports what it *couldn't* see — private/
   unresolvable package sources, unknown external hosts, floor-only vs lockfile-exact versions
   — and `drift-detector doctor <folder>` runs a scan-readiness preflight.
