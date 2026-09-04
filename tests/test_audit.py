@@ -45,6 +45,19 @@ def test_audit_produces_classified_findings_with_sources():
     assert out["counts"]["DEPRECATED"] >= 3 and out["counts"]["REVIEW"] >= 1
 
 
+def test_audit_counts_tally_exposed_secrets():
+    """`_secret_findings` stamps `status: "EXPOSED"` on every leaked-credential finding, but
+    `counts` had a DEPRECATED/REVIEW bucket only — an EXPOSED finding was tallied nowhere,
+    so a repo with a live leaked credential and nothing else reported action-required: 0."""
+    doc = {"repos": [
+        {"path": "web", "secrets": [{"ruleId": "generic-api-key", "path": "config/keys.php",
+                                     "line": 5, "commit": "deadbeef"}]},
+    ]}
+    out = audit_inventory(doc, "2026-07-14", http=lambda *a, **k: {},
+                          osv_query=lambda *a, **k: [], eol_check=lambda *a, **k: None)
+    assert out["counts"]["EXPOSED"] == 1
+
+
 def test_audit_dedupes_osv_queries():
     calls = {"n": 0}
 

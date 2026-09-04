@@ -21,6 +21,24 @@ def test_audit_out_html_writes_dashboard(tmp_path, monkeypatch):
     assert out_html.exists() and out_html.read_text().startswith("<!doctype html>")
 
 
+def test_audit_banner_shows_exposed_secrets_count(tmp_path, monkeypatch, capsys):
+    """`counts` gained an EXPOSED bucket (Fix C); the CLI banner must show it — otherwise
+    the one signal loud enough to need no network or date (a leaked credential) is the one
+    thing this line never mentions."""
+    import agent.audit as audit_mod
+    monkeypatch.setattr(audit_mod.osv, "query_package", lambda *a, **k: [])
+    monkeypatch.setattr(audit_mod.eol, "check", lambda *a, **k: None)
+    p = tmp_path / "inventory.json"
+    p.write_text(json.dumps({"generated": "2026-07-15", "repos": [
+        {"path": "svc", "endpoints": [], "sdks": [], "runtimes": {},
+         "secrets": [{"ruleId": "generic-api-key", "path": "config/keys.php", "line": 5,
+                     "commit": "deadbeef"}]}]}))
+    rc = cli.main(["audit", "--in", str(p), "--now", "2026-07-15"])
+    out = capsys.readouterr().out
+    assert rc == 0
+    assert "1 exposed" in out
+
+
 def test_audit_without_out_html_writes_none(tmp_path, monkeypatch):
     import agent.audit as audit_mod
     monkeypatch.setattr(audit_mod.osv, "query_package", lambda *a, **k: [])

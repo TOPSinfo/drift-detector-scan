@@ -120,6 +120,10 @@ def apply_lifecycle(audit: dict, state_dir: str, now: str) -> dict:
     audit["counts"] = {
         "DEPRECATED": sum(1 for f in active if f["status"] == "DEPRECATED"),
         "REVIEW": sum(1 for f in active if f["status"] == "REVIEW"),
+        # a leaked credential is stamped "EXPOSED", a third status neither DEPRECATED nor
+        # REVIEW — same bucket-of-three as agent/audit.py's own `counts`, recomputed here
+        # from `active` after new/resolved/muted tracking.
+        "EXPOSED": sum(1 for f in active if f["status"] == "EXPOSED"),
         "reposAffected": len({f["repo"] for f in active}),
         "new": len(new), "resolved": len(resolved), "muted": len(muted),
     }

@@ -359,6 +359,10 @@ def audit_inventory(doc: dict, now: str, *, http=None,
     counts = {
         "DEPRECATED": sum(1 for f in findings if f["status"] == "DEPRECATED"),
         "REVIEW": sum(1 for f in findings if f["status"] == "REVIEW"),
+        # a leaked credential (`_secret_findings`, Tier 0) is stamped "EXPOSED", a THIRD
+        # status neither DEPRECATED nor REVIEW — without its own bucket it was tallied
+        # nowhere, so a repo with a live leak and nothing else reported action-required: 0.
+        "EXPOSED": sum(1 for f in findings if f["status"] == "EXPOSED"),
         "reposAffected": len({f["repo"] for f in findings}),
     }
     return {"generated": now, "findings": findings, "counts": counts, "coverage": coverage}
