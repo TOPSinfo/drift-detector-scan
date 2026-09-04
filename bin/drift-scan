@@ -80,12 +80,20 @@ if [ "${1:-}" = "doctor" ]; then
   # gitleaks is optional (secret detection degrades gracefully without it — a repo's
   # secrets count reads UNKNOWN, not zero, per agent/lib/secrets_scan.py), but nothing else
   # says so, so an operator has no way to learn the feature is inert on their machine short
-  # of reading stderr on a scan they may not be watching. Not pinned/provisioned here
-  # (unlike ast-grep) — this is a presence check only.
-  if command -v gitleaks >/dev/null 2>&1; then
-    echo "  secrets     : gitleaks ($(gitleaks version 2>/dev/null)) — ok"
+  # of reading stderr on a scan they may not be watching. Fetched into the venv's bin/ on
+  # first scan (below) — report what the scanner will ACTUALLY resolve, the same way the
+  # `engine` line above does for ast-grep, not just a bare PATH check (which would miss a
+  # copy already sitting in the venv before the venv's own python can be asked).
+  if [ -f "$MARKER" ]; then
+    gl="$(env PYTHONSAFEPATH=1 PYTHONPATH="$ROOT${PYTHONPATH:+:$PYTHONPATH}" "$VENV/bin/python" -c \
+         'from agent.lib.secrets_scan import _resolve_gitleaks; print(_resolve_gitleaks())' 2>/dev/null)"
+    if [ -n "$gl" ] && { [ -x "$gl" ] || command -v "$gl" >/dev/null 2>&1; }; then
+      echo "  secrets     : gitleaks ($("$gl" version 2>/dev/null)) — ok"
+    else
+      echo "  secrets     : gitleaks not found — secret detection will report UNKNOWN, not zero"
+    fi
   else
-    echo "  secrets     : gitleaks not found — secret detection will report UNKNOWN, not zero"
+    echo "  secrets     : not yet — fetched on first scan (best-effort; optional)"
   fi
   # Freshness. Network-OPTIONAL by design: a check that fails the run when offline is a check
   # people disable. Offline prints one plain line; it never changes doctor's exit code.
@@ -209,45 +217,63 @@ fi
 # ---------- fetch the gitleaks secret-detection engine (optional, static binary) ----------
 # Unlike ast-grep, gitleaks is OPTIONAL: agent.lib.secrets_scan degrades a missing/failing
 # binary to a per-repo secretsError (secrets count reads UNKNOWN, not zero) rather than
-# failing the scan — so every step below is best-effort and NEVER exits non-zero on its
-# own account. A short --max-time bounds the network calls so a machine with no route to
-# GitHub (or one that has simply chosen not to install gitleaks) doesn't pay a hang on
-# every single scan, only a few seconds.
-if [ ! -x "$VENV/bin/gitleaks" ]; then
+# failing the scan — so every step below is best-effort. Every fallible command here is
+# either inside an `if`/`&&` chain or explicitly `|| true`-guarded: under `set -e`, a bare
+# failing command-substitution assignment (`x="$(cmd)"` where cmd fails) aborts the WHOLE
+# script, which would turn "gitleaks isn't reachable" into "no scan ran at all" for
+# users who never asked for secret detection. A prior version of this block got this
+# wrong in exactly that way — verified fixed by tracing it with `bash -x` against a
+# blackholed network, base vs. fixed.
+#
+# Checksums are hardcoded (one per platform), matching the Dockerfile's AST_GREP_SHA256
+# discipline, not fetched from the same host as the binary — a wrong or missing checksum
+# skips installing it rather than trusting unverified code, and it also means no GitHub
+# API call is needed to find the download URL (release URLs are a fixed, predictable
+# pattern), which is the other thing that made this block fragile before.
+GITLEAKS_FETCH_MARKER="$VENV/.gitleaks-fetch-attempted"
+if [ ! -x "$VENV/bin/gitleaks" ] && ! command -v gitleaks >/dev/null 2>&1 \
+   && [ ! -f "$GITLEAKS_FETCH_MARKER" ]; then
+  # Attempted once per venv, success or failure — an optional feature must not re-pay a
+  # network round-trip on every single scan invocation forever just because one machine
+  # has chosen not to install it. Delete this marker (or the venv) to retry.
+  touch "$GITLEAKS_FETCH_MARKER" 2>/dev/null || true
   _os_gl="$(uname -s)"; _arch_gl="$(uname -m)"
+  # PINNED, not "latest" — same determinism argument as AST_GREP_VERSION above.
+  GITLEAKS_VERSION="${DRIFT_GITLEAKS_VERSION:-8.30.1}"
   case "$_os_gl:$_arch_gl" in
-    Linux:x86_64)   _asset_gl="linux_x64.tar.gz" ;;
-    Linux:aarch64)  _asset_gl="linux_arm64.tar.gz" ;;
-    Darwin:arm64)   _asset_gl="darwin_arm64.tar.gz" ;;
-    Darwin:x86_64)  _asset_gl="darwin_x64.tar.gz" ;;
-    *)              _asset_gl="" ;;
+    Linux:x86_64)
+      _asset_gl="linux_x64.tar.gz"
+      _sha_gl="551f6fc83ea457d62a0d98237cbad105af8d557003051f41f3e7ca7b3f2470eb" ;;
+    Linux:aarch64)
+      _asset_gl="linux_arm64.tar.gz"
+      _sha_gl="e4a487ee7ccd7d3a7f7ec08657610aa3606637dab924210b3aee62570fb4b080" ;;
+    Darwin:arm64)
+      _asset_gl="darwin_arm64.tar.gz"
+      _sha_gl="b40ab0ae55c505963e365f271a8d3846efbc170aa17f2607f13df610a9aeb6a5" ;;
+    Darwin:x86_64)
+      _asset_gl="darwin_x64.tar.gz"
+      _sha_gl="dfe101a4db2255fc85120ac7f3d25e4342c3c20cf749f2c20a18081af1952709" ;;
+    *)
+      _asset_gl="" ;;
   esac
+  # Shas above are gitleaks 8.30.1's own published checksums for these 4 assets,
+  # independently re-verified against the downloaded bytes when this block was written
+  # (not copied blind from the checksums file) — bump both together, deliberately.
   if [ -n "$_asset_gl" ] && command -v curl >/dev/null 2>&1 && command -v tar >/dev/null 2>&1 \
      && command -v sha256sum >/dev/null 2>&1; then
-    # PINNED, not "latest" — same determinism argument as AST_GREP_VERSION above, and a
-    # wrong or missing checksum fails the fetch rather than installing unverified code
-    # (see docs/drift-absorb.md's binary-provenance rule). Bump deliberately.
-    GITLEAKS_VERSION="${DRIFT_GITLEAKS_VERSION:-8.30.1}"
     _asset_name_gl="gitleaks_${GITLEAKS_VERSION}_${_asset_gl}"
-    _rel_gl="https://api.github.com/repos/gitleaks/gitleaks/releases/tags/v${GITLEAKS_VERSION}"
-    _api_gl="$(curl -fsSL --max-time 10 "$_rel_gl" 2>/dev/null)"
-    _url_gl="$(printf '%s' "$_api_gl" | grep -o "\"browser_download_url\": \"[^\"]*${_asset_name_gl}\"" | cut -d'"' -f4)"
-    _sums_url_gl="$(printf '%s' "$_api_gl" | grep -o '"browser_download_url": "[^"]*_checksums.txt"' | cut -d'"' -f4)"
-    if [ -n "$_url_gl" ] && [ -n "$_sums_url_gl" ]; then
-      _tmp_gl=$(mktemp -d)
-      if curl -fsSL --max-time 30 -o "$_tmp_gl/gitleaks.tar.gz" "$_url_gl" \
-         && curl -fsSL --max-time 10 -o "$_tmp_gl/checksums.txt" "$_sums_url_gl" \
-         && ( cd "$_tmp_gl" \
-              && grep " ${_asset_name_gl}\$" checksums.txt | sha256sum -c - >/dev/null 2>&1 ) \
-         && tar -xzf "$_tmp_gl/gitleaks.tar.gz" -C "$_tmp_gl" gitleaks 2>/dev/null \
-         && [ -f "$_tmp_gl/gitleaks" ]; then
-        mv "$_tmp_gl/gitleaks" "$VENV/bin/gitleaks" && chmod +x "$VENV/bin/gitleaks"
-      else
-        echo "drift-detector: gitleaks fetch or checksum verification failed — secret " \
-             "detection will report UNKNOWN until it is installed manually." >&2
-      fi
-      rm -rf "$_tmp_gl"
+    _url_gl="https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/${_asset_name_gl}"
+    _tmp_gl=$(mktemp -d)
+    if curl -fsSL --max-time 20 -o "$_tmp_gl/$_asset_name_gl" "$_url_gl" 2>/dev/null \
+       && echo "${_sha_gl}  $_tmp_gl/$_asset_name_gl" | sha256sum -c - >/dev/null 2>&1 \
+       && tar -xzf "$_tmp_gl/$_asset_name_gl" -C "$_tmp_gl" gitleaks 2>/dev/null \
+       && [ -f "$_tmp_gl/gitleaks" ]; then
+      mv "$_tmp_gl/gitleaks" "$VENV/bin/gitleaks" && chmod +x "$VENV/bin/gitleaks"
+      echo "drift-detector: fetched gitleaks ${GITLEAKS_VERSION} (checksum verified)" >&2
+    else
+      echo "drift-detector: gitleaks fetch or checksum verification failed — secret detection will report UNKNOWN until it is installed manually." >&2
     fi
+    rm -rf "$_tmp_gl"
   fi
 fi
 

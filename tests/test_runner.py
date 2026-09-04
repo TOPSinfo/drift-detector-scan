@@ -37,15 +37,43 @@ def test_doctor_reports_whether_gitleaks_is_present():
 def test_runner_self_provisions_gitleaks_like_ast_grep():
     """gitleaks is optional (unlike ast-grep — a missing gitleaks degrades secret
     detection to UNKNOWN, never fails the scan), but a user should not have to install
-    it by hand any more than they install ast-grep by hand: pin a version, verify its
-    published checksum before trusting it (same discipline as AST_GREP_VERSION), and
-    place it next to ast-grep in the venv's bin/ where secrets_scan._resolve_gitleaks
-    looks for it."""
+    it by hand any more than they install ast-grep by hand: pin a version, verify a
+    hardcoded checksum before trusting it (same discipline as the Dockerfile's
+    AST_GREP_SHA256 — not fetched from the same host as the binary), and place it next
+    to ast-grep in the venv's bin/ where secrets_scan._resolve_gitleaks looks for it."""
     body = (_ROOT / "bin" / "drift-scan").read_text()
     assert "GITLEAKS_VERSION" in body
-    assert "gitleaks/gitleaks/releases" in body
-    assert "checksums.txt" in body and "sha256sum -c" in body
+    assert "gitleaks/gitleaks/releases/download" in body       # a direct, predictable URL
+    assert "sha256sum -c" in body
+    assert body.count("_sha_gl=") >= 4                         # one hardcoded sha per platform
     assert '"$VENV/bin/gitleaks"' in body
+
+
+def test_runner_only_attempts_the_gitleaks_fetch_once_per_venv():
+    """REGRESSION: gitleaks is optional — retrying a network fetch on every single scan
+    invocation forever (rather than once) would cost every user who has chosen not to
+    install it a network round-trip on every run, not just the first."""
+    body = (_ROOT / "bin" / "drift-scan").read_text()
+    assert "GITLEAKS_FETCH_MARKER" in body
+    assert '[ ! -f "$GITLEAKS_FETCH_MARKER" ]' in body
+
+
+def test_runner_gitleaks_fetch_never_uses_a_bare_failing_assignment_under_set_e():
+    """REGRESSION: a prior version of this block did `x="$(curl ...)"` as a bare
+    statement — under `set -e`, curl failing there (no network route to GitHub) aborts
+    the ENTIRE script before the scan ever runs, turning "gitleaks isn't reachable" into
+    "no scan ran at all" for every user, not just ones who wanted secret detection.
+    Verified as a real regression by tracing the pre-fix script with `bash -x` against a
+    blackholed network: base exited 0, the broken version exited non-zero and printed
+    nothing. The fetch's only network call must be inside a conditional (an `if`/`&&`
+    chain), never a bare assignment."""
+    body = (_ROOT / "bin" / "drift-scan").read_text()
+    gl_block = body[body.index("fetch the gitleaks"):]
+    gl_block = gl_block[:gl_block.index('# Run from the caller')]
+    for line in gl_block.splitlines():
+        stripped = line.strip()
+        if stripped.startswith("_") and "=" in stripped and "curl" in stripped:
+            assert False, f"a bare command-substitution assignment calls curl: {stripped!r}"
 
 
 def _runner_case_line() -> str:
