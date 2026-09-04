@@ -837,6 +837,27 @@ def test_ai_tier_blobs_leave_certified_drift_data_byte_identical():
     assert 'id="adhoc-data"' in with_ai and 'id="leads-data"' in with_ai       # present → additive blobs
 
 
+def _secret(repo="r", ref="gitleaks:generic-api-key", path="src/config/keys.php", line=12,
+            first_seen="2026-07-15"):
+    # Mirrors the raw finding shape _secret_findings() in agent/audit.py emits (kind="secret",
+    # severity="CRITICAL", status="EXPOSED", tier=0, no date/source_url — a Tier-0 fact about
+    # the repo's own git history, not an external advisory).
+    loc = f"{path}:{line}"
+    return {"repo": repo, "ref": ref, "kind": "secret", "version": None,
+            "status": "EXPOSED", "severity": "CRITICAL", "first_seen": first_seen,
+            "detail": f"Hardcoded credential ({ref}) at {loc}",
+            "date": None,
+            "recommendation": "Rotate the credential with its vendor, then remove it from "
+                              "source and read it from the environment instead.",
+            "source_url": None, "tier": 0, "files": [loc]}
+
+
+def test_secret_findings_are_counted_separately_in_supply_chain():
+    from agent.lib.dashboard_render import build_payload
+    payload = build_payload(_inv(), _audit([_secret()]))
+    assert payload["counts"]["secrets"] == 1
+
+
 def test_a_host_already_named_as_a_vendor_is_not_also_listed_unresolved():
     """REGRESSION, seen on a live fleet run. Salesforce Commerce Cloud has no catalog domain —
     OCAPI runs on the merchant's own host — so one record attributes the host to SFCC while

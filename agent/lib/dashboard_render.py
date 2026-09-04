@@ -195,6 +195,10 @@ def _build_projection(inventory: dict, audit: dict, gitlab_hosts=frozenset(), *,
         "fixes": sum(1 for a in actions if a["status"] == "DEPRECATED"),
         "eol": sum(1 for a in actions if a["kind"] == "eol"),
         "sunsets": sum(1 for a in actions if a["kind"] == "sunset"),
+        # Tier-0 hardcoded-credential findings (Task 3) — same Supply Chain plane as CVEs
+        # (they already rank/count in `critical` via worst=="CRITICAL"), but distinguished
+        # in the tile row rather than left indistinguishable from a CRITICAL CVE.
+        "secrets": sum(1 for a in actions if a["kind"] == "secret"),
         # PM ask: a vendor API that is ALREADY retired (past its removal date) is a
         # different, more urgent thing than a CVE "fix" or an upcoming deadline — an
         # integration that is broken NOW, not one to plan around. Its own count.
