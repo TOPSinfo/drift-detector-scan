@@ -35,7 +35,7 @@
         "fixes": {
           "type": "integer",
           "minimum": 0,
-          "description": "Action-required findings (DEPRECATED)."
+          "description": "Action-required actions — the deadline has already passed (status DEPRECATED, or EXPOSED for a leaked credential, whose deadline passed when the value was committed)."
         },
         "sunsets": {
           "type": "integer",

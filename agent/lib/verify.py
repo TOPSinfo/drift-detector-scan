@@ -130,16 +130,23 @@ def check_owner_split(payload: dict) -> None:
                             f"refKind={a.get('refKind')!r} derives {want!r} — the stream "
                             f"routing disagrees with the data")
     by_owner = (payload.get("counts") or {}).get("byOwner") or {}
-    for status_key, status in (("fixes", "DEPRECATED"), ("review", "REVIEW")):
+    # The two buckets PARTITION the actions: action-required (the deadline has passed —
+    # DEPRECATED for a dated thing, EXPOSED for a leaked credential) and everything else.
+    # Spelled out here rather than imported so verify can disagree with the renderer, but
+    # stated as a partition so no status can fall between the buckets and be counted nowhere.
+    for status_key, required in (("fixes", True), ("review", False)):
+        label = "action-required" if required else "not action-required"
         summed = sum((by_owner.get(o) or {}).get(status_key, 0) for o in owners.OWNERS)
-        total = sum(1 for a in actions if a.get("status") == status)
+        total = sum(1 for a in actions
+                    if (a.get("status") in ("DEPRECATED", "EXPOSED")) is required)
         if summed != total:
             raise Violation("owner-count-parity",
                             f"per-owner {status_key} sum to {summed} but {total} actions are "
-                            f"{status} — a queue is miscounting")
+                            f"{label} — a queue is miscounting")
         for o in owners.OWNERS:
             got = (by_owner.get(o) or {}).get(status_key, 0)
-            exp = sum(1 for a in actions if a.get("owner") == o and a.get("status") == status)
+            exp = sum(1 for a in actions if a.get("owner") == o
+                      and (a.get("status") in ("DEPRECATED", "EXPOSED")) is required)
             if got != exp:
                 raise Violation("owner-count-parity",
                                 f"counts.byOwner.{o}.{status_key}={got} but its filter yields "

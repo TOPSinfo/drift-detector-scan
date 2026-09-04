@@ -11,7 +11,7 @@ from __future__ import annotations
 from collections import OrderedDict
 
 from agent.lib import owners
-from agent.lib.ranking import severity_rank, semver_key, is_version
+from agent.lib.ranking import ACTION_REQUIRED, severity_rank, semver_key, is_version
 
 _MAX_FILES = 6
 
@@ -55,10 +55,11 @@ def _rank_key(action):
     for a leaked credential it passed the moment it was committed. Keying the boost on
     DEPRECATED alone put the most urgent thing this scanner can find below a low-severity
     retiring API in every list this key orders. `EXPOSED` is produced in exactly one place in
-    the tree (agent/audit.py::_secret_findings), so no other kind's order can move.
+    the tree (agent/audit.py::_secret_findings), so no other kind's order can move. The set
+    lives in ranking.py so the tiles and the per-owner tallies read the same definition.
     """
     return (
-        0 if action["status"] in ("DEPRECATED", "EXPOSED") else 1,
+        0 if action["status"] in ACTION_REQUIRED else 1,
         -severity_rank(action["worst"], action["status"]),
         -action["finding_count"],
         action["repo"],

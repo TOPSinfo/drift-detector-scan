@@ -15,6 +15,7 @@ from collections import Counter
 
 from agent.lib import host_class, own_infra
 from agent.lib.actions import build_actions
+from agent.lib.ranking import ACTION_REQUIRED as _ACTION_REQUIRED
 
 _MAX_CVES = 20            # cap the per-action CVE list embedded in the blob
 
@@ -192,7 +193,12 @@ def _build_projection(inventory: dict, audit: dict, gitlab_hosts=frozenset(), *,
             covered_deps.append({"repo": p.get("repo"), "source": url})
     counts = {
         "critical": sum(1 for a in actions if a["worst"] == "CRITICAL"),
-        "fixes": sum(1 for a in actions if a["status"] == "DEPRECATED"),
+        # action-required = the deadline has passed. DEPRECATED says so for a dated thing;
+        # EXPOSED says so for a leaked credential, whose deadline passed the moment the value
+        # was committed. One shared predicate (`_ACTION_REQUIRED`) so this tile, the per-owner
+        # tallies and actions._rank_key cannot disagree about what "needs doing now" is — and
+        # so no action's status lands in neither bucket and is counted nowhere at all.
+        "fixes": sum(1 for a in actions if a["status"] in _ACTION_REQUIRED),
         "eol": sum(1 for a in actions if a["kind"] == "eol"),
         "sunsets": sum(1 for a in actions if a["kind"] == "sunset"),
         # Tier-0 hardcoded-credential findings (Task 3) — same Supply Chain plane as CVEs
@@ -253,9 +259,9 @@ def _build_projection(inventory: dict, audit: dict, gitlab_hosts=frozenset(), *,
         # sum back to the fixes/review totals so the two queues can't silently miscount.
         "byOwner": {
             o: {"fixes": sum(1 for a in actions
-                             if a.get("owner") == o and a["status"] == "DEPRECATED"),
+                             if a.get("owner") == o and a["status"] in _ACTION_REQUIRED),
                 "review": sum(1 for a in actions
-                              if a.get("owner") == o and a["status"] == "REVIEW")}
+                              if a.get("owner") == o and a["status"] not in _ACTION_REQUIRED)}
             for o in ("devops", "developer")},
     }
     return {

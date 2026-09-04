@@ -99,6 +99,34 @@ def test_a_secret_body_never_claims_the_credential_retires_on_a_date():
     assert "retires" not in body
 
 
+# ── the action-required tallies must stay total ───────────────────────────────────
+
+def test_an_exposed_credential_counts_as_action_required():
+    """`_rank_key` treats EXPOSED as action-required; the tallies must agree, or a repo with
+    a live leaked credential and nothing else reports "Fixes needed (action-required): 0".
+    A status in neither the fixes nor the review bucket is counted nowhere at all — the
+    hole that opened when the rollup stopped flattening EXPOSED into REVIEW."""
+    from agent.lib import verify
+    from agent.lib.dashboard_render import build_payload
+    inv = {"generated": "2026-09-04",
+           "repos": [{"path": "web", "endpoints": [], "sdks": []}],
+           "coverage": {"reposScanned": 1, "reposErrored": [], "manifestsUnparsed": [],
+                        "secretsErrors": []}}
+    findings = [{"repo": "web", "ref": "generic-api-key", "kind": "secret",
+                 "status": "EXPOSED", "severity": "CRITICAL", "path": "config/keys.php",
+                 "files": ["config/keys.php:5"], "date": None, "source_url": None,
+                 "tier": 0, "detail": "d", "owner": "devops",
+                 "recommendation": "Rotate the credential with its vendor."}]
+    audit = {"generated": "2026-09-04", "findings": findings,
+             "actions": build_actions(findings),
+             "counts": {"DEPRECATED": 0, "REVIEW": 0, "reposAffected": 1},
+             "coverage": {"catalog": []}}
+    p = build_payload(inv, audit)
+    assert p["counts"]["fixes"] == 1
+    assert p["counts"]["byOwner"]["devops"]["fixes"] == 1
+    verify.check_owner_split(p)          # the two buckets still account for every action
+
+
 def test_a_non_secret_devops_body_is_unchanged():
     cve = {"kind": "cve", "repo": "web", "ref": "composer/acme/x", "unit": None,
            "status": "DEPRECATED", "date": None, "recommendation": "upgrade to >= 1.2.3"}

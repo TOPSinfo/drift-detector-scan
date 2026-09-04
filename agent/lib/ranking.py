@@ -10,6 +10,13 @@ import re
 
 _SEV_RANK = {"CRITICAL": 4, "HIGH": 3, "MODERATE": 2, "MEDIUM": 2, "LOW": 1, "UNKNOWN": 0, "": 0}
 
+# The statuses that mean "the deadline has already passed" — action-required, as opposed to
+# dated-but-not-yet-due. DEPRECATED says it for a dated thing; EXPOSED says it for a leaked
+# credential, whose deadline passed the moment the value was committed. One definition,
+# because the ranking, the tiles and the per-owner tallies each used to spell it out for
+# themselves and a status none of them named was ranked last and counted nowhere.
+ACTION_REQUIRED = ("DEPRECATED", "EXPOSED")
+
 # Severities with no CVSS score. Ranked by overdue-ness instead: the audit already decided
 # past-due vs approaching when it set `status`, so reuse that rather than re-deriving it.
 _DATED_SEVERITIES = {"EOL", "SUNSET"}
