@@ -67,9 +67,15 @@ def _cmd_inventory_scan(args) -> int:
     with open(args.out_json, "w", encoding="utf-8") as fh:
         json.dump(out["doc"], fh, ensure_ascii=False, indent=2, sort_keys=True)
     d = out["doc"]
+    # A repo whose secrets signal failed (gitleaks missing/timed out/crashed) is not a repo
+    # that scanned clean of leaked credentials — `reposErrored`'s count was already in this
+    # line; a failed secrets scan is a narrower, non-fatal failure of the SAME shape and must
+    # not be the one thing this summary says nothing about.
+    n_secrets_errs = len(d["coverage"].get("secretsErrors", []))
+    secrets_bit = f" · {n_secrets_errs} secrets error(s)" if n_secrets_errs else ""
     print(f"✓ {len(d['repos'])} repos · {len(d.get('unique_apis', []))} APIs · "
           f"{len(d.get('unique_packages', []))} packages · "
-          f"{len(d['coverage']['reposErrored'])} errors · {dt:.1f}s")
+          f"{len(d['coverage']['reposErrored'])} errors{secrets_bit} · {dt:.1f}s")
     return 0
 
 
@@ -100,6 +106,15 @@ def _cmd_audit(args) -> int:
     c = audit["counts"]
     print(f"✓ audit: 🔴 {c.get('DEPRECATED', 0)} action-required · 🔑 {c.get('EXPOSED', 0)} "
           f"exposed · 🟠 {c.get('REVIEW', 0)} review · across {c.get('reposAffected', 0)} repos")
+    # `doc` (inventory.json, via --in) carries coverage.secretsErrors from the scan stage —
+    # a repo whose secrets signal failed there means the EXPOSED count just printed is
+    # potentially incomplete for it, not a proven-clean zero. Mirrors how `_cmd_run` warns
+    # about osvErrors/eolErrors: 'couldn't check' must never read as 'clean'.
+    secrets_errored = (doc.get("coverage", {}) or {}).get("secretsErrors") or []
+    if secrets_errored:
+        print(f"⚠ secrets scan failed for {len(secrets_errored)} repo(s) during the prior "
+              f"scan — the exposed-credentials count above may be incomplete for them.",
+              file=sys.stderr)
     return 0
 
 

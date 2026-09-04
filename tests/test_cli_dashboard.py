@@ -39,6 +39,39 @@ def test_audit_banner_shows_exposed_secrets_count(tmp_path, monkeypatch, capsys)
     assert "1 exposed" in out
 
 
+def test_audit_warns_when_secrets_scan_failed_upstream(tmp_path, monkeypatch, capsys):
+    """`_cmd_audit` only sees `doc` (inventory.json via --in), which carries
+    `doc["coverage"]["secretsErrors"]` from the scan stage. If that's non-empty, the
+    'exposed' count in the banner is potentially incomplete for those repos — say so,
+    the same way `_cmd_run` warns about osvErrors/eolErrors, instead of letting a
+    partial EXPOSED count read as a trustworthy clean signal."""
+    import agent.audit as audit_mod
+    monkeypatch.setattr(audit_mod.osv, "query_package", lambda *a, **k: [])
+    monkeypatch.setattr(audit_mod.eol, "check", lambda *a, **k: None)
+    p = tmp_path / "inventory.json"
+    p.write_text(json.dumps({"generated": "2026-07-15", "repos": [
+        {"path": "svc", "endpoints": [], "sdks": [], "runtimes": {}}],
+        "coverage": {"secretsErrors": [{"repo": "web", "message": "gitleaks missing",
+                                        "path": "/repos/web"}]}}))
+    rc = cli.main(["audit", "--in", str(p), "--now", "2026-07-15"])
+    err = capsys.readouterr().err
+    assert rc == 0
+    assert "secrets scan failed" in err
+    assert "1 repo" in err
+    assert "incomplete" in err
+
+
+def test_audit_says_nothing_extra_when_secrets_scan_had_no_errors(tmp_path, monkeypatch, capsys):
+    import agent.audit as audit_mod
+    monkeypatch.setattr(audit_mod.osv, "query_package", lambda *a, **k: [])
+    monkeypatch.setattr(audit_mod.eol, "check", lambda *a, **k: None)
+    inv = _inventory(tmp_path)
+    rc = cli.main(["audit", "--in", str(inv), "--now", "2026-07-15"])
+    err = capsys.readouterr().err
+    assert rc == 0
+    assert "secrets scan failed" not in err
+
+
 def test_audit_without_out_html_writes_none(tmp_path, monkeypatch):
     import agent.audit as audit_mod
     monkeypatch.setattr(audit_mod.osv, "query_package", lambda *a, **k: [])
