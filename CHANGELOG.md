@@ -4,6 +4,21 @@ All notable changes to the Drift Detector plugin. Dates are YYYY-MM-DD.
 
 ## Unreleased
 
+### Added
+
+- **Hardcoded-credential detection, as a fourth deterministic finding kind alongside CVE/EOL/
+  sunset.** A pinned `gitleaks` binary scans each repo's full git history (not just the
+  current tree) for known credential shapes, the same registry-first/GitHub-fallback/
+  hash-verified acquisition `ast-grep` already used. Findings land in the **Supply Chain**
+  plane with their own tile and a distinct urgency glyph (ranked above sunset/EOL — a live
+  leak outranks a future migration deadline), through the identical `kind`-tagged schema
+  every other finding already uses — no new pipeline, no fourth plane. The matched secret
+  value is never carried past detection: a finding says *where* a credential is (repo, file,
+  line, commit), never repeats the live value into `drift.json` or a filed issue, which would
+  just create a second copy of the leak. Zero AI involvement in detection — this is Tier 0,
+  strictly more deterministic than the OSV/EOL tiers, since it needs no network call at scan
+  time at all.
+
 ## v1.1.0 — 2026-09-03
 
 ### Added

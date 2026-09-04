@@ -162,8 +162,10 @@ residue must shrink), so the tool learns without ever admitting an unverified fi
 The **Cockpit** is the interactive dashboard, organized as **three planes** — in decreasing order of
 certainty, each with its own tiles and content:
 
-- **Supply Chain** — CVEs and end-of-life software, plus the **SBOM** and **SARIF** exports (which
-  live only here). The table-stakes supply-chain hygiene any SCA tool does.
+- **Supply Chain** — CVEs, end-of-life software, and **leaked credentials** (via a pinned
+  `gitleaks` scan of your git history, not just the working tree), plus the **SBOM** and
+  **SARIF** exports (which live only here). The table-stakes supply-chain hygiene any SCA
+  tool does.
 - **Vendor Drift** *(certified)* — the retiring-vendor-API layer: a per-operation **retirement
   timeline** and the migration queue, proven to `file:line`. *The layer no other scanner has.*
 - **AI Frontier** *(shaped)* — call-sites an AI recovered from code the deterministic scan couldn't
@@ -211,6 +213,7 @@ and `drift-scan sarif --state <dir>`:
 |---|---|
 | Deterministic scan → inventory of packages, runtimes & API calls (`file:line`) | ✅ |
 | Security-hole (OSV) + end-of-life (endoflife.date) checks | ✅ |
+| Hardcoded-credential detection (pinned `gitleaks`, findings say *where*, never repeat the value) | ✅ |
 | **Retiring-vendor-API detection** + the curated, dated, sourced catalog | ✅ |
 | AI cross-check plane (leads for shapes the rules miss) + the `absorb` intake gate | ✅ |
 | `drift.json` + `verify` (the trust contract) | ✅ |

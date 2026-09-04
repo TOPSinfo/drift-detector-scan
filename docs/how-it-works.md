@@ -96,6 +96,7 @@ Every number on those surfaces is explained in **[Reading the report](reading-th
 | **EOL** (end-of-life) | A software version the maker stopped supporting or patching. |
 | **CVE** | A publicly-catalogued security hole in a software package. |
 | **OSV** | The public database of those security holes the tool checks against. |
+| **leaked credential** | An API key, password, or secret committed into your code — found by scanning your git history, not just today's files. The report says where it is, never what it is. |
 | **SBOM** | A "bill of materials" — the list of every component your code depends on. |
 | **SARIF** | A standard file format for scan results that GitHub and VS Code can read. |
 | **the Cockpit** | The interactive dashboard the tool publishes on each run. |

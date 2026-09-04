@@ -23,7 +23,7 @@ The first row answers "what kind of problem is this?"
 
 | Panel | Badge | What it counts |
 |---|---|---|
-| **Supply Chain** | `SECURITY` | Known security holes (CVEs) and end-of-life runtimes — what your existing security scanners also look for |
+| **Supply Chain** | `SECURITY` | Known security holes (CVEs), end-of-life runtimes, and leaked credentials — what your existing security scanners also look for |
 | **Vendor Drift** | `CERTIFIED` | Third-party APIs being switched off — the thing this tool exists for, proven to `file:line` |
 | **AI Frontier** | `SHAPED` | Leads found by AI in code the deterministic scanner could not read, then re-checked |
 
@@ -57,9 +57,10 @@ is why they don't add up to each other.
 |---|---|
 | **Sunsets** | Vendor APIs with an announced retirement that your code calls |
 | **Past-due** | Of those, the ones whose date has **already passed** — start here |
-| **Critical** | Security issues rated critical |
+| **Critical** | Security issues rated critical — includes any leaked credential found, ranked at the top severity |
 | **Fixes** | Total items needing action |
 | **EOL** | Runtimes or frameworks past end-of-life |
+| **Secrets** | Hardcoded API keys, passwords, or tokens found in your git history — rotate with the vendor, then remove from source |
 
 ### The one people misread
 
