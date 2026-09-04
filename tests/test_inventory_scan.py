@@ -79,7 +79,8 @@ def test_scan_folder_progress_callback(tmp_path):
     _git_init(root / "web", {"composer.json": '{"require": {"php": "^8.2"}}'})
     msgs = []
     scan_folder(str(root), str(tmp_path / "state"), "2026-07-14",
-                engine="semgrep", run=_empty_run, progress=msgs.append)
+                engine="semgrep", run=_empty_run, progress=msgs.append,
+                secrets_run=_no_secrets)
     assert any("resolving sources" in m for m in msgs)
     assert any("1 project(s) resolved" in m for m in msgs)
     assert any("web" in m and "scan:" in m for m in msgs)       # per-repo phase line

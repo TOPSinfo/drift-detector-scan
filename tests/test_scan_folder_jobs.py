@@ -2,6 +2,11 @@ import json
 import subprocess
 
 from agent.inventory_scan import scan_folder
+from tests import gitleaks_fake
+
+
+def _no_secrets(args):
+    return gitleaks_fake.EMPTY
 
 
 def _git_init(d, files):
@@ -24,8 +29,10 @@ def test_scan_folder_preserves_repo_order_when_parallel(tmp_path):
     for name in ("alpha", "bravo", "charlie", "delta"):
         _git_init(root / name, {"composer.json": '{"require": {"php": "^7.4"}}'})
 
-    serial = scan_folder([root], tmp_path / "s1", "2026-08-25", run=_empty_engine, jobs=1)
-    parallel = scan_folder([root], tmp_path / "s4", "2026-08-25", run=_empty_engine, jobs=4)
+    serial = scan_folder([root], tmp_path / "s1", "2026-08-25", run=_empty_engine, jobs=1,
+                         secrets_run=_no_secrets)
+    parallel = scan_folder([root], tmp_path / "s4", "2026-08-25", run=_empty_engine, jobs=4,
+                           secrets_run=_no_secrets)
 
     names_serial = [r["path"] for r in serial["doc"]["repos"]]
     names_parallel = [r["path"] for r in parallel["doc"]["repos"]]
@@ -44,7 +51,8 @@ def test_scan_folder_records_an_erroring_repo_rather_than_dropping_it(tmp_path):
             raise RuntimeError("engine crashed")
         return json.dumps([])
 
-    out = scan_folder([root], tmp_path / "state", "2026-08-25", run=engine, jobs=3)
+    out = scan_folder([root], tmp_path / "state", "2026-08-25", run=engine, jobs=3,
+                      secrets_run=_no_secrets)
 
     errored = [e["repo"] for e in out["doc"]["coverage"]["reposErrored"]]
     assert any("boom" in name for name in errored)

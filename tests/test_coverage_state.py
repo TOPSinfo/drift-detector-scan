@@ -9,6 +9,7 @@ class of lie as rendering an unread repo as clean: absence of a prior state is n
 that everything changed. A first run therefore reports no transitions at all.
 """
 from agent.lib import coverage_state
+from tests import gitleaks_fake
 
 
 def _rec(vendor, verdict, sites=1):
@@ -98,7 +99,8 @@ def test_the_pipeline_records_coverage_movement_between_two_runs(tmp_path, monke
     state = tmp_path / "state"
     for now in ("2026-07-15", "2026-07-22"):
         run_pipeline(str(root), str(state), now, engine="semgrep",
-                     run=lambda args: json.dumps([]), http=lambda *a, **k: {})
+                     run=lambda args: json.dumps([]), http=lambda *a, **k: {},
+                     secrets_run=lambda a: gitleaks_fake.EMPTY)
         drift = json.loads((state / "drift.json").read_text())
 
     assert drift["catalogDelta"]["comparedAgainst"] == "2026-07-15"   # run 2 compared against run 1
