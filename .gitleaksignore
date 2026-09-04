@@ -5,22 +5,21 @@
 # in agent/lib/secrets_scan.py needs to know this file exists; see
 # tests/test_secrets_scan.py::test_run_secrets_scan_does_not_need_to_know_about_gitleaksignore.
 #
-# Why this file exists: tests/fixtures/** intentionally contains fake-looking secrets to
-# exercise the scanner itself (drift-detector-scan is a scanner whose own test suite has to
-# plant credential-shaped strings to prove the engine finds them). Left unaddressed, those
-# fixtures would surface as findings every time this repo scans itself in CI. This file exists
-# ONLY to silence that self-inflicted noise — it must NEVER be used to suppress a real,
-# unrotated leak, in this repo or (obviously) in any fleet repo this tool scans on someone
-# else's behalf; a real key sitting in a vendored file elsewhere is still a real leak.
+# Why this file exists: this repo's own test suite intentionally plants fake-looking
+# credential strings to prove the secrets engine finds them (drift-detector-scan is a
+# scanner whose tests have to contain scanner-shaped bait). Left unaddressed, those
+# fixtures would surface as findings every time this repo scans itself in CI. This file
+# exists ONLY to silence that self-inflicted noise — it must NEVER be used to suppress a
+# real, unrotated leak, in this repo or (obviously) in any fleet repo this tool scans on
+# someone else's behalf; a real key sitting in a vendored file elsewhere is still a real leak.
 #
-# STATUS: placeholder, not yet populated. This sandbox has no gitleaks binary (confirmed in
-# Task 1 of the secret-detection plan), so no real gitleaks fingerprints could be computed here
-# — this file intentionally contains ZERO fingerprint rows rather than fabricated ones that
-# would only look like real scan output.
-#
-# TODO (needs a live gitleaks binary): run `gitleaks detect --source . --report-format json`
-# against this repo, confirm every hit is under tests/fixtures/, and copy those hits'
-# `Fingerprint` values in below, one per line, e.g.:
-#   <commit>:tests/fixtures/<path>:<rule-id>:<line>
-# Do not add a row for any hit outside tests/fixtures/ — that would be a real finding, not
-# scanner noise, and belongs in drift.json instead of being silenced here.
+# STATUS: populated 2026-09-04 with a real gitleaks 8.30.1 scan of this repo (`gitleaks
+# detect --source . --report-format json`). Both hits are the deliberately-fake
+# `sk_live_abc123REDACTME` placeholder in
+# tests/test_secrets_scan.py::test_run_secrets_scan_never_carries_the_matched_secret_text
+# (the redaction-guarantee test) — confirmed by reading the file, not assumed. Re-run the
+# same command after adding new test fixtures with credential-shaped strings, and append
+# any NEW fixture-only fingerprint here; never add a row for a hit outside this repo's own
+# tests/ — that would be a real finding, not scanner noise, and belongs in drift.json.
+c57885ef80d936b4ae66af2d33a50421214bfa03:tests/test_secrets_scan.py:stripe-access-token:32
+c57885ef80d936b4ae66af2d33a50421214bfa03:tests/test_secrets_scan.py:stripe-access-token:36
