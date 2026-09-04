@@ -2,6 +2,7 @@ import json
 import subprocess
 from pathlib import Path
 
+import agent.run as run_mod
 from agent.run import run_pipeline
 from tests import gitleaks_fake
 
@@ -71,6 +72,23 @@ def test_run_pipeline_pull_invokes_git_per_repo(tmp_path, monkeypatch):
                  engine="semgrep", run=_empty_engine, http=lambda *a, **k: {},
                  pull_run=pulled.append, secrets_run=_no_secrets)
     assert sorted(Path(p).name for p in pulled) == ["a", "b"]
+
+
+def test_default_pull_declares_the_repo_a_safe_git_directory(monkeypatch):
+    """VERIFIED AGAINST A REAL BINARY, in this project's own container image: git
+    refuses a repo it doesn't own ("detected dubious ownership") whenever the checked-
+    out tree's UID differs from the running process's — exactly a CI runner mounting a
+    host-owned checkout into a container. Same fix as agent.lib.scan_util.safe_git_env."""
+    seen = {}
+
+    def fake_run(cmd, **kwargs):
+        seen["env"] = kwargs.get("env") or {}
+        class R: returncode = 0
+        return R()
+
+    monkeypatch.setattr(run_mod.subprocess, "run", fake_run)
+    run_mod._default_pull("/some/repo")
+    assert seen["env"].get("GIT_CONFIG_KEY_0") == "safe.directory"
 
 
 def test_run_pipeline_surfaces_secrets_errors(tmp_path, monkeypatch):

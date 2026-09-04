@@ -1,6 +1,39 @@
 import pytest
 from agent.lib import scan_util
-from agent.lib.scan_util import git_meta, normalize_remote, resolve_engine
+from agent.lib.scan_util import git_meta, normalize_remote, resolve_engine, safe_git_env
+
+
+def test_safe_git_env_declares_the_repo_a_safe_directory_without_touching_global_config():
+    """VERIFIED AGAINST A REAL BINARY, in this project's own container image: `git
+    rev-parse HEAD` fails with "detected dubious ownership" whenever the scanned tree's
+    UID differs from the running process's — exactly a CI runner mounting a host-owned
+    checkout into a container — and _default_git silently returns "" on any git failure,
+    indistinguishable from a repo that legitimately has none yet. GIT_CONFIG_* env vars
+    (git's own per-invocation mechanism, no global config file written) fix it."""
+    env = safe_git_env()
+    assert env["GIT_CONFIG_COUNT"] == "1"
+    assert env["GIT_CONFIG_KEY_0"] == "safe.directory"
+    assert env["GIT_CONFIG_VALUE_0"] == "*"
+
+
+def test_safe_git_env_preserves_the_rest_of_the_process_environment(monkeypatch):
+    monkeypatch.setenv("SOME_UNRELATED_VAR", "keep-me")
+    assert safe_git_env()["SOME_UNRELATED_VAR"] == "keep-me"
+
+
+def test_default_git_passes_safe_git_env_to_the_real_subprocess(monkeypatch):
+    seen = {}
+
+    def fake_run(*args, **kwargs):
+        seen["env"] = kwargs.get("env")
+        class _P:
+            returncode = 0
+            stdout = "abc123\n"
+        return _P()
+
+    monkeypatch.setattr(scan_util.subprocess, "run", fake_run)
+    scan_util._default_git(["rev-parse", "HEAD"])
+    assert seen["env"]["GIT_CONFIG_KEY_0"] == "safe.directory"
 
 
 def test_repo_scope_id_uses_git_identity_not_local_path():

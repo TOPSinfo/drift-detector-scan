@@ -8,8 +8,28 @@ import subprocess
 import sys
 
 
+def safe_git_env() -> dict:
+    """Env vars for any `git` subprocess this tool spawns, so it can read a repo's
+    history regardless of the UID that owns it on disk.
+
+    VERIFIED AGAINST A REAL BINARY, in this project's own container image: git refuses a
+    repo it doesn't own ("detected dubious ownership") whenever the scanned tree's UID
+    differs from the running process's — exactly a CI runner mounting a host-owned
+    checkout into a container. `_default_git` below then silently returns "" on ANY git
+    failure, indistinguishable from a legitimately-empty result (e.g. a fresh repo with
+    no commits yet) — reproduced directly: `git rev-parse HEAD` inside the built image,
+    against a host-owned mount, failed with this exact error and no caller surfaced it.
+    GIT_CONFIG_* is git's own per-invocation config mechanism (git >=2.31) — no global
+    config file is written, and the setting is scoped to whichever subprocess this env
+    dict is passed to. Every git-shelling-out call site in this codebase uses this.
+    """
+    return {**os.environ, "GIT_CONFIG_COUNT": "1",
+            "GIT_CONFIG_KEY_0": "safe.directory", "GIT_CONFIG_VALUE_0": "*"}
+
+
 def _default_git(args: list) -> str:  # pragma: no cover - real git subprocess
-    proc = subprocess.run(["git"] + args, capture_output=True, text=True, timeout=30)
+    proc = subprocess.run(["git"] + args, capture_output=True, text=True, timeout=30,
+                          env=safe_git_env())
     return proc.stdout.strip() if proc.returncode == 0 else ""
 
 

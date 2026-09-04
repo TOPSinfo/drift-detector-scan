@@ -149,6 +149,25 @@ def test_token_is_passed_to_git_but_never_written_to_argv_or_disk(tmp_path, monk
     assert captured["env_has_token"]            # it travels in the environment instead
 
 
+def test_clone_declares_the_repo_a_safe_git_directory(tmp_path, monkeypatch):
+    """VERIFIED AGAINST A REAL BINARY, in this project's own container image: git
+    refuses a repo it doesn't own ("detected dubious ownership") whenever the checked-
+    out tree's UID differs from the running process's — exactly a CI runner cloning into
+    a mounted, host-owned directory. Same fix as agent.lib.scan_util.safe_git_env."""
+    import subprocess as _sp
+    captured = {}
+
+    def fake_run(cmd, **kw):
+        captured["env"] = kw.get("env") or {}
+        class R: returncode = 0; stdout = ""; stderr = ""
+        return R()
+
+    monkeypatch.setattr(_sp, "run", fake_run)
+    sr._default_clone("https://git.example.com/example-org/amazonspapi.git",
+                      str(tmp_path / "dest"))
+    assert captured["env"].get("GIT_CONFIG_KEY_0") == "safe.directory"
+
+
 def test_no_token_means_plain_clone_reusing_machine_auth(tmp_path, monkeypatch):
     """With no token in the env, the tool adds no credential args at all — git uses the
     machine's own helper / SSH keys, exactly 'reuse machine auth'."""

@@ -29,6 +29,7 @@ from pathlib import Path
 
 from agent.lib.repo_discovery import discover_repos, diagnose_root
 from agent.lib import gitlab, scope_edges
+from agent.lib.scan_util import safe_git_env
 
 _URL_RE = re.compile(r"^(https?://|git@|ssh://|git://|file://)")
 _CODE_GLOBS = ("*.php", "*.js", "*.ts", "*.py", "*.rb", "*.go", "*.java", "*.cs")
@@ -96,7 +97,12 @@ def _clone_once(url: str, dest: str, *, branch: str | None = None) -> tuple[bool
     behaviour, unchanged.
     """
     dest_p = Path(dest)
-    env = os.environ.copy()
+    # VERIFIED AGAINST A REAL BINARY, in this project's own container image: git refuses
+    # a repo it doesn't own ("detected dubious ownership") whenever the checked-out
+    # tree's UID differs from the running process's — exactly a CI runner cloning into a
+    # mounted, host-owned directory. safe_git_env's GIT_CONFIG_* vars fix it without
+    # touching global git config; see agent.lib.scan_util.safe_git_env's docstring.
+    env = safe_git_env()
     tok = env.get("GITLAB_TOKEN") or env.get("DRIFT_GIT_TOKEN")
     cred = []
     if tok and str(url).startswith("http"):

@@ -11,8 +11,16 @@ import os
 
 def _default_git(args, cwd=None) -> str:  # pragma: no cover - real git subprocess
     import subprocess
+    from agent.lib.scan_util import safe_git_env
+    # VERIFIED AGAINST A REAL BINARY, in this project's own container image: git refuses
+    # a repo it doesn't own ("detected dubious ownership") whenever the checked-out
+    # tree's UID differs from the running process's — e.g. a sandbox_root mounted from
+    # the host into a container running the eval. This module already fails LOUD on any
+    # git error (unlike agent.lib.scan_util's silent ""), so the exposure here is an
+    # unnecessary hard failure rather than a silent false clean — still worth closing.
     cmd = ["git"] + (["-C", cwd] if cwd else []) + args
-    proc = subprocess.run(cmd, capture_output=True, text=True, timeout=300)
+    proc = subprocess.run(cmd, capture_output=True, text=True, timeout=300,
+                          env=safe_git_env())
     if proc.returncode != 0:
         raise RuntimeError(f"git {' '.join(args)} failed (exit {proc.returncode}): {proc.stderr.strip()}")
     return proc.stdout.strip()

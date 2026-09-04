@@ -858,8 +858,13 @@ def _cmd_probe(args) -> int:
 
     def _remote(abs_):
         try:
+            # VERIFIED AGAINST A REAL BINARY, in this project's own container image: git
+            # refuses a repo it doesn't own ("detected dubious ownership") whenever the
+            # tree's UID differs from the running process's. See
+            # agent.lib.scan_util.safe_git_env.
             r = subprocess.run(["git", "-C", abs_, "remote", "get-url", "origin"],
-                               capture_output=True, text=True, timeout=10)
+                               capture_output=True, text=True, timeout=10,
+                               env=scan_util.safe_git_env())
             return r.stdout.strip() if r.returncode == 0 else ""
         except (OSError, subprocess.SubprocessError):
             return ""

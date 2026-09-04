@@ -17,7 +17,7 @@ from agent.lib.dashboard_render import build_payload, build_bundle, render_paylo
 from agent.lib.md_render import render_markdown
 from agent.lib.summary_render import render_summary
 from agent.lib.findings_state import apply_lifecycle
-from agent.lib import coverage_state
+from agent.lib import coverage_state, scan_util
 from agent.lib.repo_discovery import discover_repos
 from agent.lib import pool
 from agent.lib.http_util import default_http
@@ -36,8 +36,12 @@ def _write_json(path, obj):
 
 
 def _default_pull(repo_path):
+    # VERIFIED AGAINST A REAL BINARY, in this project's own container image: git refuses
+    # a repo it doesn't own ("detected dubious ownership") whenever the checked-out
+    # tree's UID differs from the running process's — exactly a CI runner mounting a
+    # host-owned checkout into a container. See agent.lib.scan_util.safe_git_env.
     subprocess.run(["git", "-C", repo_path, "pull", "--ff-only"],
-                   capture_output=True, timeout=120)
+                   capture_output=True, timeout=120, env=scan_util.safe_git_env())
 
 
 def _pull_repos(roots, pull_run, *, jobs=1):
