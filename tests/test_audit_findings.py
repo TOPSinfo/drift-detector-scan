@@ -334,3 +334,39 @@ def test_finding_detail_prose_stays_bounded_and_admits_what_it_omitted():
          if x["ref"] == "Shopify"][0]
     assert f["detail"].count("app/Shopify_") == 6
     assert "+16 more" in f["detail"]
+
+
+# ── secret findings (gitleaks, Task 2's repo["secrets"]) ──────────────────────────
+
+def _secret_repo(**secret_kwargs):
+    secret = {"ruleId": "generic-api-key", "path": "config/feedvisor.php", "line": 5,
+             "commit": "a1b2c3d", "fingerprint": "a1b2c3d:config/feedvisor.php:generic-api-key:5"}
+    secret.update(secret_kwargs)
+    return {"path": "root-amazon-supplier-software", "secrets": [secret], "endpoints": [], "sdks": []}
+
+
+def test_secret_finding_shape_matches_other_finding_kinds():
+    from agent.audit import _secret_findings
+    out = _secret_findings(_secret_repo())
+    assert len(out) == 1
+    f = out[0]
+    assert f["repo"] == "root-amazon-supplier-software"
+    assert f["kind"] == "secret"
+    assert f["ref"] == "generic-api-key"
+    assert f["severity"] == "CRITICAL"
+    assert f["status"] == "EXPOSED"
+    assert f["date"] is None and f["source_url"] is None      # never invent either
+    assert f["files"] == ["config/feedvisor.php:5"]
+    assert "config/feedvisor.php:5" in f["detail"]
+
+
+def test_a_repo_with_no_secrets_produces_no_secret_findings():
+    from agent.audit import _secret_findings
+    assert _secret_findings({"path": "clean-repo", "secrets": []}) == []
+
+
+def test_a_repo_with_no_secrets_key_at_all_produces_no_secret_findings():
+    """Older cached inventory.json from before this feature shipped has no "secrets" key —
+    must degrade to zero findings, not KeyError."""
+    from agent.audit import _secret_findings
+    assert _secret_findings({"path": "old-scan-repo"}) == []
