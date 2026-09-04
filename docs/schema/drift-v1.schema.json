@@ -60,7 +60,7 @@
         "secrets": {
           "type": "integer",
           "minimum": 0,
-          "description": "Hardcoded credentials found in a repo's git history (one per leak site, not per gitleaks rule). A 0 here means gitleaks ran and found nothing; a failed run is reported in coverage.secretsErrors, never as a 0."
+          "description": "Hardcoded credentials found in a repo's git history (one per leak site, not per gitleaks rule). A 0 here means gitleaks ran and found nothing; a failed run is never folded into this count as a silent 0 — instead it is recorded per-repo in inventory.json's coverage.secretsErrors (not part of this drift.json document) and printed as a warning on stderr by `drift-scan run`."
         },
         "apis": {
           "type": "integer",

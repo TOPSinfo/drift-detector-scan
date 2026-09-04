@@ -188,6 +188,12 @@ def run_pipeline(roots, state_dir, now, *, pull=False,
             # a run in which every repo errored still printed a green banner and exited 0.
             # `reposScanned` counts errored repos too, which is why it cannot answer this.
             "reposErrored": (doc.get("coverage", {}) or {}).get("reposErrored", []),
+            # ...and which repos' SECRETS signal specifically failed to collect (gitleaks
+            # missing/timed out/crashed). A repo on this list still has good ast-grep/manifest/
+            # CVE results — only its secrets count is unknown — but that repo's `secrets: []`
+            # must never be read as "scanned clean", or a fleet where gitleaks never ran once
+            # reports zero leaked credentials and looks clean.
+            "secretsErrors": (doc.get("coverage", {}) or {}).get("secretsErrors", []),
             "reposDiscovered": (((doc.get("coverage", {}) or {}).get("repos", {}) or {})
                                 .get("discovered", 0)),
             # None when --resolve wasn't passed; otherwise {"status": "applied"|"rejected"|"error"
