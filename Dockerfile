@@ -30,6 +30,30 @@ RUN set -eux; \
     install -m 0755 /tmp/ast-grep /usr/local/bin/ast-grep; \
     /usr/local/bin/ast-grep --version
 
+# ---- stage 1b: fetch + verify the secret-detection engine (gitleaks) -------------------
+# OPTIONAL at runtime (agent.lib.secrets_scan degrades a missing gitleaks to UNKNOWN, not
+# a failed scan) — but not optional IN THIS IMAGE: a controlled, reproducible build has no
+# "user chose not to install it" case, so this stage fails the build exactly like ast-grep's
+# does, rather than the best-effort degrade bin/drift-scan uses for an arbitrary dev machine.
+FROM debian:12-slim AS secrets
+# Keep GITLEAKS_VERSION identical to bin/drift-scan's DRIFT_GITLEAKS_VERSION default;
+# tests/test_container.py fails the build's CI if the two ever drift.
+ARG GITLEAKS_VERSION=8.30.1
+# sha256 of the linux-x64 release tarball, independently re-verified against the
+# downloaded bytes when this stage was written (not copied blind from gitleaks' own
+# checksums file, which is fetched from the same host as the binary it attests).
+ARG GITLEAKS_SHA256=551f6fc83ea457d62a0d98237cbad105af8d557003051f41f3e7ca7b3f2470eb
+RUN set -eux; \
+    apt-get update; \
+    apt-get install -y --no-install-recommends curl ca-certificates; \
+    asset="gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz"; \
+    url="https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/${asset}"; \
+    curl -fsSL -o /tmp/gitleaks.tar.gz "$url"; \
+    echo "${GITLEAKS_SHA256}  /tmp/gitleaks.tar.gz" | sha256sum -c -; \
+    tar -xzf /tmp/gitleaks.tar.gz -C /tmp gitleaks; \
+    install -m 0755 /tmp/gitleaks /usr/local/bin/gitleaks; \
+    /usr/local/bin/gitleaks version
+
 # ---- stage 2: the runtime image --------------------------------------------------------
 FROM python:3.12-slim
 LABEL org.opencontainers.image.title="drift-detector-scan" \
@@ -48,6 +72,7 @@ COPY requirements-plugin.txt /tmp/requirements-plugin.txt
 RUN pip install --no-cache-dir -r /tmp/requirements-plugin.txt
 
 COPY --from=engine /usr/local/bin/ast-grep /usr/local/bin/ast-grep
+COPY --from=secrets /usr/local/bin/gitleaks /usr/local/bin/gitleaks
 # ONLY the agent package. Deliberately NOT commands/ — there is no AI path in the image.
 COPY agent/ /app/agent/
 

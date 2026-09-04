@@ -23,6 +23,21 @@ def test_engine_is_sha256_verified():
     assert "sha256sum -c -" in DOCKERFILE          # a mismatch FAILS the build
 
 
+def test_secrets_engine_pin_matches_the_plugin_runner():
+    """Same determinism landmine as ast-grep: the image and the plugin runner must fetch
+    the SAME gitleaks, or two CI runs of the same commit could disagree on whether a
+    credential is leaked."""
+    df = re.search(r"GITLEAKS_VERSION=(\S+)", DOCKERFILE).group(1)
+    runner = re.search(r"DRIFT_GITLEAKS_VERSION:-([0-9.]+)", RUNNER).group(1)
+    assert df == runner, f"Dockerfile pins {df} but bin/drift-scan pins {runner}"
+
+
+def test_secrets_engine_is_sha256_verified_and_present_in_the_image():
+    assert re.search(r"GITLEAKS_SHA256=[0-9a-f]{64}", DOCKERFILE)
+    assert "gitleaks/gitleaks/releases/download" in DOCKERFILE
+    assert "COPY --from=secrets" in DOCKERFILE and "/usr/local/bin/gitleaks" in DOCKERFILE
+
+
 def test_no_latest_fallback_in_the_image():
     """bin/drift-scan may fall back to 'latest' for a dev's convenience; the IMAGE must not
     — a container silently running a different engine version breaks determinism."""
