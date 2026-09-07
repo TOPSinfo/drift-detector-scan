@@ -332,16 +332,18 @@ td.fix{color:var(--low)} td.op{color:var(--muted)}
   padding:0 var(--s-3);font-weight:var(--w-bold)}
 .dpane .coverage{margin-top:var(--s-5)}
 
-/* ---- SPLIT WORKSPACE — list left, showcase right, even halves.
+/* ---- SPLIT WORKSPACE — list left, showcase right, 60/40.
    The showcase used to sit ABOVE the list and change height on every tab click, so the table
    jumped and the click read as arbitrary. Side by side, the list holds its position and only
-   the panel swaps. ---- */
+   the panel swaps. The table is the primary, denser surface (every row, filterable, drillable)
+   so it gets the larger share; the showcase is glanceable summary (vendor bars, timeline) and
+   is fine narrower. ---- */
 /* --panelh is the single source of truth for both cards' height: viewport, less the measured
    header, the tab row and the docked drawer. Set on .split so the two columns cannot drift
    apart — they were sizing to their own content, so the list ran long while the showcase
    stopped short. */
 .split{--panelh:max(320px,calc(100vh - var(--hdr,150px) - 190px));  /* fallback; mounted() measures the real value */
-  display:grid;grid-template-columns:1fr 1fr;gap:var(--s-6);align-items:start;margin-top:var(--s-4)}
+  display:grid;grid-template-columns:3fr 2fr;gap:var(--s-6);align-items:start;margin-top:var(--s-4)}
 .splitlist{min-width:0}
 .splitlist .panels{height:var(--panelh);display:flex;flex-direction:column}
 .splitlist .panel.active{display:flex;flex-direction:column;min-height:0;flex:1}
