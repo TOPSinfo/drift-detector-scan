@@ -116,7 +116,17 @@ def _endpoints_of(inventory: dict) -> list:
             if not e.get("classified") and str(e.get("domain") or "").lower() in named:
                 hc = "api"          # the HOST is named; this record is a duplicate view of it
             reason = e.get("ownInfraReason")
-            rec = {"repo": r.get("path"), "domain": e.get("domain"),
+            rec = {"repo": r.get("path"),
+                   # the org/repo suffix form endpoints._repo_in_scope's PRIMARY match needs
+                   # (a git remote, which every fleet repo has) — `repo` above is the scan-
+                   # SLUG identity instead, which only matches as _repo_in_scope's FALLBACK
+                   # for a remote-less local checkout. Without this, an own-domain verdict
+                   # built by copying resolve.work_list()'s `repo` straight back (its own
+                   # docstring calls this the intended use) silently never scoped correctly
+                   # once landed and re-scanned — found live 2026-09-07, see
+                   # tests/test_resolve_gate.py's work_list repo-label tests.
+                   "repoLabel": _repo_label(r.get("remote_url"), r.get("path")),
+                   "domain": e.get("domain"),
                    "vendor": e.get("vendor"), "version": e.get("version"),
                    "classified": bool(e.get("classified")),
                    "hostClass": hc,

@@ -115,7 +115,12 @@ def work_list(drift: dict) -> list:
             continue
         out.append({
             "host": e.get("domain"),
-            "repo": e.get("repo"),
+            # repoLabel (the org/repo git-identity suffix) over repo (the scan-slug identity)
+            # — an own-domain verdict must echo THIS back for endpoints._repo_in_scope's
+            # PRIMARY match (which every git-remote-scanned repo hits) to actually find it;
+            # the slug only matches _repo_in_scope's fallback for a remote-less local
+            # checkout. Falls back to the slug for an older drift.json with no repoLabel.
+            "repo": e.get("repoLabel") or e.get("repo"),
             "call_sites": list(e.get("files", [])),
             "hostClass": e.get("hostClass"),
             "reason": e.get("ownInfraReason") or "detected API service, not yet catalogued",

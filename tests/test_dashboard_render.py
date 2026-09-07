@@ -880,3 +880,24 @@ def test_a_host_already_named_as_a_vendor_is_not_also_listed_unresolved():
     eps = dr._endpoints_of(inv)
     queued = {e["domain"] for e in eps if e["coverage"] == "queued"}
     assert queued == {"api.genuinely-unknown.test"}, queued
+
+
+def test_endpoints_carry_a_repo_label_for_own_domain_scoping():
+    """REGRESSION, found live (2026-09-07): endpoints[].repo is the SCAN-SLUG identity
+    ('root-acmegrocer-foods-a1b2c3d4' — the clone-folder name), but
+    endpoints._repo_in_scope's PRIMARY match (used whenever a repo has a git remote, which
+    every fleet repo does) checks the git-identity SUFFIX form ('acme-org/acmegrocer-foods'),
+    never the slug — the slug only matches as a fallback when there is NO remote at all. An
+    own-domain verdict built by copying resolve.work_list()'s `repo` field (the only value it
+    exposed) therefore silently never matched during a real scan: every own-domain overlay
+    entry recorded that way was a no-op, while the SAME repo's idiom-scope overlay (which has
+    always used the org/repo suffix form) worked correctly. endpoints[] must carry a
+    `repoLabel` in that suffix form — the SAME derivation _project_action already uses for
+    actions — so work_list() (next test) can hand back something that actually matches."""
+    inv = {"repos": [{"path": "root-acmegrocer-foods-a1b2c3d4",
+                      "remote_url": "https://git.example.com/acme-org/acmegrocer-foods",
+                      "endpoints": [{"domain": "acmegrocer.com", "vendor": "Unknown",
+                                    "classified": False, "hostClass": "unclassified",
+                                    "file_count": 1}]}]}
+    eps = dr._endpoints_of(inv)
+    assert eps[0]["repoLabel"] == "acme-org/acmegrocer-foods"

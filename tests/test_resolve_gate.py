@@ -80,6 +80,36 @@ def test_work_list_is_empty_when_nothing_is_queued():
     assert resolve.work_list(drift) == []
 
 
+def test_work_list_repo_prefers_the_label_over_the_scan_slug():
+    """REGRESSION, found live (2026-09-07): a real drift.json's endpoints[].repo is the
+    scan-SLUG identity ('root-acmegrocer-foods-a1b2c3d4'), never the 'org/repo' suffix form
+    endpoints._repo_in_scope's primary match needs. An own-domain verdict built by copying
+    work_list()'s `repo` value straight back (the obvious, intended use — see this function's
+    own docstring: 'its repo... an own-domain verdict must echo back') therefore never
+    actually scoped to the right repo once landed and re-scanned — every own-domain overlay
+    entry recorded this way was a silent no-op. `repoLabel` (dashboard_render._endpoints_of)
+    is the org/repo form; work_list must prefer it."""
+    drift = {"endpoints": [
+        {"domain": "acmegrocer.com", "repo": "root-acmegrocer-foods-a1b2c3d4",
+         "repoLabel": "acme-org/acmegrocer-foods", "coverage": "queued",
+         "hostClass": "unclassified", "classified": False, "files": ["app/x.php:1"]},
+    ]}
+    work = resolve.work_list(drift)
+    assert work[0]["repo"] == "acme-org/acmegrocer-foods"
+
+
+def test_work_list_repo_falls_back_to_the_slug_when_no_label_is_present():
+    """Compatibility: an older drift.json (or a hand-built one, as in every other test in this
+    file) has no repoLabel — work_list must still return something rather than None, even
+    though that something will not scope correctly without a remote-derived label."""
+    drift = {"endpoints": [
+        {"domain": "acmegrocer.com", "repo": "root-acmegrocer-foods-a1b2c3d4",
+         "coverage": "queued", "hostClass": "unclassified", "classified": False, "files": []},
+    ]}
+    work = resolve.work_list(drift)
+    assert work[0]["repo"] == "root-acmegrocer-foods-a1b2c3d4"
+
+
 # --------------------------------------------------------------------- refusal: own-domain, no reason
 def test_own_domain_with_no_reason_is_refused(monkeypatch, tmp_path):
     _overlay_dir(monkeypatch, tmp_path)
