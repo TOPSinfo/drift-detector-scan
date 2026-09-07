@@ -1,0 +1,84 @@
+# Drift Detector's own gitleaks config: EXTENDS gitleaks' default ruleset (every built-in
+# rule stays active — this file only ADDS allowlist suppressions, it never replaces or
+# narrows detection) and suppresses a small number of verified false-positive SHAPES.
+#
+# Each entry below was ADDED because a specific real finding on a real fleet was checked
+# by hand against the actual file content and confirmed to be a false positive — this is
+# not a guess at what "might" be noisy. See each entry's comment for the finding that
+# justified it. Do not add a broad suppression speculatively; add one only after
+# confirming, the same way, that the pattern it targets is never a real credential.
+#
+# SCOPING DISCIPLINE, learned the hard way (2026-09-07 review, before this ever reached
+# the fleet): the first draft of this file excluded ANY `.csv` file fleet-wide from
+# aws-access-token/generic-api-key — verified (against the real 8.30.1 binary) to ALSO
+# hide a genuine AWS-console-exported `accessKeys.csv` sitting anywhere else in the
+# fleet, since that is structurally the identical shape (an aws-access-token match inside
+# a .csv). Every entry below is instead scoped as narrowly as the actual verified finding:
+#   - `targetRules` limits an entry to ONLY the rule(s) that produced the false positive
+#     it targets — verified (real binary) that an unscoped `[allowlist].paths` entry
+#     suppresses ALL rules on a matching path, including a real, unrelated secret sitting
+#     in the same file.
+#   - a PATH entry names the exact file/directory actually checked, never a bare
+#     extension — a real AWS-console `accessKeys.csv` exported to a DIFFERENT path must
+#     still be caught.
+#   - the sonar.projectKey entry is scoped by LINE CONTENT alone (`regexTarget = "line"`
+#     + `regexes`, no `paths`), not by file. VERIFIED AGAINST A REAL BINARY: gitleaks
+#     8.30.1 combines a `paths` condition and a `regexes` condition within ONE
+#     `[[allowlists]]` entry with OR semantics, not AND — an entry carrying BOTH
+#     `paths = ['''sonar-project\.properties$''']` AND a line-content regex suppressed
+#     EVERY line of that file (matching path alone was enough), not just the one line
+#     matching the regex too. The first version of this file shipped with exactly that
+#     combination and would have hidden a real hardcoded sonar.token/sonar.login on a
+#     different line of the same file — caught before it ever reached the fleet by a
+#     live-binary regression test (tests/test_secrets_scan_gitleaks_live.py), not by
+#     reading the TOML. Dropping `paths` here removes the OR ambiguity entirely: the
+#     regex is specific enough (the literal `sonar.projectKey` assignment) that no path
+#     restriction is needed, and it now correctly generalizes to that assignment
+#     appearing in any file, not just one exact filename.
+title = "Drift Detector — fleet-wide false-positive suppressions"
+
+[extend]
+useDefault = true
+
+# Salesforce's own internal record IDs (18-char alphanumeric object IDs, e.g.
+# `001XXXXXXXXXXXXXXX`) happen to satisfy aws-access-token's and generic-api-key's shape
+# checks purely on length/character-class. Verified against a real fleet finding
+# (2026-09-07, a client's Salesforce Lead export, sales_force/Lead.csv): that one line
+# alone produced 6 separate matches — a real AWS-console credentials export has exactly
+# one access-key/secret-key pair, never six matches on a single row, which is itself
+# strong evidence this is data-export noise, not a leaked pair. Scoped to the exact
+# verified path, not `.csv` generally, so a genuinely different CSV elsewhere in the
+# fleet (a real `accessKeys.csv` export, for instance) is still scanned normally.
+[[allowlists]]
+description = "Salesforce Lead export's own record IDs, not credentials (verified 2026-09-07 against a real fleet finding)"
+targetRules = ["aws-access-token", "generic-api-key"]
+paths = ['''(^|/)sales_force/Lead\.csv$''']
+
+# `sonar.projectKey` is a PUBLIC identifier SonarQube itself generates — never a secret,
+# by design of that tool. Verified against the real fleet finding (2026-09-07): matched
+# generic-api-key purely on its random-looking suffix. Scoped by the LINE CONTENT alone
+# (no `paths` — see the OR-semantics note above for why): a `sonar.token`/`sonar.login`
+# hardcoded elsewhere (a real, if discouraged, pattern some teams use) must still be
+# caught — verified live, via tests/test_secrets_scan_gitleaks_live.py, that a
+# generic-api-key-shaped value on a DIFFERENT line of the same file still fires.
+[[allowlists]]
+description = "sonar.projectKey is a public SonarQube-generated identifier, never a secret"
+targetRules = ["generic-api-key"]
+regexTarget = "line"
+regexes = ['''sonar\.projectKey\s*=''']
+
+# Values that are, verbatim, a documented placeholder rather than a real credential —
+# matched against the SECRET VALUE itself (any file, any rule), so a genuine secret
+# elsewhere in the same file is still caught. Anchored (^...$): an unanchored substring
+# match could sweep away a REAL key that had placeholder text glued onto it by mistake
+# (e.g. a leftover "YOUR_API_KEY" prefix pasted ahead of a real value with no separator).
+# Verified against a real fleet finding (2026-09-07): a README code sample containing
+# literally `Bearer YOUR_TOKEN_HERE`. Keep this list to UNAMBIGUOUS placeholder tokens
+# only — never a pattern real key formats could also produce.
+[[allowlists]]
+description = "Unambiguous documentation placeholder strings, never a real credential"
+regexes = [
+  '''^YOUR_TOKEN_HERE$''',
+  '''^YOUR_API_KEY$''',
+  '''^YOUR_[A-Z_]*_KEY_HERE$''',
+]

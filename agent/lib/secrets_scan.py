@@ -18,6 +18,14 @@ import shutil
 import subprocess
 import sys
 import tempfile
+from pathlib import Path
+
+# Shipped alongside this module: EXTENDS gitleaks' default ruleset with verified
+# false-positive suppressions (see the file itself for what and why). Never narrows
+# detection — a config that dropped `[extend] useDefault = true` would silently disable
+# every built-in rule, which is exactly what
+# test_shipped_gitleaks_config_extends_rather_than_replaces_the_default_ruleset guards.
+_GITLEAKS_CONFIG = str(Path(__file__).resolve().parent.parent / "gitleaks.toml")
 
 
 def _resolve_gitleaks() -> str:
@@ -110,7 +118,7 @@ def _failure_message(exc: Exception) -> str:
 def run_secrets_scan(repo_path: str, *, run=_default_run) -> dict:
     errors = []
     args = [_resolve_gitleaks(), "detect", "--source", repo_path, "--report-format", "json",
-            "--exit-code", "0", "--no-banner"]
+            "--exit-code", "0", "--no-banner", "--config", _GITLEAKS_CONFIG]
     if not os.path.exists(os.path.join(repo_path, ".git")):
         # VERIFIED AGAINST A REAL GITLEAKS 8.30.1 BINARY: `detect` on a directory with no
         # `.git`, without this flag, silently returns `[]` at exit 0 — no warning, no

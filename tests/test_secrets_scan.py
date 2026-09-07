@@ -95,6 +95,72 @@ def test_default_run_declares_the_repo_a_safe_git_directory_without_touching_glo
     assert seen["env"].get("GIT_CONFIG_VALUE_0") == "*"
 
 
+def test_run_secrets_scan_passes_the_shipped_gitleaks_config():
+    """VERIFIED AGAINST A REAL BINARY, against a real client fleet (2026-09-07): the bare
+    default ruleset flagged a Salesforce CSV export's own internal record ID as an
+    aws-access-token and a repo's public sonar.projectKey as a generic-api-key — neither
+    is a credential. agent/gitleaks.toml extends (never narrows) the default ruleset with
+    verified false-positive suppressions; every real scan must use it."""
+    seen = {}
+
+    def fake_run(args):
+        seen["args"] = args
+        return gitleaks_fake.EMPTY
+
+    run_secrets_scan("/repo", run=fake_run)
+    assert "--config" in seen["args"]
+    cfg_path = seen["args"][seen["args"].index("--config") + 1]
+    assert os.path.basename(cfg_path) == "gitleaks.toml"
+    assert os.path.exists(cfg_path)
+
+
+def _load_gitleaks_config() -> dict:
+    import tomllib
+    with open(_REPO_ROOT / "agent" / "gitleaks.toml", "rb") as fh:
+        return tomllib.load(fh)
+
+
+def test_shipped_gitleaks_config_extends_rather_than_replaces_the_default_ruleset():
+    """A config that omits `[extend] useDefault = true` REPLACES gitleaks' entire
+    built-in ruleset with nothing — every real rule (aws-access-token, stripe-access-
+    token, generic-api-key, etc.) would silently stop firing. This is the single most
+    dangerous way to get this file wrong. A real TOML parse (not a substring search on
+    the raw text) so a commented-out `# useDefault = true` — which would still contain
+    that literal substring — cannot pass this test by accident."""
+    cfg = _load_gitleaks_config()
+    assert cfg["extend"]["useDefault"] is True
+
+
+def test_shipped_gitleaks_config_scopes_rule_specific_suppressions_by_rule_id():
+    """VERIFIED AGAINST A REAL BINARY (2026-09-07): an allowlist entry with a `paths`
+    match but no `targetRules` suppresses EVERY rule on that path, not just the one(s)
+    that produced the original false positive — confirmed live by planting an unrelated
+    stripe-access-token-shaped value in the exact allowlisted Salesforce CSV and seeing
+    it vanish under an unscoped config, then reappear once `targetRules` was added. Every
+    path-scoped entry here must name the specific rule(s) it targets."""
+    cfg = _load_gitleaks_config()
+    for entry in cfg["allowlists"]:
+        if "paths" in entry:
+            assert "targetRules" in entry, (
+                f"path-scoped allowlist entry has no targetRules, so it silently "
+                f"suppresses EVERY rule on that path: {entry!r}")
+
+
+def test_shipped_gitleaks_config_placeholder_regexes_are_anchored():
+    """Unanchored, a placeholder regex matches as a SUBSTRING of the extracted secret —
+    a real key with leftover placeholder text glued onto it by mistake (a plausible
+    copy-paste-and-forgot-to-clean-up error, e.g. "YOUR_API_KEY_HERE_sk_live_...") would
+    be swept away along with the placeholder. Every value-matching regex must be
+    full-match anchored."""
+    cfg = _load_gitleaks_config()
+    for entry in cfg["allowlists"]:
+        if "regexes" in entry and entry.get("regexTarget") != "line":
+            for rx in entry["regexes"]:
+                assert rx.startswith("^") and rx.endswith("$"), (
+                    f"unanchored value regex could match a glued-together real "
+                    f"secret as a substring: {rx!r}")
+
+
 def test_a_plain_folder_without_git_gets_the_no_git_flag(tmp_path):
     """VERIFIED AGAINST A REAL GITLEAKS 8.30.1 BINARY: `detect` on a directory with no
     `.git`, without `--no-git`, silently returns `[]` at exit 0 — no warning, no error,
