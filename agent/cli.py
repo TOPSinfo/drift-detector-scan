@@ -59,7 +59,8 @@ def _cmd_inventory_scan(args) -> int:
         out = inventory_scan_mod.scan_folder(args.root, args.state, args.now,
                                              progress=progress,
                                              jobs=_capped_jobs(getattr(args, "jobs", 1),
-                                                               "inventory-scan"))
+                                                               "inventory-scan"),
+                                             engine_threads=getattr(args, "engine_threads", None))
     except RuntimeError as exc:
         print(f"inventory-scan failed: {exc}", file=sys.stderr)
         return 2
@@ -177,7 +178,7 @@ def _cmd_run(args) -> int:
         out = run_pipeline(roots, args.state, args.now,
                            pull=getattr(args, "pull", False), progress=progress,
                            gitlab_hosts=gitlab_hosts, resolve=resolve_verdicts,
-                           jobs=jobs)
+                           jobs=jobs, engine_threads=getattr(args, "engine_threads", None))
     except RuntimeError as exc:
         print(f"run failed: {exc}", file=sys.stderr)
         return 2
@@ -1870,6 +1871,14 @@ def main(argv: list[str]) -> int:
                          "absent resource exhaustion: ast-grep is itself internally parallel, "
                          "so heavy oversubscription can push a slow repo past the engine's "
                          "600s timeout and it gets counted errored, which serial would not.")
+    pr.add_argument("--engine-threads", type=int, default=None,
+                    help="cap ast-grep's OWN internal thread pool for a single repo's scan "
+                         "(passed through as its `-j`/`--threads`) — a SEPARATE axis from "
+                         "--jobs (how many repos scan concurrently). Left unset, ast-grep "
+                         "defaults to using every logical CPU for ONE invocation, which alone "
+                         "can exhaust memory on a small/shared CI runner scanning a large "
+                         "repo. Does not affect output — only how much of the machine one "
+                         "scan is allowed to use at once.")
     pr.add_argument("--fail-on-deprecated", action="store_true",
                     help="exit 3 if any un-muted DEPRECATED finding (CI gate)")
     pr.add_argument("--fail-on-exposed", action="store_true",
@@ -2112,6 +2121,9 @@ def main(argv: list[str]) -> int:
                      help="repos to scan concurrently (default 1 = serial; a larger value is "
                           "capped to this machine's CPU count, with a notice on stderr if it "
                           "was reduced)")
+    pis.add_argument("--engine-threads", type=int, default=None,
+                     help="cap ast-grep's own internal thread pool per repo scan — see `run "
+                          "--help` for why this is a separate knob from --jobs")
     pis.set_defaults(func=_cmd_inventory_scan)
 
     args = p.parse_args(argv)

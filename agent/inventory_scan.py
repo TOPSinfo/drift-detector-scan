@@ -102,7 +102,7 @@ def _rollup_coverage(coverage: dict, repos: list, *, discovered_count: int) -> N
 
 
 def scan_folder(root, state_dir, now, *, engine=None, run=None, git=None, secrets_run=None,
-                progress=None, jobs=1) -> dict:
+                progress=None, jobs=1, engine_threads=None) -> dict:
     # `root` may be a single path or a list of roots; discovery is recursive.
     roots = [root] if isinstance(root, (str, os.PathLike)) else list(root)
     # A root is either a bare path/url or a (path_or_url, branch|None) pair since a fleet entry
@@ -226,7 +226,8 @@ def scan_folder(root, state_dir, now, *, engine=None, run=None, git=None, secret
         record, note = scan_repo(abs_, name, i + 1, vendors, rules_path,
                                  engine=engine, run=run, git=git, secrets_run=secrets_run,
                                  idiom_instances=idiom_instances,
-                                 configured_branch=source_branch.get(abs_))
+                                 configured_branch=source_branch.get(abs_),
+                                 engine_threads=engine_threads)
         record["sourceKind"] = source_kind.get(abs_, "local-git")
         record["shape"] = _shape_of(abs_, name, record, rule_kinds, attestations)
         # A secrets-scan failure (gitleaks missing/timed out/crashed) now travels WITH the

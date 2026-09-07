@@ -141,9 +141,20 @@ def _is_skipped(file_path: str, repo_path: str) -> bool:
 
 
 def run_scan(repo_path: str, ruleset_path: str, *, engine: str = "ast-grep",
-             run=_default_run) -> dict:
-    out = run([engine, "scan", "-r", ruleset_path, "--include-metadata",
-               "--json=compact", repo_path])
+             run=_default_run, threads: int | None = None) -> dict:
+    # ast-grep is a Rust/rayon binary: left at its own default (`-j 0`, undocumented as a
+    # flag we pass — merely never specifying `-j` at all), a SINGLE invocation already uses
+    # every logical CPU on the machine for its own internal parallelism, independent of (and
+    # multiplicative with) this tool's own --jobs (how many REPOS scan concurrently — see
+    # agent/cli.py's _capped_jobs). On a small/shared CI runner that is enough on its own to
+    # exhaust available memory scanning one large repo. `threads` is None by default so every
+    # existing caller's invocation is byte-for-byte unchanged; a caller that opts in gets
+    # ast-grep's own real `-j`/`--threads` flag.
+    args = [engine, "scan", "-r", ruleset_path, "--include-metadata", "--json=compact"]
+    if threads is not None:
+        args += ["-j", str(threads)]
+    args.append(repo_path)
+    out = run(args)
     errors = []
     try:
         data = json.loads(out) if out and out.strip() else []

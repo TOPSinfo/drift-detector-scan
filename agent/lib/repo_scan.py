@@ -14,14 +14,14 @@ from agent.lib.secrets_scan import run_secrets_scan
 
 def scan_repo(repo_abs, repo_name, repo_id, vendors, rules_path, *,
               engine, run, git=_default_git, idiom_instances=None,
-              configured_branch=None, secrets_run=None):
+              configured_branch=None, secrets_run=None, engine_threads=None):
     meta = git_meta(repo_abs, run=git, configured_branch=configured_branch)
     meta.update({"id": repo_id, "path": repo_name, "provenance": {"engine": "ast-grep"}})
 
     records, unparsed = extract_manifest_records(repo_abs, repo_name)
     partitioned = partition_records(records)
 
-    scan = run_scan(repo_abs, rules_path, engine=engine, run=run)
+    scan = run_scan(repo_abs, rules_path, engine=engine, run=run, threads=engine_threads)
     # a path-constant idiom is repo-scoped: pass the repo's git identity (its remote, or the
     # local checkout path as a fallback) so a wrapper's constants attribute only in ITS repo.
     # scan_util.repo_scope_id is the ONE derivation the absorb gate must share (see its docstring).

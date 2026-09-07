@@ -37,6 +37,38 @@ def test_run_scan_invokes_ast_grep_and_recovers_metadata(tmp_path):
     assert "text" in m                      # full matched text, for multi-line literals
 
 
+def test_threads_none_omits_the_flag_entirely(tmp_path):
+    """Default (threads=None) must produce the EXACT SAME args this module has always sent —
+    ast-grep's own default (0, "choose using heuristics") is unchanged for every caller that
+    doesn't opt in. Locks in that the new knob cannot silently alter existing behavior."""
+    seen = {}
+
+    def fake_run(args):
+        seen["args"] = args
+        return astgrep_fake.EMPTY
+
+    run_scan("/repo", str(_rules(tmp_path)), run=fake_run)
+    assert "-j" not in seen["args"]
+
+
+def test_threads_caps_ast_greps_own_internal_thread_pool(tmp_path):
+    """ast-grep is a Rust/rayon binary that defaults to using EVERY logical CPU for a single
+    invocation's own internal parallelism (`-j 0`, "choose using heuristics") — independent
+    of, and multiplicative with, this tool's own --jobs (repos scanned concurrently). On a
+    small/shared CI runner, one ast-grep process alone can exhaust available memory scanning
+    a large repo; --engine-threads caps THIS knob specifically. `-j` is ast-grep's own real
+    flag (verified: `ast-grep scan --help` documents `-j, --threads <NUM>`)."""
+    seen = {}
+
+    def fake_run(args):
+        seen["args"] = args
+        return astgrep_fake.EMPTY
+
+    run_scan("/repo", str(_rules(tmp_path)), run=fake_run, threads=2)
+    assert "-j" in seen["args"]
+    assert seen["args"][seen["args"].index("-j") + 1] == "2"
+
+
 def test_line_numbers_are_shifted_from_ast_greps_zero_index(tmp_path):
     raw = json.dumps([{"ruleId": "stripe-endpoint@php", "file": "a.php",
                        "range": {"start": {"line": 0}}}])          # first line of the file

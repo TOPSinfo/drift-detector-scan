@@ -1,6 +1,57 @@
 from agent.cli import main
 
 
+def test_engine_threads_defaults_to_none_so_ast_grep_keeps_its_own_default(monkeypatch):
+    """Unset --engine-threads must reach run_pipeline as None — ast-grep's own default
+    (every logical CPU for one invocation) is unchanged unless a caller opts in."""
+    captured = {}
+
+    def fake_run_pipeline(roots, state_dir, now, **kwargs):
+        captured["engine_threads"] = kwargs.get("engine_threads")
+        return {"scope": {"reposScanned": 1}, "auditCounts": {}, "counts": {},
+                "coverage": {}, "rootsUnscannable": [], "resolve": None}
+
+    monkeypatch.setattr("agent.run.run_pipeline", fake_run_pipeline)
+    rc = main(["run", "--root", ".", "--state", "/tmp/x", "--now", "2026-08-25"])
+    assert rc == 0
+    assert captured["engine_threads"] is None
+
+
+def test_engine_threads_flows_through_to_run_pipeline(monkeypatch):
+    """A repo report caught live (2026-09-07): a single ast-grep invocation defaults to
+    using every logical CPU on the machine for its own internal parallelism, independent of
+    --jobs (repos scanned concurrently) — enough on its own to exhaust memory on a small CI
+    runner scanning a large repo. --engine-threads is the knob that caps THAT."""
+    captured = {}
+
+    def fake_run_pipeline(roots, state_dir, now, **kwargs):
+        captured["engine_threads"] = kwargs.get("engine_threads")
+        return {"scope": {"reposScanned": 1}, "auditCounts": {}, "counts": {},
+                "coverage": {}, "rootsUnscannable": [], "resolve": None}
+
+    monkeypatch.setattr("agent.run.run_pipeline", fake_run_pipeline)
+    rc = main(["run", "--root", ".", "--state", "/tmp/x", "--now", "2026-08-25",
+               "--engine-threads", "2"])
+    assert rc == 0
+    assert captured["engine_threads"] == 2
+
+
+def test_inventory_scan_engine_threads_flows_through(tmp_path, monkeypatch):
+    import agent.inventory_scan as inv
+    captured = {}
+
+    def fake_scan_folder(root, state, now, **kwargs):
+        captured["engine_threads"] = kwargs.get("engine_threads")
+        return {"doc": {"repos": [], "coverage": {"reposErrored": []}}, "diff": {}}
+
+    monkeypatch.setattr(inv, "scan_folder", fake_scan_folder)
+    rc = main(["inventory-scan", "--root", ".", "--state", str(tmp_path),
+               "--out-json", str(tmp_path / "inv.json"), "--now", "2026-08-25",
+               "--engine-threads", "3"])
+    assert rc == 0
+    assert captured["engine_threads"] == 3
+
+
 def test_run_rejects_a_jobs_value_below_one(capsys):
     rc = main(["run", "--root", ".", "--state", "/tmp/x", "--now", "2026-08-25", "--jobs", "0"])
     assert rc == 2
