@@ -119,8 +119,69 @@
       supplyFixes: function(){       // CVE/EOL/secret action-required — the Supply Chain slice of "fixes"
         // matches agent/lib/ranking.ACTION_REQUIRED = ("DEPRECATED", "EXPOSED") — the Python
         // side widened counts.fixes to include a leaked credential, and this tile fell behind.
+        var self = this;
         return (this.DATA.actions||[]).filter(function(a){
-          return (a.status==="DEPRECATED" || a.status==="EXPOSED") && a.kind!=="sunset"; }).length;
+          return self.matchesRepo(a.repo) &&                            // global repo scope
+                 (a.status==="DEPRECATED" || a.status==="EXPOSED") && a.kind!=="sunset"; }).length;
+      },
+      // ---- the tile numbers, scoped to the selected repo. `this.counts` (below) is the
+      // embedded, server-computed FLEET-WIDE projection — selecting a repo in #repo-filter
+      // narrowed every ROW list (actionsFor/endpointsFor/privateFor, all via matchesRepo)
+      // but the CARD NUMBERS kept reading raw `counts`, so the tiles never moved: a bug
+      // report caught it live on root/python-Latest-Drop (2026-09-07) — Critical/Fixes/EOL/
+      // Secrets stayed at the fleet totals with only one repo selected. Recomputes the exact
+      // same formulas agent/lib/dashboard_render.py's _build_projection uses (kept in sync by
+      // eye — there is no shared source between Python and this file for these predicates),
+      // over the SAME scope-filtered actions/endpoints/private arrays the row lists already
+      // use. `unaudited`/`blocked`/`reposScanned`/`reposAffected`/`unscannable`/`hostClasses`
+      // are vendor-catalog-level facts, not per-finding ones (a vendor can be called by many
+      // repos) — same reasoning matchesRepo's own comment gives for leaving catalog unscoped,
+      // so those stay fleet-wide even with a repo selected.
+      scopedCounts: function(){
+        if(!this.scope) return this.counts;
+        var self = this;
+        var actions = (this.DATA.actions||[]).filter(function(a){ return self.matchesRepo(a.repo); });
+        var endpoints = (this.DATA.endpoints||[]).filter(function(e){ return self.matchesRepo(e.repo); });
+        var priv = (this.DATA.private||[]).filter(function(p){ return self.matchesRepo(p.repo); });
+        var ACTION_REQUIRED = ["DEPRECATED", "EXPOSED"];
+        var cov = {};
+        ["tracked","queued","needs-human","blocked","na"].forEach(function(s){
+          cov[s] = endpoints.filter(function(e){ return e.coverage===s; }).length;
+        });
+        var byOwner = {};
+        ["devops","developer"].forEach(function(o){
+          byOwner[o] = {
+            fixes: actions.filter(function(a){
+              return a.owner===o && ACTION_REQUIRED.indexOf(a.status)>=0; }).length,
+            review: actions.filter(function(a){
+              return a.owner===o && ACTION_REQUIRED.indexOf(a.status)<0; }).length
+          };
+        });
+        var apiVendors = {};
+        endpoints.forEach(function(e){ if(e.classified && e.vendor) apiVendors[e.vendor]=1; });
+        return {
+          critical: actions.filter(function(a){ return a.worst==="CRITICAL"; }).length,
+          fixes: actions.filter(function(a){ return ACTION_REQUIRED.indexOf(a.status)>=0; }).length,
+          eol: actions.filter(function(a){ return a.kind==="eol"; }).length,
+          sunsets: actions.filter(function(a){ return a.kind==="sunset"; }).length,
+          secrets: actions.filter(function(a){ return a.kind==="secret"; }).length,
+          pastDue: actions.filter(function(a){
+            return a.kind==="sunset" && a.status==="DEPRECATED" && a.date; }).length,
+          detected: endpoints.length,
+          coverage: cov,
+          apis: Object.keys(apiVendors).length,
+          excluded: endpoints.filter(function(e){
+            return !self.isIntegration(e.hostClass, e.ownInfraReason); }).length,
+          unknown: endpoints.filter(function(e){
+            return self.isIntegration(e.hostClass, e.ownInfraReason) && !e.classified; }).length,
+          private: priv.length,
+          byOwner: byOwner,
+          // fleet/vendor-level, deliberately NOT scoped — see the comment above.
+          unaudited: this.counts.unaudited, blocked: this.counts.blocked,
+          reposScanned: this.counts.reposScanned, reposAffected: this.counts.reposAffected,
+          unscannable: this.counts.unscannable, hostClasses: this.counts.hostClasses,
+          integrations: this.counts.integrations
+        };
       },
       // the AI-research tier — what the research loop found in the wild
       hasResearch: function(){ return !!this.RESEARCH; },
@@ -131,7 +192,7 @@
       // all three planes ALWAYS render — the AI Frontier plane is present even when no shaping
       // pass has run (it then shows an honest empty-state, never a misleading clean zero).
       planeDefs: function(){
-        var c=this.counts;
+        var c=this.scopedCounts;
         return [
           {key:"supply", label:"Supply Chain", tag:"SECURITY",
            blurb:"CVEs and end-of-life software — the patches your DevOps scanners already expect.",
@@ -148,7 +209,7 @@
       // the ACTIVE plane's tiles; `tileCountsByKey`/knownTabs iterate the FULL set so a
       // zero-check or a deep-link tab from any plane still resolves.
       allTileGroups: function(){
-        var c=this.counts;
+        var c=this.scopedCounts;
         return [
           {plane:"supply", title:"Supply chain", tiles:[
             {key:"critical",label:"Critical",n:c.critical,sev:"crit"},
@@ -212,7 +273,9 @@
       resolutionNote: function(){
         if(this.plane !== "drift") return "";
         if(this.DATA.resolutionRan) return "";
-        var n = (this.counts.coverage||{})["queued"]||0;
+        // scopedCounts, not counts — must agree with the "Unresolved" tile it explains,
+        // which already scopes to the selected repo (see scopedCounts above).
+        var n = (this.scopedCounts.coverage||{})["queued"]||0;
         if(!n) return "";
         return n + " unresolved — resolution pass did not run this scan — not yet confirmed " +
                "clean or third-party; run with --resolve to settle it";
@@ -445,8 +508,12 @@
       // (`noticesOpen`) and only sits collapsed when there is nothing to admit.
       noticeBits: function(){
         var b = [];
-        // the same expression resolutionNote itself counts on — `counts.unresolved`
-        // does not exist and rendered the literal string "undefined unresolved".
+        // `counts.unresolved` does not exist and rendered the literal string "undefined
+        // unresolved" — every other value here is FLEET-wide (this whole strip is a
+        // persistent, page-level summary, unlike resolutionNote's own in-context note
+        // beside the tiles, which scopes to the selected repo), so this one deliberately
+        // reads raw `counts`, not `scopedCounts`, even though it shares resolutionNote's
+        // gate condition.
         if(this.resolutionNote) b.push(((this.counts.coverage||{})["queued"]||0) + " unresolved");
         if(this.rootsUnscannable.length) b.push(this.rootsUnscannable.length + " source(s) unreadable");
         if(this.unknownShapes.length) b.push(this.unknownShapes.length + " repo(s) partially read");
@@ -589,7 +656,9 @@
         var t = this.tab;
         // default (no tile picked): lead with the timeline only if there ARE sunsets to plot;
         // otherwise lead with the integrations so a zero-sunset repo doesn't look empty.
-        if(t === null) return (this.counts.sunsets || 0) > 0 ? "timeline" : "vendors";
+        // scopedCounts, not counts: a repo with zero sunsets of its OWN must not default to
+        // the timeline just because the FLEET has some elsewhere.
+        if(t === null) return (this.scopedCounts.sunsets || 0) > 0 ? "timeline" : "vendors";
         if(TIMELINE_TABS[t]) return "timeline";
         if(t === "apis" || t === "unknown") return "vendors";
         return (this.tileCountsByKey[t] || 0) === 0 ? "empty" : "timeline";
