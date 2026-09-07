@@ -67,18 +67,39 @@ targetRules = ["generic-api-key"]
 regexTarget = "line"
 regexes = ['''sonar\.projectKey\s*=''']
 
+# The BMAD framework (github.com/bmad-code-org/BMAD-METHOD) generates its own install
+# manifest at this EXACT path, listing every file it installed with that file's SHA256
+# CONTENT HASH — a fixed 64-hex-char column that satisfies generic-api-key's entropy
+# check on every single row. Verified against two real fleet findings (2026-09-07,
+# root/vp-desktop-application and root/vp-panel-backend): reproduced directly against
+# the real binary — every match's `Secret` was a bare 64-hex-char SHA256, never a token
+# shape. Scoped to the exact tool-generated filename (not any .csv, not a `hash` column
+# heuristic), so a genuinely different CSV that happens to carry hex-looking values is
+# still scanned normally.
+[[allowlists]]
+description = "BMAD framework's own generated file-manifest (SHA256 content hashes, not credentials; verified 2026-09-07)"
+targetRules = ["generic-api-key"]
+paths = ['''(^|/)\.bmad/_cfg/files-manifest\.csv$''']
+
 # Values that are, verbatim, a documented placeholder rather than a real credential —
 # matched against the SECRET VALUE itself (any file, any rule), so a genuine secret
 # elsewhere in the same file is still caught. Anchored (^...$): an unanchored substring
 # match could sweep away a REAL key that had placeholder text glued onto it by mistake
 # (e.g. a leftover "YOUR_API_KEY" prefix pasted ahead of a real value with no separator).
-# Verified against a real fleet finding (2026-09-07): a README code sample containing
-# literally `Bearer YOUR_TOKEN_HERE`. Keep this list to UNAMBIGUOUS placeholder tokens
-# only — never a pattern real key formats could also produce.
+# Verified against real fleet findings (2026-09-07): a README code sample containing
+# literally `Bearer YOUR_TOKEN_HERE`, and a Swagger/OpenAPI doc comment's example
+# response body containing `token: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."` — the
+# fixed, universal HS256 JWT header (decodes to `{"alg":"HS256","typ":"JWT"}`, identical
+# across every HS256 JWT ever issued) glued to a literal, un-decodable "..." ellipsis. A
+# real JWT has two more base64 segments after the header, never three literal dots — the
+# ellipsis is what makes this unambiguously a doc placeholder rather than a functional
+# token. Keep this list to UNAMBIGUOUS placeholder tokens only — never a pattern real key
+# formats could also produce.
 [[allowlists]]
 description = "Unambiguous documentation placeholder strings, never a real credential"
 regexes = [
   '''^YOUR_TOKEN_HERE$''',
   '''^YOUR_API_KEY$''',
   '''^YOUR_[A-Z_]*_KEY_HERE$''',
+  '''^eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9\.\.\.$''',
 ]

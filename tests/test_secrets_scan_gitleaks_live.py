@@ -100,12 +100,88 @@ def test_sales_force_lead_csv_allowlist_does_not_swallow_unrelated_rules(tmp_pat
 def test_sales_force_lead_csv_allowlist_does_not_apply_to_other_paths(tmp_path):
     """VERIFIED AGAINST A REAL BINARY (2026-09-07): the allowlist is scoped to the
     EXACT verified path (sales_force/Lead.csv), not any .csv file — a genuine
-    AWS-console-exported accessKeys.csv anywhere else in a repo must still be caught."""
+    export at some OTHER .csv path must still be caught. A structural PEM-header match
+    (not a vendor-checksummed key shape) so this fixture can't be mistaken for a real
+    credential by an automated secret scanner — GitHub's push protection blocked an
+    earlier version of this fixture that used an AKIA-shaped value, since that shape
+    alone (no checksum) is indistinguishable from a real AWS access key ID."""
     repo = _git_repo(tmp_path, {
-        "other_exports/accessKeys.csv": "Access key ID,Secret access key\n"
-                                        "AKIAQZXNRT2FAKE7WXYZ,notarealsecretvalue\n",
+        "other_exports/accessKeys.csv":
+            "-----BEGIN RSA PRIVATE KEY-----\n"
+            "MIIEpAIBAAKCAQEAxSyntheticNotARealKeyBody0000000000000000000000\n"
+            "-----END RSA PRIVATE KEY-----\n",
     })
     res = run_secrets_scan(str(repo))
     assert res["errors"] == []
-    assert any(m["ruleId"] == "aws-access-token" for m in res["matches"]), (
+    assert any(m["ruleId"] == "private-key" for m in res["matches"]), (
         "a .csv at a DIFFERENT path than the one verified must not be suppressed")
+
+
+@pytest.mark.skipif(_GITLEAKS is None, reason="no gitleaks binary installed")
+def test_bmad_manifest_allowlist_does_not_swallow_unrelated_rules(tmp_path):
+    """VERIFIED AGAINST A REAL BINARY (2026-09-07, root/vp-desktop-application and
+    root/vp-panel-backend): the BMAD framework's own generated `.bmad/_cfg/files-
+    manifest.csv` lists every installed file with its SHA256 CONTENT HASH — a fixed
+    64-hex-char column that satisfies generic-api-key's entropy check on every single
+    row. Reproduced directly: `gitleaks detect` on this exact file shape flagged the
+    hash column, not any credential. Scoped to the exact tool-generated path (not any
+    .csv) and to the one rule that fires, so a real secret elsewhere in the same repo —
+    or a genuinely different CSV — must still be caught."""
+    repo = _git_repo(tmp_path, {
+        ".bmad/_cfg/files-manifest.csv":
+            "type,name,module,path,hash\n"
+            '"md","email-auth","bmm","bmad/bmm/testarch/knowledge/email-auth.md",'
+            '"43f4cc3138a905a91f4a69f358be6664a790b192811b4dfc238188e826f6b41b"\n',
+        "config/real.php": "$api_key = 'zK9pLmN3vQsRtUwXyZ1aB2cD4eF6gH8iJkLmNoPq';\n",
+    })
+    res = run_secrets_scan(str(repo))
+    assert res["errors"] == []
+    hits = {(m["path"], m["ruleId"]) for m in res["matches"]}
+    assert (".bmad/_cfg/files-manifest.csv", "generic-api-key") not in hits, (
+        "the manifest's own content-hash column must be suppressed")
+    assert ("config/real.php", "generic-api-key") in hits, (
+        "a real secret elsewhere in the SAME repo must still fire — the entry must not "
+        "widen into a repo-wide suppression")
+
+
+@pytest.mark.skipif(_GITLEAKS is None, reason="no gitleaks binary installed")
+def test_bmad_manifest_allowlist_does_not_apply_to_other_paths(tmp_path):
+    """VERIFIED AGAINST A REAL BINARY: scoped to the exact tool-generated filename, not
+    any CSV with a `hash` column — a genuinely different CSV must still be scanned
+    normally. A structural PEM-header match (not a vendor-checksummed key shape), same
+    reasoning as the Salesforce path test above."""
+    repo = _git_repo(tmp_path, {
+        "other/export.csv":
+            "-----BEGIN RSA PRIVATE KEY-----\n"
+            "MIIEpAIBAAKCAQEAxSyntheticNotARealKeyBody0000000000000000000001\n"
+            "-----END RSA PRIVATE KEY-----\n",
+    })
+    res = run_secrets_scan(str(repo))
+    assert res["errors"] == []
+    assert any(m["ruleId"] == "private-key" for m in res["matches"]), (
+        "a CSV at a DIFFERENT path than the verified BMAD manifest must not be suppressed")
+
+
+@pytest.mark.skipif(_GITLEAKS is None, reason="no gitleaks binary installed")
+def test_truncated_example_jwt_header_placeholder_is_suppressed(tmp_path):
+    """VERIFIED AGAINST A REAL BINARY (2026-09-07, root/vp-panel-backend's Swagger/
+    OpenAPI doc comments): `token: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."` — the
+    UNIVERSAL, fixed HS256 JWT header (decodes to `{"alg":"HS256","typ":"JWT"}`, present
+    in literally every HS256 JWT ever issued) glued to a literal, un-decodable "..."
+    ellipsis — matched generic-api-key. The trailing "..." is what makes this
+    unambiguously a documentation placeholder rather than a real, functional token (a
+    real JWT has two more base64 segments after the header, never three literal dots).
+    Anchored to the exact literal value, matched by VALUE not path, so a real leaked
+    secret anywhere else is untouched."""
+    repo = _git_repo(tmp_path, {
+        "docs/api.md": 'token: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."\n',
+        "config/real.php": "$api_key = 'zK9pLmN3vQsRtUwXyZ1aB2cD4eF6gH8iJkLmNoPq';\n",
+    })
+    res = run_secrets_scan(str(repo))
+    assert res["errors"] == []
+    hits = {(m["path"], m["ruleId"]) for m in res["matches"]}
+    assert ("docs/api.md", "generic-api-key") not in hits, (
+        "the truncated example JWT header must be suppressed")
+    assert ("config/real.php", "generic-api-key") in hits, (
+        "a real secret elsewhere must still fire — the entry must match only this exact "
+        "placeholder value, never widen into a rule- or path-level suppression")
