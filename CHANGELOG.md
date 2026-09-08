@@ -4,6 +4,18 @@ All notable changes to the Drift Detector plugin. Dates are YYYY-MM-DD.
 
 ## Unreleased
 
+### Fixed
+
+- **`deliver` no longer auto-closes issues on a scoped scan.** `run --only`/`SCAN_ONLY`
+  deliberately leaves the skipped categories' findings out of `drift.json`, and delivery's
+  auto-close logic (a filed issue whose finding is no longer present gets closed as resolved)
+  could not tell that absence apart from a genuine fix — a live `deliver` after a
+  `--only secrets` run would have closed every open cve/sunset issue on every repo, having
+  verified none of them. `build_plan` now reads `payload["categoriesSkipped"]` and, when
+  non-empty, closes nothing for the whole run — the very next unscoped run resumes normal
+  closing and catches up on anything genuinely fixed since. `deliver` also states this on
+  stderr whenever it applies, so it is never a silent no-op.
+
 ### Added
 
 - **`run --only secrets,cve,sunsets`** — scan just the named finding kind(s) instead of

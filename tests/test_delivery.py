@@ -126,6 +126,35 @@ def test_resolved_finding_closes_its_issue():
     assert next(i for i in plan["issues"] if i["op"] == "close")["iid"] == 9
 
 
+def test_a_scoped_run_never_closes_anything_even_though_the_finding_is_absent():
+    """BUG (2026-09-08): `run --only secrets` (or the CI SCAN_ONLY variable) makes every
+    cve/sunset action vanish from payload["actions"] on purpose, not because they were fixed.
+    Before this test, `_finish` could not tell the difference and would close every open
+    cve/sunset issue on a live delivery after a secrets-only scan -- the exact "cannot see ==
+    clean" collapse this tool exists to refuse, just at the delivery layer instead of the scan
+    layer. A scoped run must close NOTHING, no matter how stale an existing issue's
+    fingerprint looks against this run's (deliberately partial) findings."""
+    ghost = {"issues": [{"iid": 9, "state": "opened",
+                         "description": delivery.marker("deadbeefdeadbeef"), "title": "gone"}],
+             "mrs": {}}
+    payload = _payload([_cve()])
+    payload["categoriesSkipped"] = ["sunsets"]      # this run scanned cve+secrets, not sunsets
+    plan = delivery.build_plan(payload, _META, ghost, "root/drift-detector")
+    assert "close" not in {i["op"] for i in plan["issues"]}
+
+
+def test_an_unscoped_run_still_closes_normally_once_categories_skipped_is_empty():
+    """The guard is scoped-run-only: an ordinary full scan (categoriesSkipped absent/empty)
+    must keep closing genuinely resolved findings exactly as before."""
+    ghost = {"issues": [{"iid": 9, "state": "opened",
+                         "description": delivery.marker("deadbeefdeadbeef"), "title": "gone"}],
+             "mrs": {}}
+    payload = _payload([_cve()])
+    payload["categoriesSkipped"] = []
+    plan = delivery.build_plan(payload, _META, ghost, "root/drift-detector")
+    assert "close" in {i["op"] for i in plan["issues"]}
+
+
 def test_stale_in_repo_issue_closes_at_its_own_project():
     """DEFECT: _finish was hardcoding devops_project for all closes. When a repo's issue
     moved to its own project (Task 3), closing a stale in-repo finding would target
@@ -351,6 +380,49 @@ def test_cli_reads_host_project_and_mode_from_config(tmp_path, monkeypatch, caps
     assert "g/ebayapi" in out                        # developer issue filed IN the repo, not devops_project
     assert "Developer issues" in out                 # grouped under the developer stream header
     assert "draft MR" not in out                     # findings are always issues now, never MRs
+
+
+def test_cli_warns_on_stderr_when_the_scan_was_scoped(tmp_path, monkeypatch, capsys):
+    """A scoped scan (`--only`/SCAN_ONLY) suppresses closing (see _finish) -- that must be
+    STATED, not silently absorbed into a plan that just happens to close nothing."""
+    import json
+    from agent import cli
+    from agent.lib import gitlab_api
+    payload = _payload([_cve(repo="web")])
+    payload["categoriesSkipped"] = ["sunsets"]
+    (tmp_path / "drift.json").write_text(json.dumps(payload))
+    (tmp_path / "inventory.json").write_text(json.dumps(
+        {"repos": [{"path": "web", "remote_url": "https://git.x/root/web"}]}))
+
+    class FakeGL:
+        def __init__(self, *a, **k): pass
+        def list_issues(self, *a, **k): return []
+        def list_mrs(self, *a, **k): return []
+    monkeypatch.setattr(gitlab_api, "GitLab", FakeGL)
+    rc = cli.main(["deliver", "--state", str(tmp_path), "--gitlab-host", "git.x",
+                   "--devops-project", "root/drift-detector", "--dry-run"])
+    assert rc == 0
+    err = capsys.readouterr().err
+    assert "sunsets" in err and "not checked" in err.lower()
+
+
+def test_cli_says_nothing_extra_when_the_scan_was_not_scoped(tmp_path, monkeypatch, capsys):
+    import json
+    from agent import cli
+    from agent.lib import gitlab_api
+    (tmp_path / "drift.json").write_text(json.dumps(_payload([_cve(repo="web")])))
+    (tmp_path / "inventory.json").write_text(json.dumps(
+        {"repos": [{"path": "web", "remote_url": "https://git.x/root/web"}]}))
+
+    class FakeGL:
+        def __init__(self, *a, **k): pass
+        def list_issues(self, *a, **k): return []
+        def list_mrs(self, *a, **k): return []
+    monkeypatch.setattr(gitlab_api, "GitLab", FakeGL)
+    rc = cli.main(["deliver", "--state", str(tmp_path), "--gitlab-host", "git.x",
+                   "--devops-project", "root/drift-detector", "--dry-run"])
+    assert rc == 0
+    assert capsys.readouterr().err == ""
 
 
 def test_cli_config_mode_off_skips_delivery(tmp_path, capsys):

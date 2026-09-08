@@ -533,6 +533,10 @@ def build_plan(payload: dict, repo_meta: dict, existing: dict, devops_project: s
     `repo_meta`   : {repo -> {"project": "group/repo"}} for the scanned repos.
     `existing`    : {"issues": [issue dicts, from wherever they were fetched],
                      "mrs": {project -> [mr dicts]}} already on GitLab.
+    `payload["categoriesSkipped"]`: read directly off the payload (not a parameter — it is
+                    scan-run metadata, not a delivery setting). Non-empty on a `--only`/
+                    `SCAN_ONLY` scoped run; when set, NO issue is closed this run regardless
+                    of what `payload["actions"]` does or doesn't contain — see `_finish`.
     `assignees`   : {"devops": id|None, "developer": {repo: id|None}} — pre-resolved GitLab
                     user ids (`resolve_owner`, `gl.user_id`), threaded straight onto each op.
     `dev_as_issues`: accepted for back-compat, otherwise IGNORED — findings are always filed
@@ -668,12 +672,35 @@ def build_plan(payload: dict, repo_meta: dict, existing: dict, devops_project: s
     _audience_ops(developer, "developer", "API migrations for", migrations_md, repo_meta,
                  assignees, links, granularity, by_fp, live_fps, issue_plan)
 
-    return _finish(issue_plan, [], by_fp, live_fps, devops_project)
+    # `run --only secrets,...` (or the CI `SCAN_ONLY` variable) deliberately skips scan
+    # mechanisms for the other categories — `payload["categoriesSkipped"]` (set by the same
+    # `--only` feature, see agent/lib/repo_scan.ALL_CATEGORIES) names them. On a scoped run
+    # those categories' actions are simply ABSENT from `payload["actions"]`, exactly as if
+    # they had all been resolved — `_finish` cannot tell "fixed" from "not looked at this
+    # time" apart from that absence alone, so a live `--only secrets` delivery would auto-close
+    # every open cve/sunset issue on every repo, having verified none of them.
+    categories_skipped = frozenset(payload.get("categoriesSkipped") or [])
+    return _finish(issue_plan, [], by_fp, live_fps, devops_project,
+                   categories_skipped=categories_skipped)
 
 
-def _finish(issue_plan, mr_plan, by_fp, live_fps, devops_project) -> dict:
+def _finish(issue_plan, mr_plan, by_fp, live_fps, devops_project, *,
+           categories_skipped: frozenset = frozenset()) -> dict:
     """Close issues we filed whose fingerprint is no longer among the findings — a resolved
-    finding must not leave a stale open issue (the human 'cannot see = clean' trap)."""
+    finding must not leave a stale open issue (the human 'cannot see = clean' trap).
+
+    `categories_skipped`: non-empty on a scoped run (`--only`/`SCAN_ONLY`). Closing is a claim
+    that a finding was RE-CHECKED and no longer holds; a scoped run only re-checked SOME
+    categories, so "missing from this run's findings" no longer implies "resolved" for ANY
+    issue — a finding stream's audience mixes categories (DevOps = cve + eol-runtime +
+    secret; Developer = sunset + eol-framework, see agent/lib/owners.py), and a maintainer
+    stream (shape/resolve) can depend on the very same skipped scan data (residue/endpoints).
+    Rather than trying to prove which existing issues are unaffected, this suppresses ALL
+    closing for the run — "cannot see" must never read as "clean" here either. The very next
+    unscoped run resumes normal closing and catches up on anything that was genuinely fixed
+    in the meantime; nothing is lost, only delayed."""
+    if categories_skipped:
+        return {"issues": issue_plan, "mrs": mr_plan}
     for fp, iss in by_fp.items():
         if fp not in live_fps and iss.get("state") != "closed":
             issue_plan.append({"op": "close", "fp": fp,

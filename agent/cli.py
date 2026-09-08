@@ -1670,6 +1670,11 @@ def _cmd_deliver(args) -> int:
                                assignees=assignees, granularity=granularity)
 
     print(f"delivery mode: {mode}")
+    skipped = payload.get("categoriesSkipped") or []
+    if skipped:
+        print(f"⚠ this scan skipped {', '.join(sorted(skipped))} (--only/SCAN_ONLY) — no issue "
+              f"will be closed this run; an absent finding here means 'not checked', not "
+              f"'resolved'. Closing resumes on the next unscoped run.", file=sys.stderr)
     print(delivery.plan_summary(plan))
     print()
     print(delivery.plan_detail(plan))
