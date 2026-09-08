@@ -449,6 +449,30 @@ def test_dashboard_coverage_grades_reach_the_projection():
     assert any(g["repo"] == "amazonspapi" and g["grade"] == "LOW" for g in proj.get("coverageGrades", []))
 
 
+def test_categories_skipped_banner_is_wired_and_unmissable():
+    """--only's skip note is a payload field a reader could easily never scroll to. The
+    banner must be OUTSIDE .sticky (so it survives that header scrolling under it) and
+    gated on `categoriesSkipped.length`, never rendered when nothing was skipped."""
+    from agent.lib import dashboard_render as dr
+    assert 'v-if="categoriesSkipped.length"' in dr.TEMPLATE_SRC
+    assert dr.TEMPLATE_SRC.index("onlyband") < dr.TEMPLATE_SRC.index('class="sticky"')
+    assert "categoriesSkipped" in dr.APP_JS_SRC
+
+
+def test_categories_skipped_reaches_the_projection():
+    from agent.lib.dashboard_render import _build_projection
+    inv = {"repos": []}
+    proj = _build_projection(inv, {"actions": [], "coverage": {
+        "notes": [], "categoriesSkipped": ["cve", "sunsets"]}})
+    assert proj["categoriesSkipped"] == ["cve", "sunsets"]
+
+
+def test_categories_skipped_defaults_to_empty_when_nothing_was_skipped():
+    from agent.lib.dashboard_render import _build_projection
+    proj = _build_projection({"repos": []}, {"actions": [], "coverage": {"notes": []}})
+    assert proj["categoriesSkipped"] == []
+
+
 def test_dashboard_coverage_grade_xss_escaped():
     inv = {"repos": [], "coverage": {"residue": {
         "pathLiterals": [{"repo": "r", "sample": "/x/v0/</script><b>pwn", "loc": "a.php:1"}],

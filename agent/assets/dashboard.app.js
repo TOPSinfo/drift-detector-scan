@@ -103,6 +103,16 @@
       };
     },
     computed: {
+      // --only: which of {secrets, cve, sunsets} this RUN deliberately never scanned (see
+      // agent/audit.py's coverage.categoriesSkipped, threaded through unchanged) — drives
+      // the unmissable banner at the very top of the page (dashboard.template.html).
+      categoriesSkipped: function(){ return this.DATA.categoriesSkipped || []; },
+      skippedCategoriesLabel: function(){ return this.categoriesSkipped.join(", "); },
+      scannedCategoriesLabel: function(){
+        var skipped = this.categoriesSkipped;
+        return ["secrets", "cve", "sunsets"]
+          .filter(function(c){ return skipped.indexOf(c) === -1; }).join(", ");
+      },
       repoOptions: function(){
         var m = {};
         (this.DATA.actions||[]).forEach(function(a){ if(a.repo) m[a.repo]=a.repoLabel||a.repo; });

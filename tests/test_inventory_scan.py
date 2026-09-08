@@ -426,3 +426,54 @@ def test_a_clean_secrets_scan_still_caches_and_replays_correctly(tmp_path):
                        engine="semgrep", run=counting_run, secrets_run=_no_secrets)
     assert calls["n"] == 1, "unchanged HEAD must still be served from cache"
     assert out2["doc"]["coverage"]["secretsErrors"] == []
+
+
+# --------------------------------------------------------------- categories (--only)
+
+def test_categories_none_reports_nothing_skipped(tmp_path):
+    root = tmp_path / "repos"
+    _git_init(root / "web", {"composer.json": '{"require": {"php": "^8.2"}}'})
+    out = scan_folder(str(root), str(tmp_path / "state"), "2026-07-14",
+                      engine="semgrep", run=_empty_run, secrets_run=_no_secrets)
+    assert out["doc"]["coverage"]["categoriesSkipped"] == []
+
+
+def test_only_secrets_reports_cve_and_sunsets_skipped(tmp_path):
+    root = tmp_path / "repos"
+    _git_init(root / "web", {"composer.json": '{"require": {"php": "^8.2"}}'})
+    out = scan_folder(str(root), str(tmp_path / "state"), "2026-07-14",
+                      engine="semgrep", run=_empty_run, secrets_run=_no_secrets,
+                      categories=frozenset({"secrets"}))
+    assert out["doc"]["coverage"]["categoriesSkipped"] == ["cve", "sunsets"]
+    assert out["doc"]["repos"][0]["runtimes"] == {}
+
+
+def test_switching_only_value_on_an_unchanged_repo_is_not_served_from_the_other_ones_cache(
+        tmp_path):
+    """REGRESSION GUARD: the per-repo cache is keyed on (identity, head_sha, rules_sig). If
+    `categories` were NOT folded into rules_sig, a `--only sunsets` run today and a plain
+    (all categories) run tomorrow on the SAME unchanged commit would silently serve the
+    sunsets-only record — frameworks/secrets missing, but read back as a genuine scan
+    result. This is exactly the class of bug the ruleset/overlay signature already exists
+    to prevent for the ruleset+catalog, extended to cover this new axis too. Proven via the
+    ENGINE call count (counting_run) — --only sunsets is the category that still invokes
+    the engine, so a cache HIT vs. a real re-scan is unambiguous either way."""
+    root = tmp_path / "repos"
+    _git_init(root / "web", {"composer.json": '{"require": {"php": "^8.2"}}'})
+    state = tmp_path / "state"
+    calls = {"n": 0}
+
+    def counting_run(args):
+        calls["n"] += 1
+        return json.dumps([])
+
+    scan_folder(str(root), str(state), "2026-07-14", engine="semgrep", run=counting_run,
+               secrets_run=_no_secrets, categories=frozenset({"sunsets"}))
+    assert calls["n"] == 1
+
+    out2 = scan_folder(str(root), str(state), "2026-07-21", engine="semgrep",
+                       run=counting_run, secrets_run=_no_secrets)   # categories=None (all)
+    assert calls["n"] == 2, (
+        "a --only sunsets cache entry must never be served for an all-categories request "
+        "on the same unchanged commit")
+    assert out2["doc"]["repos"][0]["runtimes"]["php"]["range"] == "^8.2"

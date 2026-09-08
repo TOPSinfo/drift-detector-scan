@@ -115,3 +115,28 @@ def test_eol_finding_fixed_is_none_when_no_recommendation():
     eol_findings = [f for f in out["findings"] if f["kind"] == "eol"]
     assert eol_findings[0]["fixed"] is None
     assert eol_findings[0]["recommendation"] == "upgrade to a supported release"
+
+
+# --------------------------------------------------------------- categoriesSkipped (--only)
+
+def test_no_categories_skipped_by_default():
+    out = audit_inventory({"repos": []}, "2026-07-14", http=lambda *a, **k: {},
+                          osv_query=lambda *a, **k: [])
+    assert out["coverage"]["categoriesSkipped"] == []
+    assert not any("not scanned" in n.lower() for n in out["coverage"]["notes"])
+
+
+def test_categories_skipped_is_carried_through_and_gets_an_unmissable_note():
+    """A scan run with --only secrets sets doc.coverage.categoriesSkipped = [cve, sunsets].
+    The audit must (a) carry that list through structurally (so the dashboard can render a
+    banner without text-matching notes) and (b) say so in coverage.notes too — the SAME
+    surface every other degradation (OSV down, EOL down) already uses, so a reader who
+    only ever looks at notes still sees it. "cannot see == clean" applies here exactly as
+    it does to a network outage: 0 CVE findings from a category nobody scanned must never
+    read as "scanned, clean"."""
+    doc = {"repos": [], "coverage": {"categoriesSkipped": ["cve", "sunsets"]}}
+    out = audit_inventory(doc, "2026-07-14", http=lambda *a, **k: {},
+                          osv_query=lambda *a, **k: [])
+    assert out["coverage"]["categoriesSkipped"] == ["cve", "sunsets"]
+    assert any("cve" in n and "sunsets" in n and "not scanned" in n.lower()
+               for n in out["coverage"]["notes"]), out["coverage"]["notes"]

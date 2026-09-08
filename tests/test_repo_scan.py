@@ -76,6 +76,103 @@ def test_scan_repo_attaches_secrets_findings(tmp_path):
     }]
 
 
+# --------------------------------------------------------------- categories (--only)
+
+def test_categories_none_scans_everything_unchanged(tmp_path):
+    """The default (categories=None) must be byte-for-byte the existing behavior — every
+    existing caller of scan_repo (including every test above) omits this argument."""
+    _w(tmp_path, "composer.json", '{"require": {"laravel/framework": "^12.0"}}')
+    _w(tmp_path, "pay.php", '$u = "https://api.stripe.com/v1/charges";\n')
+    rules = tmp_path / "rules.yaml"
+    write_ruleset(_VENDORS, str(rules))
+    canned = astgrep_fake.canned(astgrep_fake.hit("url-literal", "pay.php", 1))
+    canned_secrets = gitleaks_fake.canned(gitleaks_fake.hit("generic-api-key", "x.php", 1))
+    record, note = scan_repo(str(tmp_path), "acme/web", 1, _VENDORS, str(rules),
+                             engine="semgrep", run=_fake_opengrep(canned), git=lambda a: "",
+                             secrets_run=lambda args: canned_secrets)
+    assert "laravel/framework" in record["frameworks"]
+    assert record["endpoints"][0]["techKey"] == "api:stripe"
+    assert record["secrets"] != []
+
+
+def test_only_secrets_skips_manifests_and_ast_grep(tmp_path):
+    """--only secrets: gitleaks still runs, but manifest parsing and the ast-grep engine
+    (which the fake `run` would otherwise answer) are never invoked — proven by the fake
+    endpoint-scan `run` never being called at all (asserting call count, not just output),
+    and by frameworks/endpoints coming back empty even though real manifest/endpoint data
+    is present on disk."""
+    _w(tmp_path, "composer.json", '{"require": {"laravel/framework": "^12.0"}}')
+    _w(tmp_path, "pay.php", '$u = "https://api.stripe.com/v1/charges";\n')
+    rules = tmp_path / "rules.yaml"
+    write_ruleset(_VENDORS, str(rules))
+    canned = astgrep_fake.canned(astgrep_fake.hit("url-literal", "pay.php", 1))
+    calls = []
+
+    def _run(args):
+        calls.append(args)
+        return canned
+
+    canned_secrets = gitleaks_fake.canned(gitleaks_fake.hit("generic-api-key", "x.php", 1))
+    record, note = scan_repo(str(tmp_path), "acme/web", 1, _VENDORS, str(rules),
+                             engine="semgrep", run=_run, git=lambda a: "",
+                             secrets_run=lambda args: canned_secrets,
+                             categories=frozenset({"secrets"}))
+    assert calls == [], "ast-grep must never be invoked when sunsets was not requested"
+    assert record["frameworks"] == {}
+    assert record["endpoints"] == []
+    assert record["secrets"] != []
+
+
+def test_only_cve_skips_ast_grep_and_secrets(tmp_path):
+    """--only cve: manifests are parsed, but the ast-grep engine and gitleaks are never
+    invoked."""
+    _w(tmp_path, "composer.json", '{"require": {"laravel/framework": "^12.0"}}')
+    _w(tmp_path, "pay.php", '$u = "https://api.stripe.com/v1/charges";\n')
+    rules = tmp_path / "rules.yaml"
+    write_ruleset(_VENDORS, str(rules))
+    canned = astgrep_fake.canned(astgrep_fake.hit("url-literal", "pay.php", 1))
+    engine_calls, secrets_calls = [], []
+
+    def _run(args):
+        engine_calls.append(args)
+        return canned
+
+    def _secrets_run(args):
+        secrets_calls.append(args)
+        return gitleaks_fake.canned(gitleaks_fake.hit("generic-api-key", "x.php", 1))
+
+    record, note = scan_repo(str(tmp_path), "acme/web", 1, _VENDORS, str(rules),
+                             engine="semgrep", run=_run, git=lambda a: "",
+                             secrets_run=_secrets_run, categories=frozenset({"cve"}))
+    assert engine_calls == [], "ast-grep must never be invoked when sunsets was not requested"
+    assert secrets_calls == [], "gitleaks must never be invoked when secrets was not requested"
+    assert "laravel/framework" in record["frameworks"]
+    assert record["endpoints"] == []
+    assert record["secrets"] == []
+
+
+def test_only_sunsets_skips_manifests_and_secrets(tmp_path):
+    """--only sunsets: the ast-grep engine runs, but manifest parsing and gitleaks don't."""
+    _w(tmp_path, "composer.json", '{"require": {"laravel/framework": "^12.0"}}')
+    _w(tmp_path, "pay.php", '$u = "https://api.stripe.com/v1/charges";\n')
+    rules = tmp_path / "rules.yaml"
+    write_ruleset(_VENDORS, str(rules))
+    canned = astgrep_fake.canned(astgrep_fake.hit("url-literal", "pay.php", 1))
+    secrets_calls = []
+
+    def _secrets_run(args):
+        secrets_calls.append(args)
+        return gitleaks_fake.EMPTY
+
+    record, note = scan_repo(str(tmp_path), "acme/web", 1, _VENDORS, str(rules),
+                             engine="semgrep", run=_fake_opengrep(canned), git=lambda a: "",
+                             secrets_run=_secrets_run, categories=frozenset({"sunsets"}))
+    assert secrets_calls == [], "gitleaks must never be invoked when secrets was not requested"
+    assert record["frameworks"] == {}
+    assert record["endpoints"][0]["techKey"] == "api:stripe"
+    assert record["secrets"] == []
+
+
 def test_scan_repo_with_no_secrets_found_attaches_an_empty_list(tmp_path):
     _w(tmp_path, "pay.php", '$u = "https://api.stripe.com/v1/charges";\n')
     rules = tmp_path / "rules.yaml"

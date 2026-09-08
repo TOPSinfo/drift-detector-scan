@@ -9,7 +9,7 @@ from agent.lib import (catalog_overlay, engine as engine_mod, ir_store, pool, re
 from agent.lib.vendors import load_vendors
 from agent.lib.vendor_rules import write_ruleset, rule_kinds_by_language
 from agent.lib import shapes
-from agent.lib.repo_scan import scan_repo
+from agent.lib.repo_scan import scan_repo, ALL_CATEGORIES
 from agent.lib.repo_discovery import discover_repos, diagnose_root
 from agent.lib import source_resolver, sdk_profiles, sdk_clients, idioms as idioms_mod
 from agent.lib.inv_rollups import build_rollups
@@ -102,7 +102,7 @@ def _rollup_coverage(coverage: dict, repos: list, *, discovered_count: int) -> N
 
 
 def scan_folder(root, state_dir, now, *, engine=None, run=None, git=None, secrets_run=None,
-                progress=None, jobs=1, engine_threads=None) -> dict:
+                progress=None, jobs=1, engine_threads=None, categories=None) -> dict:
     # `root` may be a single path or a list of roots; discovery is recursive.
     roots = [root] if isinstance(root, (str, os.PathLike)) else list(root)
     # A root is either a bare path/url or a (path_or_url, branch|None) pair since a fleet entry
@@ -139,7 +139,14 @@ def scan_folder(root, state_dir, now, *, engine=None, run=None, git=None, secret
     # structural: any future overlay kind that a scan starts reading invalidates the cache by
     # construction, not because someone remembered to list it here.
     overlay_sig = catalog_overlay.overlay_signature()
-    rules_sig = hashlib.sha256(f"{ruleset_sig}|{overlay_sig}".encode("utf-8")).hexdigest()[:12]
+    # --only (categories): folded in for the SAME reason as ruleset_sig/overlay_sig — a
+    # --only cve run and a plain (all-categories) run on the SAME unchanged commit must
+    # never share a cache entry, or one silently serves the other's narrower record as if
+    # it were a genuine full scan. ALL_CATEGORIES (not the caller's raw `None`) so "all
+    # three, explicitly" and "all three, by omitting --only" hash identically.
+    categories_sig = ",".join(sorted(categories if categories is not None else ALL_CATEGORIES))
+    rules_sig = hashlib.sha256(
+        f"{ruleset_sig}|{overlay_sig}|{categories_sig}".encode("utf-8")).hexdigest()[:12]
 
     _p("resolving sources under " + ", ".join(str(r) for r in root_paths) + " …")
     # A checkout, a plain folder, or a git/GitLab URL (cloned into <state>/sources/) all
@@ -164,8 +171,14 @@ def scan_folder(root, state_dir, now, *, engine=None, run=None, git=None, secret
     # reposErrored on purpose: a missing/failing gitleaks costs the repo its secrets signal only,
     # never its ast-grep/manifest/CVE results — but it must still be said out loud, or a fleet
     # where gitleaks never ran reports zero secrets and looks clean.
+    # --only: which of {secrets, cve, sunsets} this RUN deliberately never scanned — a
+    # run-wide fact (every repo in a run shares the same --only value), not a per-repo one.
+    # "cannot see == clean" applies here too: 0 secrets from a --only cve run must read as
+    # "not scanned", never as "scanned, found none" — agent/audit.py turns this into an
+    # unmissable coverage note.
+    categories_skipped = sorted(ALL_CATEGORIES - categories) if categories is not None else []
     coverage = {"reposScanned": 0, "reposErrored": [], "manifestsUnparsed": [],
-                "secretsErrors": []}
+                "secretsErrors": [], "categoriesSkipped": categories_skipped}
     # Repo identities collide ACROSS roots. `discover_repos` guarantees collision-free
     # identities only within ONE call, and `resolve_sources` calls it once per root — so two
     # roots that each contain a `web/` both yield the identity `"web"`. `ir_store._repo_path`
@@ -227,7 +240,7 @@ def scan_folder(root, state_dir, now, *, engine=None, run=None, git=None, secret
                                  engine=engine, run=run, git=git, secrets_run=secrets_run,
                                  idiom_instances=idiom_instances,
                                  configured_branch=source_branch.get(abs_),
-                                 engine_threads=engine_threads)
+                                 engine_threads=engine_threads, categories=categories)
         record["sourceKind"] = source_kind.get(abs_, "local-git")
         record["shape"] = _shape_of(abs_, name, record, rule_kinds, attestations)
         # A secrets-scan failure (gitleaks missing/timed out/crashed) now travels WITH the

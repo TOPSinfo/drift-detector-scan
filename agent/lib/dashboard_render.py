@@ -301,6 +301,10 @@ def _build_projection(inventory: dict, audit: dict, gitlab_hosts=frozenset(), *,
         "catalogSummary": (audit.get("coverage") or {}).get("catalogSummary", {}),
         "catalogDelta": (audit.get("coverage") or {}).get("catalogDelta", {}),
         "coverageNotes": (audit.get("coverage") or {}).get("notes", []),
+        # --only: which of {secrets, cve, sunsets} this RUN deliberately never scanned — a
+        # structured field (not just prose in coverageNotes) so the dashboard can render an
+        # unmissable banner without text-matching a note string.
+        "categoriesSkipped": (audit.get("coverage") or {}).get("categoriesSkipped", []),
         "coverageGrades": [dict(g, repoLabel=_repo_label(
             repo_meta.get(g.get("repo"), {}).get("remote_url"), g.get("repo")))
             for g in residue.get("byRepo", [])],

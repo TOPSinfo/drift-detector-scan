@@ -54,13 +54,18 @@ def _cmd_inventory_scan(args) -> int:
         def progress(msg):
             print(f"⚙ {msg}", file=sys.stderr, flush=True)
 
+    categories, only_err = _parse_only(getattr(args, "only", None), "inventory-scan")
+    if only_err:
+        print(only_err, file=sys.stderr)
+        return 2
     t0 = time.perf_counter()
     try:
         out = inventory_scan_mod.scan_folder(args.root, args.state, args.now,
                                              progress=progress,
                                              jobs=_capped_jobs(getattr(args, "jobs", 1),
                                                                "inventory-scan"),
-                                             engine_threads=getattr(args, "engine_threads", None))
+                                             engine_threads=getattr(args, "engine_threads", None),
+                                             categories=categories)
     except RuntimeError as exc:
         print(f"inventory-scan failed: {exc}", file=sys.stderr)
         return 2
@@ -119,6 +124,28 @@ def _cmd_audit(args) -> int:
     return 0
 
 
+_ONLY_CATEGORIES = frozenset({"secrets", "cve", "sunsets"})
+
+
+def _parse_only(value, command: str = "run"):
+    """--only's comma-separated value -> (categories: frozenset | None, error: str | None).
+    None means "scan everything" (--only omitted) — the byte-identical-to-today default.
+    An unknown category name is refused outright rather than silently ignored: `--only
+    scret` (typo) must never be read as "scan nothing", which a set-difference against an
+    unrecognised name would otherwise produce silently."""
+    if not value:
+        return None, None
+    requested = {v.strip() for v in value.split(",") if v.strip()}
+    if not requested:
+        return None, f"{command}: --only must name at least one category"
+    unknown = requested - _ONLY_CATEGORIES
+    if unknown:
+        return None, (f"{command}: --only has unknown categor"
+                       f"{'y' if len(unknown) == 1 else 'ies'} {sorted(unknown)} — choose "
+                       f"from {sorted(_ONLY_CATEGORIES)}")
+    return frozenset(requested), None
+
+
 def _cmd_run(args) -> int:
     from agent.run import run_pipeline
     roots = args.root
@@ -143,6 +170,10 @@ def _cmd_run(args) -> int:
         print("run: --jobs must be 1 or greater", file=sys.stderr)
         return 2
     jobs = _capped_jobs(getattr(args, "jobs", 1), "run")
+    categories, only_err = _parse_only(getattr(args, "only", None), "run")
+    if only_err:
+        print(only_err, file=sys.stderr)
+        return 2
     resolve_verdicts = None
     if getattr(args, "resolve", None):
         try:
@@ -178,7 +209,8 @@ def _cmd_run(args) -> int:
         out = run_pipeline(roots, args.state, args.now,
                            pull=getattr(args, "pull", False), progress=progress,
                            gitlab_hosts=gitlab_hosts, resolve=resolve_verdicts,
-                           jobs=jobs, engine_threads=getattr(args, "engine_threads", None))
+                           jobs=jobs, engine_threads=getattr(args, "engine_threads", None),
+                           categories=categories)
     except RuntimeError as exc:
         print(f"run failed: {exc}", file=sys.stderr)
         return 2
@@ -1879,6 +1911,16 @@ def main(argv: list[str]) -> int:
                          "can exhaust memory on a small/shared CI runner scanning a large "
                          "repo. Does not affect output — only how much of the machine one "
                          "scan is allowed to use at once.")
+    pr.add_argument("--only",
+                    help="comma-separated subset of {secrets,cve,sunsets} — scan ONLY these "
+                         "signals per repo (cve also covers EOL; both come from the same "
+                         "manifest-derived package data). Skips the corresponding scan "
+                         "mechanism entirely (gitleaks / manifest parsing / ast-grep), not "
+                         "just the output — genuinely faster, not just narrower. Left unset, "
+                         "scans everything (today's behavior, unchanged). Every category "
+                         "this excludes is recorded as categoriesSkipped in drift.json's "
+                         "coverage and called out in the report — 0 findings from a "
+                         "category you didn't scan is never shown as a clean bill.")
     pr.add_argument("--fail-on-deprecated", action="store_true",
                     help="exit 3 if any un-muted DEPRECATED finding (CI gate)")
     pr.add_argument("--fail-on-exposed", action="store_true",
@@ -2124,6 +2166,9 @@ def main(argv: list[str]) -> int:
     pis.add_argument("--engine-threads", type=int, default=None,
                      help="cap ast-grep's own internal thread pool per repo scan — see `run "
                           "--help` for why this is a separate knob from --jobs")
+    pis.add_argument("--only",
+                     help="comma-separated subset of {secrets,cve,sunsets} — see `run "
+                          "--help` for what each skips and how it's reported")
     pis.set_defaults(func=_cmd_inventory_scan)
 
     args = p.parse_args(argv)

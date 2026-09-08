@@ -1,4 +1,13 @@
 <div id="app" v-cloak>
+  <!-- --only: unmissable, above everything else — this scan deliberately did not check
+       one or more categories, and a reader who never opens the coverage drawer must still
+       see it before reading a single tile number. "cannot see == clean" applies here
+       exactly as it does to an unreachable source. -->
+  <div class="onlyband" v-if="categoriesSkipped.length" role="alert">
+    ⚠ This scan only checked {{ scannedCategoriesLabel }} — {{ skippedCategoriesLabel }}
+    {{ categoriesSkipped.length === 1 ? "was" : "were" }} NOT scanned this run
+    (<code>--only</code>). 0 findings there is not evidence of a clean bill.
+  </div>
   <div class="sticky">
     <div class="brand">
       <span class="mark" aria-hidden="true"></span>

@@ -42,6 +42,17 @@ body{background:var(--bg);color:var(--ink);font-family:var(--sans);font-size:var
 code,.mono{font-family:var(--mono);font-size:.86em}
 a{color:var(--accent-2);text-decoration:none} a:hover{text-decoration:underline}
 
+/* --only banner: sits ABOVE .sticky (not part of it — must stay visible even once the
+   header scrolls under it) so "this scan didn't check everything" is the first thing a
+   reader sees, not a caveat buried in a drawer. --high (the same amber the "warn" severity
+   tiles use), not --crit: this is an honest disclosure of scope, not itself a finding. */
+.onlyband{position:sticky;top:0;z-index:21;padding:var(--s-3) var(--s-5);
+  background:color-mix(in oklab,var(--high) 18%,var(--panel));
+  border-bottom:2px solid var(--high);color:var(--text);font-size:var(--t-sm);
+  font-weight:var(--w-bold);text-align:center}
+.onlyband code{background:color-mix(in oklab,var(--high) 25%,transparent);
+  padding:0 var(--s-2);border-radius:var(--r-xs);font-weight:var(--w-normal)}
+
 .sticky{position:sticky;top:0;z-index:20;background:color-mix(in oklab,var(--bg) 88%,transparent);
   backdrop-filter:blur(8px);padding-top:var(--s-5)}
 .brand{display:flex;align-items:center;gap:var(--s-5);flex-wrap:wrap}

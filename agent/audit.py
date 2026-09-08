@@ -220,11 +220,24 @@ def audit_inventory(doc: dict, now: str, *, http=None,
     sun_index = vendor_sunsets.by_vendor(sunsets if sunsets is not None else vendor_sunsets.load_sunsets())
     repos = doc.get("repos", [])
     findings: list = []
-    coverage = {"osvErrors": 0, "eolErrors": 0, "notes": [
+    # --only: carried through from the scan side (inventory_scan.py's own coverage dict)
+    # rather than re-derived here, so this is the SAME list a caller who ran --only
+    # actually asked to skip — never a guess from "this repo has zero packages/endpoints",
+    # which is indistinguishable from a genuinely clean repo.
+    categories_skipped = list((doc.get("coverage") or {}).get("categoriesSkipped") or [])
+    coverage = {"osvErrors": 0, "eolErrors": 0, "categoriesSkipped": categories_skipped, "notes": [
         "Sources: OSV.dev (CVEs, Tier 1) + endoflife.date (runtime/framework EOL, Tier 1).",
         "Versions are lockfile-exact where a lockfile exists (versionSource: lockfile), else the declared manifest floor — verify against your lockfile.",
         "Parked: Tier 2 (SDK repo archived/changelog) and Tier 3 (community/early-warning) signals.",
     ]}
+    if categories_skipped:
+        # Unmissable and specific: names exactly what was skipped, in the SAME
+        # coverage.notes surface every other degradation (OSV down, EOL down) already
+        # uses — a reader who only ever looks at notes still sees this one.
+        coverage["notes"].append(
+            f"--only was used this run: {', '.join(categories_skipped)} were deliberately "
+            f"NOT scanned. 0 findings there is not evidence of a clean bill — it means "
+            f"nobody looked this run.")
     osv_cache: dict = {}
     eol_cache: dict = {}
     osv_down = eol_down = False

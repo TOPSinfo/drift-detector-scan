@@ -131,3 +131,66 @@ def test_the_cap_notice_names_the_command_that_is_actually_running(tmp_path, mon
     err = capsys.readouterr().err
     assert err.startswith("inventory-scan: --jobs 999 capped"), err
     assert not err.startswith("run:")
+
+
+# --------------------------------------------------------------------- --only
+
+def test_only_defaults_to_none_so_everything_is_scanned(monkeypatch):
+    captured = {}
+
+    def fake_run_pipeline(roots, state_dir, now, **kwargs):
+        captured["categories"] = kwargs.get("categories")
+        return {"scope": {"reposScanned": 1}, "auditCounts": {}, "counts": {},
+                "coverage": {}, "rootsUnscannable": [], "resolve": None}
+
+    monkeypatch.setattr("agent.run.run_pipeline", fake_run_pipeline)
+    rc = main(["run", "--root", ".", "--state", "/tmp/x", "--now", "2026-08-25"])
+    assert rc == 0
+    assert captured["categories"] is None
+
+
+def test_only_flows_through_to_run_pipeline_as_a_frozenset(monkeypatch):
+    captured = {}
+
+    def fake_run_pipeline(roots, state_dir, now, **kwargs):
+        captured["categories"] = kwargs.get("categories")
+        return {"scope": {"reposScanned": 1}, "auditCounts": {}, "counts": {},
+                "coverage": {}, "rootsUnscannable": [], "resolve": None}
+
+    monkeypatch.setattr("agent.run.run_pipeline", fake_run_pipeline)
+    rc = main(["run", "--root", ".", "--state", "/tmp/x", "--now", "2026-08-25",
+               "--only", "secrets,cve"])
+    assert rc == 0
+    assert captured["categories"] == frozenset({"secrets", "cve"})
+
+
+def test_only_rejects_an_unknown_category_before_scanning_anything(monkeypatch, capsys):
+    calls = {"n": 0}
+
+    def fake_run_pipeline(*a, **k):
+        calls["n"] += 1
+        return {"scope": {"reposScanned": 1}}
+
+    monkeypatch.setattr("agent.run.run_pipeline", fake_run_pipeline)
+    rc = main(["run", "--root", ".", "--state", "/tmp/x", "--now", "2026-08-25",
+               "--only", "secrets,typo"])
+    assert rc == 2
+    assert calls["n"] == 0, "an invalid --only must refuse before touching anything"
+    err = capsys.readouterr().err
+    assert "--only" in err and "typo" in err
+
+
+def test_inventory_scan_only_flows_through(tmp_path, monkeypatch):
+    import agent.inventory_scan as inv
+    captured = {}
+
+    def fake_scan_folder(root, state, now, **kwargs):
+        captured["categories"] = kwargs.get("categories")
+        return {"doc": {"repos": [], "coverage": {"reposErrored": []}}, "diff": {}}
+
+    monkeypatch.setattr(inv, "scan_folder", fake_scan_folder)
+    rc = main(["inventory-scan", "--root", ".", "--state", str(tmp_path),
+               "--out-json", str(tmp_path / "inv.json"), "--now", "2026-08-25",
+               "--only", "sunsets"])
+    assert rc == 0
+    assert captured["categories"] == frozenset({"sunsets"})

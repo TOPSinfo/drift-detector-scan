@@ -11,45 +11,70 @@ from agent.lib.superset import to_superset_repo
 from agent.lib import lockfile, private_sources, sdk_clients
 from agent.lib.secrets_scan import run_secrets_scan
 
+# The three independently-skippable signals `--only` selects among. `None` (the default
+# everywhere below) means "all three" — the CLI only ever passes a narrower frozenset when
+# a caller explicitly opted into --only, so every existing caller of scan_repo (direct or
+# via inventory_scan) that omits this argument gets today's behavior, unchanged.
+ALL_CATEGORIES = frozenset({"secrets", "cve", "sunsets"})
+
 
 def scan_repo(repo_abs, repo_name, repo_id, vendors, rules_path, *,
               engine, run, git=_default_git, idiom_instances=None,
-              configured_branch=None, secrets_run=None, engine_threads=None):
+              configured_branch=None, secrets_run=None, engine_threads=None,
+              categories=None):
+    categories = ALL_CATEGORIES if categories is None else categories
     meta = git_meta(repo_abs, run=git, configured_branch=configured_branch)
     meta.update({"id": repo_id, "path": repo_name, "provenance": {"engine": "ast-grep"}})
 
-    records, unparsed = extract_manifest_records(repo_abs, repo_name)
-    partitioned = partition_records(records)
+    # "cve" also covers EOL — both are audited from the SAME manifest-derived package/runtime
+    # data (agent/audit.py's OSV + endoflife.date lookups), so there is no separate category
+    # for EOL to skip independently.
+    if "cve" in categories:
+        records, unparsed = extract_manifest_records(repo_abs, repo_name)
+        partitioned = partition_records(records)
+    else:
+        records, unparsed, partitioned = [], [], partition_records([])
 
-    scan = run_scan(repo_abs, rules_path, engine=engine, run=run, threads=engine_threads)
-    # a path-constant idiom is repo-scoped: pass the repo's git identity (its remote, or the
-    # local checkout path as a fallback) so a wrapper's constants attribute only in ITS repo.
-    # scan_util.repo_scope_id is the ONE derivation the absorb gate must share (see its docstring).
     # Vendors this repo DEPENDS ON by manifest (the official client package). Resolved here
     # because scan_endpoints needs it, and sdk_clients' own endpoint injection happens later
     # in inventory_scan — too late to corroborate a model id. Same catalog, read twice.
     _clients = sdk_clients.load()
     sdk_vendors = {c["vendor"] for r in partitioned.get("sdks", [])
                    for c in [_clients.get(f"{r.ecosystem}/{r.name}")] if c}
-    scanned_eps = scan_endpoints(scan["matches"], repo_abs, vendors,
-                                 idioms=idiom_instances,
-                                 repo_id=scan_util.repo_scope_id(repo_abs, meta),
-                                 sdk_vendors=sdk_vendors)
-    endpoints = [e for e in scanned_eps["endpoints"] if e.get("domain")]
 
-    secrets = run_secrets_scan(repo_abs, run=secrets_run) if secrets_run else run_secrets_scan(repo_abs)
+    if "sunsets" in categories:
+        scan = run_scan(repo_abs, rules_path, engine=engine, run=run, threads=engine_threads)
+        # a path-constant idiom is repo-scoped: pass the repo's git identity (its remote, or
+        # the local checkout path as a fallback) so a wrapper's constants attribute only in
+        # ITS repo. scan_util.repo_scope_id is the ONE derivation the absorb gate must share
+        # (see its docstring).
+        scanned_eps = scan_endpoints(scan["matches"], repo_abs, vendors,
+                                     idioms=idiom_instances,
+                                     repo_id=scan_util.repo_scope_id(repo_abs, meta),
+                                     sdk_vendors=sdk_vendors)
+        endpoints = [e for e in scanned_eps["endpoints"] if e.get("domain")]
+        residue = scanned_eps["residue"]
+        engine_errors = scan["errors"]
+    else:
+        endpoints, residue, engine_errors = [], {"pathLiterals": [], "sinks": []}, []
+
+    if "secrets" in categories:
+        secrets = run_secrets_scan(repo_abs, run=secrets_run) if secrets_run else run_secrets_scan(repo_abs)
+    else:
+        secrets = {"matches": [], "errors": []}
 
     record = to_superset_repo(meta, partitioned, endpoints)
-    _annotate_resolved(record, repo_abs)
+    if "cve" in categories:      # sdks[] is empty otherwise; skip the lockfile read entirely
+        _annotate_resolved(record, repo_abs)
     record["privateSources"] = private_sources.detect(repo_abs)   # what we can't see (say so)
-    record["residue"] = scanned_eps["residue"]
+    record["residue"] = residue
     record["secrets"] = secrets["matches"]
     # The error state travels WITH the record (not just in the sibling `note` dict) so a
     # cache write can be unconditional: a cache HIT replays `record["secretsErrors"]`
     # verbatim, which is what lets `_scan_one_inner` cache a failed secrets signal safely
     # instead of refusing to write the cache at all (see its comment).
     record["secretsErrors"] = secrets["errors"]
-    return record, {"unparsed": unparsed, "engineErrors": scan["errors"],
+    return record, {"unparsed": unparsed, "engineErrors": engine_errors,
                     "secretsErrors": secrets["errors"]}
 
 
