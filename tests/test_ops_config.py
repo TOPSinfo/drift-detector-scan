@@ -263,3 +263,50 @@ delivery:
   mode: live
   devops: { project: g/ops }
 """))
+
+
+# --------------------------------------------------------------------- scan.only
+
+def test_scan_only_absent_scans_everything(tmp_path):
+    cfg = ops_config.load(_write(tmp_path, "fleet: [https://git.x/g/a]\n"))
+    assert cfg["only"] is None
+
+
+def test_scan_only_parses_to_a_frozenset(tmp_path):
+    cfg = ops_config.load(_write(tmp_path, """
+fleet: [https://git.x/g/a]
+scan:
+  only: [secrets, cve]
+"""))
+    assert cfg["only"] == frozenset({"secrets", "cve"})
+
+
+def test_scan_only_rejects_an_unknown_category(tmp_path):
+    with pytest.raises(ops_config.ConfigError, match="secrettt"):
+        ops_config.load(_write(tmp_path, """
+fleet: [https://git.x/g/a]
+scan:
+  only: [secrettt]
+"""))
+
+
+def test_scan_only_rejects_an_empty_list(tmp_path):
+    # match anchored on the actual validation message, not "only" alone — that word is also a
+    # substring of this TEST'S OWN NAME, which pytest embeds in tmp_path, so a loose match here
+    # would pass against the generic "unknown key(s) ['scan']" error too (caught live: it did,
+    # before `scan` was a recognised top-level key at all).
+    with pytest.raises(ops_config.ConfigError, match="non-empty list"):
+        ops_config.load(_write(tmp_path, """
+fleet: [https://git.x/g/a]
+scan:
+  only: []
+"""))
+
+
+def test_unknown_scan_key_is_an_error(tmp_path):
+    with pytest.raises(ops_config.ConfigError, match="typo"):
+        ops_config.load(_write(tmp_path, """
+fleet: [https://git.x/g/a]
+scan:
+  typo: [secrets]
+"""))

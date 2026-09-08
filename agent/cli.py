@@ -124,25 +124,25 @@ def _cmd_audit(args) -> int:
     return 0
 
 
-_ONLY_CATEGORIES = frozenset({"secrets", "cve", "sunsets"})
-
-
 def _parse_only(value, command: str = "run"):
     """--only's comma-separated value -> (categories: frozenset | None, error: str | None).
     None means "scan everything" (--only omitted) — the byte-identical-to-today default.
     An unknown category name is refused outright rather than silently ignored: `--only
     scret` (typo) must never be read as "scan nothing", which a set-difference against an
-    unrecognised name would otherwise produce silently."""
+    unrecognised name would otherwise produce silently. Shares ALL_CATEGORIES with
+    ops_config.py's scan.only (the config-file equivalent) so the two can never recognise a
+    different set of names."""
+    from agent.lib.repo_scan import ALL_CATEGORIES
     if not value:
         return None, None
     requested = {v.strip() for v in value.split(",") if v.strip()}
     if not requested:
         return None, f"{command}: --only must name at least one category"
-    unknown = requested - _ONLY_CATEGORIES
+    unknown = requested - ALL_CATEGORIES
     if unknown:
         return None, (f"{command}: --only has unknown categor"
                        f"{'y' if len(unknown) == 1 else 'ies'} {sorted(unknown)} — choose "
-                       f"from {sorted(_ONLY_CATEGORIES)}")
+                       f"from {sorted(ALL_CATEGORIES)}")
     return frozenset(requested), None
 
 
@@ -150,6 +150,7 @@ def _cmd_run(args) -> int:
     from agent.run import run_pipeline
     roots = args.root
     gitlab_hosts = frozenset()
+    cfg = None
     if getattr(args, "config", None):
         from agent.lib import ops_config
         try:
@@ -174,6 +175,14 @@ def _cmd_run(args) -> int:
     if only_err:
         print(only_err, file=sys.stderr)
         return 2
+    # Precedence: an explicit --only always wins (an operator typing the flag by hand means
+    # it for THIS invocation); otherwise fall back to the config file's scan.only, if any —
+    # a persistent, declarative alternative for a deployment that genuinely only ever wants
+    # one signal. Neither is a partial override of the other: --only wholly replaces the
+    # config's list rather than merging with it, so "--only cve" on a "scan.only: [secrets]"
+    # deployment means exactly cve, never secrets+cve.
+    if categories is None and cfg is not None and cfg.get("only"):
+        categories = cfg["only"]
     resolve_verdicts = None
     if getattr(args, "resolve", None):
         try:

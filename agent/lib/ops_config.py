@@ -25,6 +25,11 @@ a token. Pure function of the file bytes: same file → same config.
     notify:
       gchat: GCHAT_WEBHOOK      # env-var NAME of the webhook; omitted → no chat push
 
+    scan:
+      only: [secrets, cve]      # optional; subset of {secrets, cve, sunsets}. Omit to scan
+                                 # everything (the default). `run --only` overrides this when
+                                 # explicitly passed on the command line.
+
     probe:                      # acknowledged scope blind spots (from `drift-scan probe`).
       accept:                   # each needs a `reason` — a blind spot may be accepted, never
         - gap: dep:git.example.com/grp/wrapper    # silently. Paste the gap id from the probe
@@ -42,10 +47,13 @@ import re
 
 import yaml
 
+from agent.lib.repo_scan import ALL_CATEGORIES
+
 _MODES = {"dry-run", "live", "off", "create"}
 _TARGETS = {"issues", "mrs"}
-_TOP = {"version", "fleet", "delivery", "auth", "notify", "probe"}
+_TOP = {"version", "fleet", "delivery", "auth", "notify", "probe", "scan"}
 _FLEET_KEYS = {"url", "branch"}
+_SCAN = {"only"}
 _DELIVERY_V1 = {"mode", "dev_as_issues", "devops_project"}
 _DELIVERY_V2 = {"mode", "devops", "developer"}
 # orthogonal to the v1/v2 split — allowed in either form, never counts toward the mix check
@@ -114,6 +122,33 @@ def _load_auth(path: str, raw: dict) -> dict:
     # every omitted role falls back to GITLAB_TOKEN — a single-token deployment needs no block
     return {role: _env_name(f"{path}: auth.{role}", block.get(role, "GITLAB_TOKEN"))
             for role in sorted(_AUTH)}
+
+
+def _load_scan(path: str, raw: dict):
+    """scan.only — a persistent, declarative alternative to remembering `--only` on every
+    invocation (e.g. a deployment that genuinely only ever wants secrets scanned). Returns a
+    frozenset of categories, or None when the whole `scan` block (or `only` within it) is
+    omitted — that is the "scan everything" default, unchanged. The CLI's own `--only`, when
+    explicitly passed, takes precedence over this — an operator typing the flag by hand always
+    wins over whatever the file says."""
+    block = raw.get("scan") or {}
+    if not isinstance(block, dict):
+        raise ConfigError(f"{path}: `scan` must be a mapping")
+    unknown = set(block) - _SCAN
+    if unknown:
+        raise ConfigError(f"{path}: unknown scan key(s) {sorted(unknown)} (allowed: {sorted(_SCAN)})")
+    only = block.get("only")
+    if only is None:
+        return None
+    if not isinstance(only, list) or not only:
+        raise ConfigError(f"{path}: scan.only must be a non-empty list, chosen from "
+                          f"{sorted(ALL_CATEGORIES)}")
+    unknown_cats = {str(c) for c in only} - ALL_CATEGORIES
+    if unknown_cats:
+        raise ConfigError(f"{path}: scan.only has unknown categor"
+                          f"{'y' if len(unknown_cats) == 1 else 'ies'} {sorted(unknown_cats)} "
+                          f"— choose from {sorted(ALL_CATEGORIES)}")
+    return frozenset(str(c) for c in only)
 
 
 def _load_notify(path: str, raw: dict) -> dict:
@@ -253,7 +288,8 @@ def _load_delivery(path: str, raw: dict) -> dict:
 def load(path: str) -> dict:
     """Parse + validate drift.yml. Returns
         {fleet, host, delivery:{mode,dev_as_issues,devops_project,devopsAssignee,developerFallbackAssignee},
-         auth:{clone,persist,deliver}, notify:{gchat}, probe:{accept:[{gap,reason}]}}.
+         auth:{clone,persist,deliver}, notify:{gchat}, probe:{accept:[{gap,reason}]},
+         only: frozenset({...}) | None}.
     Raises ConfigError on anything malformed — an unknown key is an error, not ignored, so a
     typo can't silently disable delivery or drop a repo. `auth`/`notify` values are env-var
     NAMES; a pasted secret is refused."""
@@ -307,4 +343,5 @@ def load(path: str) -> dict:
         "auth": _load_auth(path, raw),
         "notify": _load_notify(path, raw),
         "probe": _load_probe(path, raw),
+        "only": _load_scan(path, raw),
     }

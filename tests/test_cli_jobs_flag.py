@@ -194,3 +194,41 @@ def test_inventory_scan_only_flows_through(tmp_path, monkeypatch):
                "--only", "sunsets"])
     assert rc == 0
     assert captured["categories"] == frozenset({"sunsets"})
+
+
+def test_only_falls_back_to_the_config_files_scan_only_when_the_flag_is_omitted(
+        tmp_path, monkeypatch):
+    """scan.only in drift.yml is a persistent, declarative alternative to remembering --only
+    on every invocation. Omitting the CLI flag must fall back to it."""
+    cfg_path = tmp_path / "drift.yml"
+    cfg_path.write_text("fleet: [https://git.x/g/a]\nscan:\n  only: [secrets]\n")
+    captured = {}
+
+    def fake_run_pipeline(roots, state_dir, now, **kwargs):
+        captured["categories"] = kwargs.get("categories")
+        return {"scope": {"reposScanned": 1}, "auditCounts": {}, "counts": {},
+                "coverage": {}, "rootsUnscannable": [], "resolve": None}
+
+    monkeypatch.setattr("agent.run.run_pipeline", fake_run_pipeline)
+    rc = main(["run", "--config", str(cfg_path), "--state", "/tmp/x", "--now", "2026-08-25"])
+    assert rc == 0
+    assert captured["categories"] == frozenset({"secrets"})
+
+
+def test_only_flag_overrides_the_config_files_scan_only(tmp_path, monkeypatch):
+    """An explicit --only always wins over the config file — the operator typed it on
+    purpose for THIS run."""
+    cfg_path = tmp_path / "drift.yml"
+    cfg_path.write_text("fleet: [https://git.x/g/a]\nscan:\n  only: [secrets]\n")
+    captured = {}
+
+    def fake_run_pipeline(roots, state_dir, now, **kwargs):
+        captured["categories"] = kwargs.get("categories")
+        return {"scope": {"reposScanned": 1}, "auditCounts": {}, "counts": {},
+                "coverage": {}, "rootsUnscannable": [], "resolve": None}
+
+    monkeypatch.setattr("agent.run.run_pipeline", fake_run_pipeline)
+    rc = main(["run", "--config", str(cfg_path), "--state", "/tmp/x", "--now", "2026-08-25",
+               "--only", "sunsets"])
+    assert rc == 0
+    assert captured["categories"] == frozenset({"sunsets"})
