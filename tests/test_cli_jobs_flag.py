@@ -58,8 +58,9 @@ def test_run_rejects_a_jobs_value_below_one(capsys):
     assert "--jobs" in capsys.readouterr().err
 
 
-def test_jobs_defaults_to_one_so_ci_behaviour_is_unchanged():
-    """CI passes no --jobs. The default must be the serial path, not CPU count."""
+def test_jobs_flag_omitted_parses_to_none_so_config_can_supply_it():
+    """argparse's raw default must be None, not 1 — only that lets scan.jobs in --config
+    take effect. (The effective-default-is-1 behaviour is covered by the test below.)"""
     import argparse
 
     from agent import cli
@@ -81,7 +82,22 @@ def test_jobs_defaults_to_one_so_ci_behaviour_is_unchanged():
     finally:
         argparse.ArgumentParser.parse_args = real
 
-    assert getattr(parser_holder["args"], "jobs", None) == 1
+    assert getattr(parser_holder["args"], "jobs", "MISSING") is None
+
+
+def test_jobs_defaults_to_one_so_ci_behaviour_is_unchanged(monkeypatch):
+    """CI passes no --jobs. The effective default must be the serial path, not CPU count."""
+    captured = {}
+
+    def fake_run_pipeline(roots, state_dir, now, **kwargs):
+        captured["jobs"] = kwargs.get("jobs")
+        return {"scope": {"reposScanned": 1}, "auditCounts": {}, "counts": {},
+                "coverage": {}, "rootsUnscannable": [], "resolve": None}
+
+    monkeypatch.setattr("agent.run.run_pipeline", fake_run_pipeline)
+    rc = main(["run", "--root", ".", "--state", "/tmp/x", "--now", "2026-08-25"])
+    assert rc == 0
+    assert captured["jobs"] == 1
 
 
 def test_jobs_above_cpu_count_is_clamped_with_notice(monkeypatch, capsys):
@@ -232,3 +248,108 @@ def test_only_flag_overrides_the_config_files_scan_only(tmp_path, monkeypatch):
                "--only", "sunsets"])
     assert rc == 0
     assert captured["categories"] == frozenset({"sunsets"})
+
+
+def _fake_run_pipeline_capturing(captured):
+    def fake_run_pipeline(roots, state_dir, now, **kwargs):
+        captured.update(kwargs)
+        return {"scope": {"reposScanned": 1}, "auditCounts": {}, "counts": {},
+                "coverage": {}, "rootsUnscannable": [], "resolve": None}
+    return fake_run_pipeline
+
+
+def test_jobs_falls_back_to_the_config_files_scan_jobs_when_the_flag_is_omitted(
+        tmp_path, monkeypatch):
+    cfg_path = tmp_path / "drift.yml"
+    cfg_path.write_text("fleet: [https://git.x/g/a]\nscan:\n  jobs: 4\n")
+    captured = {}
+    monkeypatch.setattr("agent.run.run_pipeline", _fake_run_pipeline_capturing(captured))
+    monkeypatch.setattr("agent.cli._capped_jobs", lambda n, cmd: n)
+    rc = main(["run", "--config", str(cfg_path), "--state", "/tmp/x", "--now", "2026-08-25"])
+    assert rc == 0
+    assert captured["jobs"] == 4
+
+
+def test_jobs_flag_overrides_the_config_files_scan_jobs(tmp_path, monkeypatch):
+    cfg_path = tmp_path / "drift.yml"
+    cfg_path.write_text("fleet: [https://git.x/g/a]\nscan:\n  jobs: 4\n")
+    captured = {}
+    monkeypatch.setattr("agent.run.run_pipeline", _fake_run_pipeline_capturing(captured))
+    monkeypatch.setattr("agent.cli._capped_jobs", lambda n, cmd: n)
+    rc = main(["run", "--config", str(cfg_path), "--state", "/tmp/x", "--now", "2026-08-25",
+               "--jobs", "2"])
+    assert rc == 0
+    assert captured["jobs"] == 2
+
+
+def test_engine_threads_falls_back_to_the_config_files_scan_engine_threads(tmp_path, monkeypatch):
+    cfg_path = tmp_path / "drift.yml"
+    cfg_path.write_text("fleet: [https://git.x/g/a]\nscan:\n  engine_threads: 3\n")
+    captured = {}
+    monkeypatch.setattr("agent.run.run_pipeline", _fake_run_pipeline_capturing(captured))
+    rc = main(["run", "--config", str(cfg_path), "--state", "/tmp/x", "--now", "2026-08-25"])
+    assert rc == 0
+    assert captured["engine_threads"] == 3
+
+
+def test_engine_threads_flag_overrides_the_config_files_scan_engine_threads(tmp_path, monkeypatch):
+    cfg_path = tmp_path / "drift.yml"
+    cfg_path.write_text("fleet: [https://git.x/g/a]\nscan:\n  engine_threads: 3\n")
+    captured = {}
+    monkeypatch.setattr("agent.run.run_pipeline", _fake_run_pipeline_capturing(captured))
+    rc = main(["run", "--config", str(cfg_path), "--state", "/tmp/x", "--now", "2026-08-25",
+               "--engine-threads", "1"])
+    assert rc == 0
+    assert captured["engine_threads"] == 1
+
+
+def test_pull_is_enabled_by_the_config_files_scan_pull_even_without_the_flag(
+        tmp_path, monkeypatch):
+    cfg_path = tmp_path / "drift.yml"
+    cfg_path.write_text("fleet: [https://git.x/g/a]\nscan:\n  pull: true\n")
+    captured = {}
+    monkeypatch.setattr("agent.run.run_pipeline", _fake_run_pipeline_capturing(captured))
+    rc = main(["run", "--config", str(cfg_path), "--state", "/tmp/x", "--now", "2026-08-25"])
+    assert rc == 0
+    assert captured["pull"] is True
+
+
+def test_pull_flag_works_even_when_config_omits_scan_pull(tmp_path, monkeypatch):
+    cfg_path = tmp_path / "drift.yml"
+    cfg_path.write_text("fleet: [https://git.x/g/a]\n")
+    captured = {}
+    monkeypatch.setattr("agent.run.run_pipeline", _fake_run_pipeline_capturing(captured))
+    rc = main(["run", "--config", str(cfg_path), "--state", "/tmp/x", "--now", "2026-08-25",
+               "--pull"])
+    assert rc == 0
+    assert captured["pull"] is True
+
+
+def test_fail_on_deprecated_is_enabled_by_config_without_the_flag(tmp_path, monkeypatch, capsys):
+    """scan.fail_on_deprecated: true in drift.yml must gate the build even though the CI
+    invocation passes no --fail-on-deprecated — the whole point of a persistent config default."""
+    cfg_path = tmp_path / "drift.yml"
+    cfg_path.write_text("fleet: [https://git.x/g/a]\nscan:\n  fail_on_deprecated: true\n")
+
+    def fake_run_pipeline(roots, state_dir, now, **kwargs):
+        return {"scope": {"reposScanned": 1}, "auditCounts": {"DEPRECATED": 1}, "counts": {},
+                "coverage": {}, "rootsUnscannable": [], "resolve": None}
+
+    monkeypatch.setattr("agent.run.run_pipeline", fake_run_pipeline)
+    rc = main(["run", "--config", str(cfg_path), "--state", "/tmp/x", "--now", "2026-08-25"])
+    assert rc == 3
+    assert "gate" in capsys.readouterr().err
+
+
+def test_fail_on_exposed_is_enabled_by_config_without_the_flag(tmp_path, monkeypatch, capsys):
+    cfg_path = tmp_path / "drift.yml"
+    cfg_path.write_text("fleet: [https://git.x/g/a]\nscan:\n  fail_on_exposed: true\n")
+
+    def fake_run_pipeline(roots, state_dir, now, **kwargs):
+        return {"scope": {"reposScanned": 1}, "auditCounts": {"EXPOSED": 1}, "counts": {},
+                "coverage": {}, "rootsUnscannable": [], "resolve": None}
+
+    monkeypatch.setattr("agent.run.run_pipeline", fake_run_pipeline)
+    rc = main(["run", "--config", str(cfg_path), "--state", "/tmp/x", "--now", "2026-08-25"])
+    assert rc == 7
+    assert "gate" in capsys.readouterr().err

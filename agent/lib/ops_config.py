@@ -53,7 +53,7 @@ _MODES = {"dry-run", "live", "off", "create"}
 _TARGETS = {"issues", "mrs"}
 _TOP = {"version", "fleet", "delivery", "auth", "notify", "probe", "scan"}
 _FLEET_KEYS = {"url", "branch"}
-_SCAN = {"only"}
+_SCAN = {"only", "jobs", "engine_threads", "fail_on_deprecated", "fail_on_exposed", "pull"}
 _DELIVERY_V1 = {"mode", "dev_as_issues", "devops_project"}
 _DELIVERY_V2 = {"mode", "devops", "developer"}
 # orthogonal to the v1/v2 split — allowed in either form, never counts toward the mix check
@@ -124,31 +124,63 @@ def _load_auth(path: str, raw: dict) -> dict:
             for role in sorted(_AUTH)}
 
 
-def _load_scan(path: str, raw: dict):
-    """scan.only — a persistent, declarative alternative to remembering `--only` on every
-    invocation (e.g. a deployment that genuinely only ever wants secrets scanned). Returns a
-    frozenset of categories, or None when the whole `scan` block (or `only` within it) is
-    omitted — that is the "scan everything" default, unchanged. The CLI's own `--only`, when
-    explicitly passed, takes precedence over this — an operator typing the flag by hand always
-    wins over whatever the file says."""
+def _positive_int(path: str, key: str, val) -> int | None:
+    """A `scan.*` integer setting (jobs, engine_threads): None when omitted, else a positive
+    int. `isinstance(True, int)` is True in Python — bool is excluded explicitly, or `jobs:
+    true` would silently parse as jobs=1."""
+    if val is None:
+        return None
+    if isinstance(val, bool) or not isinstance(val, int) or val < 1:
+        raise ConfigError(f"{path}: scan.{key} must be a positive integer, got {val!r}")
+    return val
+
+
+def _optional_bool(path: str, key: str, val) -> bool | None:
+    """A `scan.*` boolean setting (fail_on_deprecated, fail_on_exposed, pull): None when
+    omitted (the CLI-side "not explicitly set" default), else True/False."""
+    if val is None:
+        return None
+    if not isinstance(val, bool):
+        raise ConfigError(f"{path}: scan.{key} must be true or false, got {val!r}")
+    return val
+
+
+def _load_scan(path: str, raw: dict) -> dict:
+    """scan.{only,jobs,engine_threads,fail_on_deprecated,fail_on_exposed,pull} — persistent
+    equivalents of `run`'s own CLI flags, for a deployment that always wants the same values
+    rather than retyping them on every invocation. Every one of these defaults to None (or,
+    for `only`, to "scan everything") when the whole `scan` block — or the individual key
+    within it — is omitted, which is today's behavior, byte-identical. The CLI's own flag,
+    when explicitly passed, ALWAYS takes precedence over whatever this file says — an
+    operator typing a flag by hand means it for that one invocation; this file only sets
+    the default a bare `run --config drift.yml` gets."""
     block = raw.get("scan") or {}
     if not isinstance(block, dict):
         raise ConfigError(f"{path}: `scan` must be a mapping")
     unknown = set(block) - _SCAN
     if unknown:
         raise ConfigError(f"{path}: unknown scan key(s) {sorted(unknown)} (allowed: {sorted(_SCAN)})")
+
     only = block.get("only")
-    if only is None:
-        return None
-    if not isinstance(only, list) or not only:
-        raise ConfigError(f"{path}: scan.only must be a non-empty list, chosen from "
-                          f"{sorted(ALL_CATEGORIES)}")
-    unknown_cats = {str(c) for c in only} - ALL_CATEGORIES
-    if unknown_cats:
-        raise ConfigError(f"{path}: scan.only has unknown categor"
-                          f"{'y' if len(unknown_cats) == 1 else 'ies'} {sorted(unknown_cats)} "
-                          f"— choose from {sorted(ALL_CATEGORIES)}")
-    return frozenset(str(c) for c in only)
+    if only is not None:
+        if not isinstance(only, list) or not only:
+            raise ConfigError(f"{path}: scan.only must be a non-empty list, chosen from "
+                              f"{sorted(ALL_CATEGORIES)}")
+        unknown_cats = {str(c) for c in only} - ALL_CATEGORIES
+        if unknown_cats:
+            raise ConfigError(f"{path}: scan.only has unknown categor"
+                              f"{'y' if len(unknown_cats) == 1 else 'ies'} {sorted(unknown_cats)} "
+                              f"— choose from {sorted(ALL_CATEGORIES)}")
+        only = frozenset(str(c) for c in only)
+
+    return {
+        "only": only,
+        "jobs": _positive_int(path, "jobs", block.get("jobs")),
+        "engine_threads": _positive_int(path, "engine_threads", block.get("engine_threads")),
+        "fail_on_deprecated": _optional_bool(path, "fail_on_deprecated", block.get("fail_on_deprecated")),
+        "fail_on_exposed": _optional_bool(path, "fail_on_exposed", block.get("fail_on_exposed")),
+        "pull": _optional_bool(path, "pull", block.get("pull")),
+    }
 
 
 def _load_notify(path: str, raw: dict) -> dict:
@@ -343,5 +375,5 @@ def load(path: str) -> dict:
         "auth": _load_auth(path, raw),
         "notify": _load_notify(path, raw),
         "probe": _load_probe(path, raw),
-        "only": _load_scan(path, raw),
+        **_load_scan(path, raw),   # only, jobs, engine_threads, fail_on_deprecated, fail_on_exposed, pull
     }

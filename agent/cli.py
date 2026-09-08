@@ -167,22 +167,40 @@ def _cmd_run(args) -> int:
     if not roots:
         print("run: no repos to scan — pass --root or a --config with a fleet", file=sys.stderr)
         return 2
-    if getattr(args, "jobs", 1) < 1:
+    # --jobs: --jobs default is None (not 1) specifically so this can tell "omitted" from
+    # "explicitly 1" apart, the same reason --engine-threads has always defaulted to None —
+    # without that, scan.jobs in --config could never take effect for a bare `run --config
+    # drift.yml` (every omitted --jobs would look identical to an explicit "--jobs 1").
+    jobs_arg = getattr(args, "jobs", None)
+    if jobs_arg is not None and jobs_arg < 1:
         print("run: --jobs must be 1 or greater", file=sys.stderr)
         return 2
-    jobs = _capped_jobs(getattr(args, "jobs", 1), "run")
+    effective_jobs = jobs_arg if jobs_arg is not None else (cfg or {}).get("jobs") or 1
+    jobs = _capped_jobs(effective_jobs, "run")
     categories, only_err = _parse_only(getattr(args, "only", None), "run")
     if only_err:
         print(only_err, file=sys.stderr)
         return 2
-    # Precedence: an explicit --only always wins (an operator typing the flag by hand means
-    # it for THIS invocation); otherwise fall back to the config file's scan.only, if any —
-    # a persistent, declarative alternative for a deployment that genuinely only ever wants
-    # one signal. Neither is a partial override of the other: --only wholly replaces the
-    # config's list rather than merging with it, so "--only cve" on a "scan.only: [secrets]"
-    # deployment means exactly cve, never secrets+cve.
+    # Precedence for every scan.* config setting, --only included: an explicit CLI flag
+    # always wins (an operator typing it by hand means it for THIS invocation); otherwise
+    # fall back to the config file's scan.* value, if any — a persistent, declarative
+    # default for a deployment that always wants the same thing. --only wholly REPLACES
+    # the config's list rather than merging with it, so "--only cve" on a "scan.only:
+    # [secrets]" deployment means exactly cve, never secrets+cve.
     if categories is None and cfg is not None and cfg.get("only"):
         categories = cfg["only"]
+    engine_threads = getattr(args, "engine_threads", None)
+    if engine_threads is None and cfg is not None:
+        engine_threads = cfg.get("engine_threads")
+    # store_true flags default False, so "omitted" and "explicitly false" look identical on
+    # args — but that ambiguity is harmless here: `flag OR config` can only ever ADD the
+    # behavior, never remove it, so a config that says true stays true regardless of what
+    # the (unwritable-as-false) CLI flag looks like.
+    pull = getattr(args, "pull", False) or bool(cfg and cfg.get("pull"))
+    fail_on_deprecated = getattr(args, "fail_on_deprecated", False) or bool(
+        cfg and cfg.get("fail_on_deprecated"))
+    fail_on_exposed = getattr(args, "fail_on_exposed", False) or bool(
+        cfg and cfg.get("fail_on_exposed"))
     resolve_verdicts = None
     if getattr(args, "resolve", None):
         try:
@@ -216,9 +234,9 @@ def _cmd_run(args) -> int:
             print(f"⚙ {msg}", file=sys.stderr, flush=True)
     try:
         out = run_pipeline(roots, args.state, args.now,
-                           pull=getattr(args, "pull", False), progress=progress,
+                           pull=pull, progress=progress,
                            gitlab_hosts=gitlab_hosts, resolve=resolve_verdicts,
-                           jobs=jobs, engine_threads=getattr(args, "engine_threads", None),
+                           jobs=jobs, engine_threads=engine_threads,
                            categories=categories)
     except RuntimeError as exc:
         print(f"run failed: {exc}", file=sys.stderr)
@@ -325,7 +343,7 @@ def _cmd_run(args) -> int:
               f"check(s) failed this run — some findings are UNCONFIRMED (served from cache or "
               f"skipped), and absent ones are NOT proven clean. Re-run with network access.",
               file=sys.stderr)
-    if getattr(args, "fail_on_deprecated", False):
+    if fail_on_deprecated:
         if cov.get("osvErrors") or cov.get("eolErrors"):
             print("✗ gate: audit sources (OSV/endoflife) were unreachable — cannot certify clean "
                   "(exit 4). Re-run with network access.", file=sys.stderr)
@@ -334,12 +352,12 @@ def _cmd_run(args) -> int:
             print(f"✗ gate: {c['DEPRECATED']} DEPRECATED finding(s) (excluding muted) — failing (exit 3)",
                   file=sys.stderr)
             return 3
-    if getattr(args, "fail_on_exposed", False):
+    if fail_on_exposed:
         if c.get("EXPOSED", 0) > 0:        # gate on the raw signal: ANY exposed secret fails
             print(f"✗ gate: {c['EXPOSED']} EXPOSED secret finding(s) (excluding muted) — "
                   f"failing (exit 7)", file=sys.stderr)
             return 7
-    elif getattr(args, "fail_on_deprecated", False) and c.get("EXPOSED", 0) > 0:
+    elif fail_on_deprecated and c.get("EXPOSED", 0) > 0:
         # --fail-on-deprecated and --fail-on-exposed are DELIBERATELY separate flags (a
         # leaked credential is a different risk class than an overdue API migration, and
         # a pipeline already using --fail-on-deprecated should not start failing on
@@ -1904,14 +1922,15 @@ def main(argv: list[str]) -> int:
     pr.add_argument("--now", required=True)
     pr.add_argument("--pull", action="store_true")
     pr.add_argument("--progress", action="store_true")
-    pr.add_argument("--jobs", type=int, default=1,
+    pr.add_argument("--jobs", type=int, default=None,
                     help="repos to scan concurrently (default 1 = serial, which is what CI "
-                         "runs; a larger value is capped to this machine's CPU count, with a "
-                         "notice on stderr if it was reduced). Results are reassembled in "
-                         "discovery order, so any --jobs value produces identical artifacts — "
-                         "absent resource exhaustion: ast-grep is itself internally parallel, "
-                         "so heavy oversubscription can push a slow repo past the engine's "
-                         "600s timeout and it gets counted errored, which serial would not.")
+                         "runs, unless --config sets scan.jobs; a larger value is capped to "
+                         "this machine's CPU count, with a notice on stderr if it was "
+                         "reduced). Results are reassembled in discovery order, so any --jobs "
+                         "value produces identical artifacts — absent resource exhaustion: "
+                         "ast-grep is itself internally parallel, so heavy oversubscription "
+                         "can push a slow repo past the engine's 600s timeout and it gets "
+                         "counted errored, which serial would not.")
     pr.add_argument("--engine-threads", type=int, default=None,
                     help="cap ast-grep's OWN internal thread pool for a single repo's scan "
                          "(passed through as its `-j`/`--threads`) — a SEPARATE axis from "

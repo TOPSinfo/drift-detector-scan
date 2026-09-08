@@ -310,3 +310,80 @@ fleet: [https://git.x/g/a]
 scan:
   typo: [secrets]
 """))
+
+
+# --------------------------------------------------------------------- scan.{jobs,engine_threads,fail_on_*,pull}
+
+def test_scan_block_defaults_are_all_none_or_false_when_omitted(tmp_path):
+    cfg = ops_config.load(_write(tmp_path, "fleet: [https://git.x/g/a]\n"))
+    assert cfg["jobs"] is None
+    assert cfg["engine_threads"] is None
+    assert cfg["fail_on_deprecated"] is None
+    assert cfg["fail_on_exposed"] is None
+    assert cfg["pull"] is None
+
+
+def test_scan_block_parses_every_setting(tmp_path):
+    cfg = ops_config.load(_write(tmp_path, """
+fleet: [https://git.x/g/a]
+scan:
+  only: [secrets]
+  jobs: 4
+  engine_threads: 2
+  fail_on_deprecated: true
+  fail_on_exposed: true
+  pull: true
+"""))
+    assert cfg["only"] == frozenset({"secrets"})
+    assert cfg["jobs"] == 4
+    assert cfg["engine_threads"] == 2
+    assert cfg["fail_on_deprecated"] is True
+    assert cfg["fail_on_exposed"] is True
+    assert cfg["pull"] is True
+
+
+def test_scan_jobs_must_be_a_positive_integer(tmp_path):
+    # a plain substring check, not pytest.raises(match=...): tmp_path embeds this TEST'S
+    # OWN NAME ("test_scan_jobs_must_be_a_positive_integer0"), which itself contains the
+    # literal substring "scan_jobs" — a `match="scan.jobs"` regex (dot as wildcard) would
+    # spuriously pass against the path prefix alone, never reaching the real message. Caught
+    # live: this file's own test_scan_only_rejects_an_empty_list hit the identical trap with
+    # match="only" before this comment existed.
+    with pytest.raises(ops_config.ConfigError) as excinfo:
+        ops_config.load(_write(tmp_path, "fleet: [https://git.x/g/a]\nscan:\n  jobs: 0\n"))
+    assert "scan.jobs must be a positive integer" in str(excinfo.value)
+
+
+def test_scan_jobs_rejects_a_bool_even_though_python_bool_is_an_int(tmp_path):
+    """isinstance(True, int) is True in Python — a naive `isinstance(v, int)` check would
+    silently accept `jobs: true` as jobs=1."""
+    with pytest.raises(ops_config.ConfigError) as excinfo:
+        ops_config.load(_write(tmp_path, "fleet: [https://git.x/g/a]\nscan:\n  jobs: true\n"))
+    assert "scan.jobs must be a positive integer" in str(excinfo.value)
+
+
+def test_scan_engine_threads_must_be_a_positive_integer(tmp_path):
+    with pytest.raises(ops_config.ConfigError) as excinfo:
+        ops_config.load(_write(tmp_path,
+            "fleet: [https://git.x/g/a]\nscan:\n  engine_threads: -1\n"))
+    assert "scan.engine_threads must be a positive integer" in str(excinfo.value)
+
+
+def test_scan_fail_on_deprecated_must_be_a_bool(tmp_path):
+    with pytest.raises(ops_config.ConfigError) as excinfo:
+        ops_config.load(_write(tmp_path,
+            "fleet: [https://git.x/g/a]\nscan:\n  fail_on_deprecated: yes-please\n"))
+    assert "scan.fail_on_deprecated must be true or false" in str(excinfo.value)
+
+
+def test_scan_fail_on_exposed_must_be_a_bool(tmp_path):
+    with pytest.raises(ops_config.ConfigError) as excinfo:
+        ops_config.load(_write(tmp_path,
+            "fleet: [https://git.x/g/a]\nscan:\n  fail_on_exposed: 1\n"))
+    assert "scan.fail_on_exposed must be true or false" in str(excinfo.value)
+
+
+def test_scan_pull_must_be_a_bool(tmp_path):
+    with pytest.raises(ops_config.ConfigError) as excinfo:
+        ops_config.load(_write(tmp_path, "fleet: [https://git.x/g/a]\nscan:\n  pull: soon\n"))
+    assert "scan.pull must be true or false" in str(excinfo.value)
