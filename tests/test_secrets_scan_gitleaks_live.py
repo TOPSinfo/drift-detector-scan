@@ -185,3 +185,40 @@ def test_truncated_example_jwt_header_placeholder_is_suppressed(tmp_path):
     assert ("config/real.php", "generic-api-key") in hits, (
         "a real secret elsewhere must still fire — the entry must match only this exact "
         "placeholder value, never widen into a rule- or path-level suppression")
+
+
+@pytest.mark.skipif(_GITLEAKS is None, reason="no gitleaks binary installed")
+def test_product_option_label_identifiers_are_suppressed(tmp_path):
+    """VERIFIED AGAINST A REAL BINARY (2026-09-08, a fleet repo's Laravel seed
+    migrations): `['key' => 'bullet_points_1', 'value' => 'Bullet Points 1']` and
+    `const KEY_SELLING_POINT_1 = "KEY_SELLING_POINT_1"` both matched generic-api-key —
+    reproduced directly: the matched Secret is the bare identifier string itself
+    ('bullet_points_1', 'KEY_SELLING_POINT_1'), which crosses generic-api-key's entropy
+    threshold purely on length/character mix, same as a short vendor-specific rule would.
+    Neither is remotely secret: one is a product-configuration option NAME (its own value
+    just restates it in Title Case), the other is a PHP constant whose value is, verbatim,
+    its own name. Confirmed the pattern generalizes across arbitrary digits (…_9, …_7 fire
+    identically to …_1..5) — anchored to the exact literal prefix + digits, matched by
+    VALUE, so a real secret elsewhere (or a similarly-named-but-different string) is
+    untouched."""
+    repo = _git_repo(tmp_path, {
+        "database/migrations/seed.php":
+            "return [\n"
+            "  ['key' => 'bullet_points_9', 'value' => 'Bullet Points 9'],\n"
+            "];\n",
+        "app/Constants.php":
+            "class C {\n"
+            "  const KEY_SELLING_POINT_7 = \"KEY_SELLING_POINT_7\";\n"
+            "}\n",
+        "config/real.php": "$api_key = 'zK9pLmN3vQsRtUwXyZ1aB2cD4eF6gH8iJkLmNoPq';\n",
+    })
+    res = run_secrets_scan(str(repo))
+    assert res["errors"] == []
+    hits = {(m["path"], m["ruleId"]) for m in res["matches"]}
+    assert ("database/migrations/seed.php", "generic-api-key") not in hits, (
+        "the bullet_points_N option-label identifier must be suppressed")
+    assert ("app/Constants.php", "generic-api-key") not in hits, (
+        "the KEY_SELLING_POINT_N constant-name-as-value must be suppressed")
+    assert ("config/real.php", "generic-api-key") in hits, (
+        "a real secret elsewhere must still fire — the entries must match only these two "
+        "exact literal-prefix-plus-digits shapes, never widen further")

@@ -81,6 +81,25 @@ description = "BMAD framework's own generated file-manifest (SHA256 content hash
 targetRules = ["generic-api-key"]
 paths = ['''(^|/)\.bmad/_cfg/files-manifest\.csv$''']
 
+# Product-configuration OPTION-LABEL identifiers, not credentials. Verified against a real
+# fleet finding (2026-09-08, a fleet repo's Laravel seed migrations):
+# `['key' => 'bullet_points_1', 'value' => 'Bullet Points 1']` and
+# `const KEY_SELLING_POINT_1 = "KEY_SELLING_POINT_1"` both matched generic-api-key —
+# reproduced directly against the real binary: the matched Secret is the bare identifier
+# string itself, which crosses the rule's entropy threshold purely on length/character mix.
+# Neither is remotely secret: one is a product-attribute NAME whose own value just restates
+# it in Title Case, the other a PHP constant whose value is, verbatim, its own name. Matched
+# against the SECRET VALUE (any file, any rule) and anchored to the exact verified literal
+# prefix + digits — confirmed live that the pattern generalizes across arbitrary digits
+# (…_9, …_7 fire identically to …_1..5), so this covers the family without widening past
+# what was actually verified.
+[[allowlists]]
+description = "Product-configuration option-label identifiers, never a real credential (verified 2026-09-08)"
+regexes = [
+  '''^bullet_points_[0-9]+$''',
+  '''^KEY_SELLING_POINT_[0-9]+$''',
+]
+
 # Values that are, verbatim, a documented placeholder rather than a real credential —
 # matched against the SECRET VALUE itself (any file, any rule), so a genuine secret
 # elsewhere in the same file is still caught. Anchored (^...$): an unanchored substring
