@@ -75,6 +75,13 @@ scan:
 run time, never stored). `drift deliver` (the two issue streams) and committing state back to
 `drift-ops` are the next build steps.
 
+Once `--config drift.yml` replaces the bare `--root` above (the real `drift-ops` shape, not
+this illustrative one), `--pull`, `--jobs`, `--engine-threads`, and the two `--fail-on-*` gates
+all have persistent equivalents in that file's `scan:` block — see
+`deploy/drift-ops/config/drift.yml`'s inline comments. Mind the caution on the two gates if,
+as in this snippet, `verify`/`deliver`/state-persist run as later steps in the SAME job as
+`run`: a gate's non-zero exit stops the job right there.
+
 ## The catalog overlay — how the container learns
 
 The catalogs inside the image are read-only, so a scan reads

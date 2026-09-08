@@ -26,6 +26,35 @@ delivery:
                              # repo (a shape the scanner can't fully read). Opt in once the
                              # fleet is stable; closes itself when the repo goes KNOWN.
 
+# scan: is entirely optional — a persistent alternative to typing `run`'s own flags on every
+# invocation. Every key here defaults to the flag's own default when omitted, and an explicit
+# CLI flag on a given invocation always overrides whatever this says for THAT run.
+#
+# scan:
+#   only: [secrets]           # scan just this subset of {secrets, cve, sunsets} by default —
+#                              # e.g. a fleet that wants a fast secrets-only pass every run.
+#                              # Omit to scan everything (today's default). A skipped category
+#                              # is never silently "clean": it shows in coverage.categoriesSkipped
+#                              # and as a banner on the dashboard, every run this is set.
+#   jobs: 4                   # scan this many repos concurrently (default: 1 = serial — what
+#                              # CI runs unless you raise this; capped to the machine's CPU count).
+#   engine_threads: 2         # cap ast-grep's OWN internal thread pool per repo (default: ast-grep's
+#                              # own default = every logical CPU for one repo's scan). Lower this on a
+#                              # small/shared runner — several repos' scans at once can otherwise
+#                              # exhaust host memory even at jobs: 1.
+#   pull: true                 # `git pull` each already-cloned repo before scanning (default: false,
+#                              # scan whatever is already checked out).
+#   fail_on_deprecated: true  # exit non-zero (3) when any CVE/EOL finding is open — for a CI
+#                              # pipeline that wants a red/green build signal on top of (or
+#                              # instead of) filed issues. CAUTION if this job ALSO runs
+#                              # sbom/sarif/verify/deliver/state-persist as later lines in the
+#                              # SAME CI job: a non-zero exit here stops the job before those
+#                              # later lines run. Fine for a merge-gate CI that only runs `run`;
+#                              # for a scan-then-deliver pipeline like this template's, either
+#                              # leave this off or restructure so delivery/persistence happen
+#                              # BEFORE the gated step.
+#   fail_on_exposed: true     # same caution, for exit code 7 when any EXPOSED secret is open.
+
 # auth + notify hold env-var NAMES, never secrets (this file is git-tracked and reviewed).
 # Omit `auth` entirely to run on a single GITLAB_TOKEN, as below by default:
 #

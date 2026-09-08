@@ -4,6 +4,27 @@ All notable changes to the Drift Detector plugin. Dates are YYYY-MM-DD.
 
 ## Unreleased
 
+### Added
+
+- **`run --only secrets,cve,sunsets`** — scan just the named finding kind(s) instead of
+  everything. Skips the other kinds' scan mechanism entirely (not just their output — the
+  manifest/ast-grep pass and the gitleaks pass each run only when their category is
+  included), so a secrets-only pass on a large fleet finishes in a fraction of the time a
+  full scan takes. A skipped category is never silently absent: `drift.json`'s
+  `coverage.categoriesSkipped` records it, `coverage.notes` states it in the same place
+  OSV/endoflife outage warnings already live, and the dashboard shows an amber banner above
+  the sticky header for the whole run — 0 findings from a skipped category must never read
+  as "scanned, clean" (the same principle that governs an unreachable audit source).
+- **`drift.yml`'s `scan:` block** — a persistent, reviewed alternative to retyping `run`'s own
+  flags on every invocation. Covers `only` (the categories above), `jobs`, `engine_threads`,
+  `fail_on_deprecated`, `fail_on_exposed`, and `pull`, each validated by `ops_config.load()`
+  (positive-integer / boolean checks, unknown-key rejection — the same validator
+  `config-preflight` already runs, so a typo fails at config load, not mid-scan). An explicit
+  CLI flag always overrides the config default for that one invocation; the three boolean
+  flags (`pull`/`fail_on_deprecated`/`fail_on_exposed`) can only be turned ON by the config
+  (a config `true` cannot be walked back to `false` by an absent CLI flag). See
+  `deploy/drift-ops/config/drift.yml` for the annotated template.
+
 ## v1.2.0 — 2026-09-04
 
 ### Added

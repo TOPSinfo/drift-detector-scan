@@ -6,7 +6,12 @@ no self-hosted runner — and pushes results back here.
 
 Contents:
 
-- **config/drift.yml** — the fleet to scan + delivery settings (one config).
+- **config/drift.yml** — the fleet to scan + delivery settings (one config). Its `scan:` block
+  (commented out by default) also holds persistent equivalents of `run`'s own flags — which
+  categories to scan, concurrency, and the two `--fail-on-*` CI gates — so a deployment that
+  always wants the same values doesn't need to retype them into a CI script. See that file's
+  inline comments for each key, and mind the caution on the two gates if this deployment's CI
+  runs `deliver`/state-persist as later steps in the same job as `run`.
 - **catalog/** — the writable overlay the scanner learns into (see `catalog/README.md`).
 - **state/** — the report + finding history, committed here by every run (history = git log).
 
